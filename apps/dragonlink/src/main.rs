@@ -1323,10 +1323,19 @@ mod tests {
                 screenshot: None,
             })
         );
-        assert_eq!(
-            parse_args(&args(&["--game", "synthetic"])).unwrap().game,
-            GameChoice::Synthetic
-        );
+        for (name, choice) in [
+            ("golden-century", GameChoice::GoldenCentury),
+            ("autumn-moon", GameChoice::AutumnMoon),
+            ("happy-prosperous", GameChoice::HappyProsperous),
+            ("panda-magic", GameChoice::PandaMagic),
+            ("synthetic", GameChoice::Synthetic),
+        ] {
+            assert_eq!(
+                parse_args(&args(&["--game", name])).unwrap().game,
+                choice,
+                "--game {name} did not parse"
+            );
+        }
         assert_eq!(
             parse_args(&args(&[])).unwrap().game,
             GameChoice::GoldenCentury
