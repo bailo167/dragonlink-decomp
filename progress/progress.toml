@@ -371,8 +371,8 @@ note = "No source held. An online evidence pass over litigation, regulatory, arc
 [[category.item]]
 id = "visible-paytables"
 name = "Player-visible pay tables, lines and bet structures"
-status = "investigating"
-note = "Not found in a first search. Footage of all four titles and pay-table screens in the litigation record exist; a frame-by-frame and full-filings pass is under way (docs/BLOCKERS.md)."
+status = "partial"
+note = "US pay tables and Hold & Spin rules of three titles transcribed from machines' rules screens in public footage; Australian lines by denomination read from play. The Australian pay-table and information screens, bet ladders and any return figure are not found (docs/reverse-engineering/FOOTAGE.md)."
 
 [[category.item]]
 id = "denomination-bet-effects"
@@ -652,17 +652,19 @@ note = "ACT specifications across generations, Victorian builds, US personality 
 id = "layout"
 name = "Reel layout and lines"
 status = "partial"
-note = "Australia: five reels by three rows (stated for the family) with 50-, 25- and 5-line configurations, from the manufacturer's archived pages. Which denomination uses which line count, and the payline shapes, are not found."
+note = "Australia (Queensland clubs): five by three, with 50 lines at 1c and 2c, 25 at 5c and 10c, 5 at $1, read from public footage and the manufacturer's archived pages. Payline shapes and casino configurations incomplete."
 
 [[category.item]]
 id = "symbols"
 name = "Symbol set"
-status = "not_started"
+status = "partial"
+note = "Symbol set and roles read from US rules screens and Australian play in public footage; described, no artwork held."
 
 [[category.item]]
 id = "paytable"
 name = "Paytable"
-status = "not_started"
+status = "partial"
+note = "The US pay table is transcribed from the machine's own rules screens in public footage, and is the one quoted in the manufacturer's complaint (docs/reverse-engineering/FOOTAGE.md). Two Australian observations agree with it; the Australian pay-table screen itself has not been found."
 
 [[category.item]]
 id = "bets"
@@ -678,7 +680,8 @@ status = "not_started"
 [[category.item]]
 id = "hold-and-spin"
 name = "Hold & Spin rules and presentation"
-status = "not_started"
+status = "investigating"
+note = "US rules text transcribed from footage (six to fourteen prize symbols, individual reels, three spins resetting, the set of prize multiples). Australian screens show the same trigger and counters. Not implemented to these rules."
 
 [[category.item]]
 id = "jackpots"
@@ -689,8 +692,8 @@ note = "Four levels; strong evidence that in Australia the Grand is linked, the 
 [[category.item]]
 id = "free-games"
 name = "Free games feature"
-status = "investigating"
-note = "Australia: royals removed, and three extra free games on any scatter win during the feature (manufacturer's archived page). Initial award not found. Not implemented."
+status = "partial"
+note = "Six free games, three extra on a retrigger, royals removed: read from Australian footage and matching the manufacturer's page and US rules text. Not implemented."
 
 [[category.item]]
 id = "art-ui"
@@ -741,17 +744,19 @@ note = "ACT specifications across generations, Victorian builds, US personality 
 id = "layout"
 name = "Reel layout and lines"
 status = "partial"
-note = "Australia: five reels by three rows (stated for the family) with 50-, 25- and 5-line configurations, from the manufacturer's archived pages. Which denomination uses which line count, and the payline shapes, are not found."
+note = "Australia (Queensland clubs): five by three, with 50 lines at 1c and 2c, 25 at 5c and 10c, 5 at $1, read from public footage and the manufacturer's archived pages. Payline shapes and casino configurations incomplete."
 
 [[category.item]]
 id = "symbols"
 name = "Symbol set"
-status = "not_started"
+status = "partial"
+note = "Symbol set and roles read from US rules screens and Australian play in public footage; described, no artwork held."
 
 [[category.item]]
 id = "paytable"
 name = "Paytable"
-status = "not_started"
+status = "partial"
+note = "The US pay table is transcribed from the machine's own rules screens in public footage, and is the one quoted in the manufacturer's complaint (docs/reverse-engineering/FOOTAGE.md). Two Australian observations agree with it; the Australian pay-table screen itself has not been found."
 
 [[category.item]]
 id = "bets"
@@ -767,7 +772,8 @@ status = "not_started"
 [[category.item]]
 id = "hold-and-spin"
 name = "Hold & Spin rules and presentation"
-status = "not_started"
+status = "investigating"
+note = "US rules text transcribed from footage (six to fourteen prize symbols, individual reels, three spins resetting, the set of prize multiples). Australian screens show the same trigger and counters. Not implemented to these rules."
 
 [[category.item]]
 id = "jackpots"
@@ -778,8 +784,8 @@ note = "Four levels; strong evidence that in Australia the Grand is linked, the 
 [[category.item]]
 id = "free-games"
 name = "Free games feature"
-status = "investigating"
-note = "Australia: royals removed, and three extra free games on any scatter during the feature (manufacturer's archived page). Initial award not found. Not implemented."
+status = "partial"
+note = "Six free games, three extra on a retrigger, royals removed, and Hold & Spin can start inside free games: read from Australian footage and matching the manufacturer's page. Not implemented."
 
 [[category.item]]
 id = "art-ui"
@@ -830,17 +836,19 @@ note = "ACT specifications across generations, Victorian builds, US personality 
 id = "layout"
 name = "Reel layout and lines"
 status = "partial"
-note = "Australia: five reels by three rows (stated for the family) with 50-, 25- and 5-line configurations, from the manufacturer's archived pages. Which denomination uses which line count, and the payline shapes, are not found."
+note = "Australia (Queensland clubs): five by three, with 50 lines at 1c and 2c, 25 at 5c and 10c, 5 at $1, read from public footage and the manufacturer's archived pages. Payline shapes and casino configurations incomplete."
 
 [[category.item]]
 id = "symbols"
 name = "Symbol set"
-status = "not_started"
+status = "partial"
+note = "Symbol set and roles read from US rules screens and Australian play in public footage; described, no artwork held."
 
 [[category.item]]
 id = "paytable"
 name = "Paytable"
-status = "not_started"
+status = "partial"
+note = "The US pay table is transcribed from the machine's own rules screens in public footage, and is the one quoted in the manufacturer's complaint (docs/reverse-engineering/FOOTAGE.md). Two Australian observations agree with it; the Australian pay-table screen itself has not been found."
 
 [[category.item]]
 id = "bets"
@@ -856,7 +864,8 @@ status = "not_started"
 [[category.item]]
 id = "hold-and-spin"
 name = "Hold & Spin rules and presentation"
-status = "not_started"
+status = "investigating"
+note = "US rules text transcribed from footage (six to fourteen prize symbols, individual reels, three spins resetting, the set of prize multiples). Australian screens show the same trigger and counters. Not implemented to these rules."
 
 [[category.item]]
 id = "jackpots"
@@ -867,8 +876,8 @@ note = "Four levels; strong evidence that in Australia the Grand is linked, the 
 [[category.item]]
 id = "free-games"
 name = "Free games feature"
-status = "investigating"
-note = "Australia: the same reveal rule as Golden Century (manufacturer's archived page). Initial award and retrigger not found. Not implemented."
+status = "partial"
+note = "Six free games; a mystery symbol that reveals as one symbol and a separate set of reel strips, by the US rules text; the mystery symbol seen in Australian footage. Retrigger size from one sample only. Not implemented."
 
 [[category.item]]
 id = "art-ui"
@@ -918,7 +927,8 @@ note = "One JSON Lines format for rewrite traces and transcribed observations; h
 [[category.item]]
 id = "source-recordings"
 name = "Source recordings of the original"
-status = "not_started"
+status = "partial"
+note = "Public recordings of Australian and US machines located, scanned and partly read for three titles; held privately with hashes. No recording is yet tied to a regulatory build, and none has been transcribed into a trace."
 
 [[category.item]]
 id = "event-comparison"

@@ -90,6 +90,7 @@ The host the gate currently runs on, recorded so the environment can be reproduc
 | ffmpeg | 8.1 | for inspecting and measuring reference media |
 | winget | 1.29 | used by the setup script |
 
+| yt-dlp | 2026.08.19 | per-user Python package; fetches public video and its metadata for the footage passes |
 | Android SDK command-line tools | build 15859902 | checksum verified against Google's download page and SDK index |
 | Android Emulator | 37.2.12 | hardware accelerated through the Windows Hypervisor Platform, which was already enabled |
 | Android SDK Platform-Tools (`adb`) | 37.0.1 | |

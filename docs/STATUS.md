@@ -148,6 +148,17 @@ shell runs the simulation on screen.
   public ([reverse-engineering/PLATFORM_SOFTWARE.md](reverse-engineering/PLATFORM_SOFTWARE.md)).
 - The blocker entries are narrowed to what these passes could not find.
 
+### Footage pass: Happy & Prosperous, Panda Magic, Autumn Moon (2026-10-13)
+
+- About 150 to 170 public videos per title were scanned and the candidates read
+  ([reverse-engineering/FOOTAGE.md](reverse-engineering/FOOTAGE.md)).
+- The US pay table and rules screens of all three were transcribed. The three share one pay table,
+  and it is the one quoted in the manufacturer's complaint.
+- From Australian play: 50 lines at 1c and 2c, 25 at 5c and 10c, 5 at $1 on Queensland club
+  machines; six free games with the retriggers; each title's free-games behaviour, confirming the
+  manufacturer's pages; and that the upper two jackpot levels move while the lower two are fixed.
+- No Australian rules, pay-table or information screen was found, and no return figure.
+
 ## Known limits of what exists
 
 - Every rule in the simulation is a generic slot-game rule, written down so it can be checked. None

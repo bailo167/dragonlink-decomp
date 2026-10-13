@@ -61,12 +61,15 @@ reported. What they settled is no longer listed; what follows is what remains.
   the line configurations (50, 25 and 5 lines), the denominations per state, the launch cabinets,
   each title's free-games rule, the retrigger for two titles, the four jackpot levels and, at
   strong evidence, which are progressive; and venue start-up values for the Grand.
-- **Still not found**, for all four titles: any return figure; the bet ladder and which
-  denominations use which line count; the pay table; the free-games trigger count and initial award
-  on an Australian machine; the Hold & Spin instruction text and prize values per denomination; the
-  Major's parameters and all increment rates; whether the 2024 and later builds keep the
-  configuration.
-- **Still being searched:** the two footage passes, frame by frame, for exactly those screens.
+- **Settled since, from public footage of three titles**
+  ([reverse-engineering/FOOTAGE.md](reverse-engineering/FOOTAGE.md)): which denomination uses which
+  line count on Queensland club machines; the free-games award of six and the retriggers; the US pay
+  table and Hold & Spin rules text, read from the machines' own screens.
+- **Still not found**, for the Australian builds: the Game Rules and information screens themselves,
+  so the pay table as displayed in Australia; any return figure; the full bet ladder; any version
+  identifier tying a recording to a build; the Major's parameters and all increment rates.
+- **Still being searched:** Golden Century's footage pass; then a denser scan of the two main
+  Australian channels, since the first pass sampled a frame every five to ten seconds.
 - **Not exhausted, recorded so they are not assumed done:** forums and marketplaces that refused
   automated reading; other US regulators' certification lists; open-data portals of NSW.
 - **Asked of the owner:** nothing. A visit to a machine would be asked only for a field that
