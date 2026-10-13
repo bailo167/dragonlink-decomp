@@ -108,6 +108,21 @@ with a machine-readable manifest that records, per asset: logical id, source pac
 source SHA-256, imported path, output SHA-256, media type and properties, title, category,
 provenance class, confidence, and import method.
 
+```sh
+cargo run -p dragonlink-import -- <source folder> --source-class official_mobile --dry-run
+cargo run -p dragonlink-import -- <source folder> --source-class official_mobile
+cargo run -p dragonlink-pack -- verify
+cargo run -p dragonlink-pack -- assemble --exe <built application> --out <folder outside Git>
+```
+
+The importer's first stage copies only loose files that already are a standard media format. It
+does not unpack containers, and it does not know what a file is: an imported asset has the
+category of its format, an id made from its hash, no title, and confidence UNKNOWN. The source
+class given on the command line is recorded on every asset, so mobile and cabinet material stay
+distinguishable. Importing twice changes nothing. An asset set and a local package hold
+proprietary material; both tools refuse to write inside a Git work tree, and a package carries a
+do-not-distribute notice.
+
 Without an asset set the application runs in placeholder mode: generated shapes and labels, with a
 banner saying so. Placeholder mode is not fidelity evidence.
 

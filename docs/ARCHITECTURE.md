@@ -39,12 +39,12 @@
 | `tools/dragonlink-analyze` | exists | `analyze-game`, `compare-games`, `progressive-ev`, `simulate`. |
 | `crates/dragonlink-trace` | exists | Trace format shared by rewrite traces and transcribed observations; comparison. |
 | `crates/dragonlink-formats` | exists | File identification by content, entropy, listing of ZIP-family archives. |
-| `crates/dragonlink-assets` | planned | Asset manifest, logical asset ids, discovery of the asset set, placeholder mode. |
+| `crates/dragonlink-assets` | exists | Asset manifest, logical asset ids, verification, discovery of the asset set with a stated reason when there is none. |
 | `apps/dragonlink` | exists | The Bevy executable. Placeholder mode only: generated cells, synthetic fixture. |
 | `tools/dragonlink-inventory` | exists | Create and check the private source root; hash and classify everything under a source folder. |
 | `tools/dragonlink-inspect` | planned | Look at one unknown file: signature, entropy profile, structure. |
-| `tools/dragonlink-import` | planned | Source material → normalised asset set + manifest. |
-| `tools/dragonlink-pack` | planned | Validate an asset set and assemble a local full package. |
+| `tools/dragonlink-import` | exists | Source material → normalised asset set + manifest. Stage 1: loose standard media only. |
+| `tools/dragonlink-pack` | exists | Verify an asset set and assemble a local full package outside Git. |
 | `tools/dragonlink-trace` | exists | Record, validate and compare traces from the command line. |
 | `tools/progress-gen` | exists | Tracker validation and rendering. |
 | `tools/repo-hygiene` | exists | Refuses proprietary material, dumps, secrets, private paths. |

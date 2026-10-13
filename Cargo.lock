@@ -2555,6 +2555,7 @@ name = "dragonlink"
 version = "0.0.1"
 dependencies = [
  "bevy",
+ "dragonlink-assets",
  "dragonlink-core",
  "dragonlink-model",
 ]
@@ -2568,6 +2569,18 @@ dependencies = [
  "dragonlink-math",
  "dragonlink-model",
  "serde_json",
+]
+
+[[package]]
+name = "dragonlink-assets"
+version = "0.0.1"
+dependencies = [
+ "dragonlink-model",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tempfile",
+ "thiserror 2.0.21",
 ]
 
 [[package]]
@@ -2586,6 +2599,19 @@ version = "0.0.1"
 dependencies = [
  "serde",
  "thiserror 2.0.21",
+]
+
+[[package]]
+name = "dragonlink-import"
+version = "0.0.1"
+dependencies = [
+ "anyhow",
+ "clap",
+ "dragonlink-assets",
+ "dragonlink-formats",
+ "dragonlink-model",
+ "tempfile",
+ "walkdir",
 ]
 
 [[package]]
@@ -2620,6 +2646,17 @@ dependencies = [
  "serde",
  "thiserror 2.0.21",
  "toml",
+]
+
+[[package]]
+name = "dragonlink-pack"
+version = "0.0.1"
+dependencies = [
+ "anyhow",
+ "clap",
+ "dragonlink-assets",
+ "dragonlink-model",
+ "tempfile",
 ]
 
 [[package]]

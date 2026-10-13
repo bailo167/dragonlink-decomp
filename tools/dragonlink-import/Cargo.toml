@@ -1,0 +1,23 @@
+[package]
+name = "dragonlink-import"
+description = "Import recognised media from the user's own source material into a normalised local asset set with a manifest"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[dependencies]
+dragonlink-assets.workspace = true
+dragonlink-formats.workspace = true
+dragonlink-model.workspace = true
+anyhow.workspace = true
+clap.workspace = true
+walkdir.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+
+[lints]
+workspace = true
