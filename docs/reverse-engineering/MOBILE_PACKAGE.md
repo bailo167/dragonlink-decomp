@@ -82,6 +82,40 @@ rather than as a game re-created for mobile. That makes the mobile build a close
 cabinet build. **It does not show that its tables equal those of any Australian cabinet build**:
 which market or version the package derives from, and what was changed for mobile, is UNKNOWN.
 
+## All eight Dragon Link packages
+
+After the owner opened each Dragon Link title once, a second snapshot of the app's storage (249
+files, 432 MB) was copied and hashed. Findings, from **listing names and comparing hashes only**:
+
+| Finding | Label |
+|---|---|
+| Each title's download is kept as one ZIP archive under `DefaultWebCache/SlotAssets/<title>/`, about 20 MB (Spring Festival 43 MB), unpacking to the `GDK/Assets/<title>/` layout described above | VERIFIED |
+| The app keeps only the most recently loaded game's unpacked folder; the archives remain | VERIFIED (the Golden Century folder was replaced; its archive is byte-identical in both snapshots) |
+| Eight titles are held: Golden Century, Happy & Prosperous, Panda Magic, Autumn Moon (in scope), and Genghis Khan, Golden Gong, Peace & Long Life, Spring Festival | VERIFIED |
+
+What the names show for each title. These are file names, so everything in this table is a
+**lead** about content until the files are read.
+
+| Title | Payline module | Variations | Main reel strips | `reveal` table | High-roller configuration |
+|---|---|---|---|---|---|
+| Golden Century | `5x3_5Paylines_LL` | 88 90 92 94 | one set, shared | yes | yes |
+| Autumn Moon | `5x3_5Paylines_LL` | 88 90 92 94 | one set, shared | yes | yes |
+| Happy & Prosperous | `5x3_5Paylines_LL` | 01 88 90 99 | per variation | no | yes |
+| Panda Magic | `5x3_5Paylines_LL` | 01 88 90 99 | per variation | no | yes |
+| Genghis Khan | `5x3_50Paylines` | 88 90 92 94 | one set, shared | no | no |
+| Golden Gong | `5x3_50Paylines_LL` | 88 90 92 | per variation | no | no |
+| Peace & Long Life | `5x3_25Paylines_LL` | 88 90 92 94 | one set, shared | no | no |
+| Spring Festival | `5x3_25Paylines_LL` | 88 90 92 | one set, shared | no | no |
+
+Three things stand out, each to be tested against the contents:
+
+- The `reveal` table exists for exactly the two titles whose official pages describe free games in
+  which the mystery symbols all reveal the same symbol ([FEATURES.md](FEATURES.md)).
+- Variation names are not uniform (`01` and `99` appear), which weakens the hypothesis that they
+  are return percentages.
+- Titles differ in whether the main reel strips are shared by all variations or supplied per
+  variation, so "what a variation changes" is not one answer for the family.
+
 ## What this changes
 
 - **Rung 2 of the mathematics ladder is open** ([math/README.md](math/README.md)): this
@@ -96,5 +130,4 @@ which market or version the package derives from, and what was changed for mobil
 
 ## Not done
 
-Nothing has been decrypted, decompiled or extracted yet. The other three titles have not been
-opened in the app, so their content has not been downloaded. No asset has been imported.
+Nothing has been decrypted, decompiled or extracted yet. No asset has been imported.

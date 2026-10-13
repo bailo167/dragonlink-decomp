@@ -141,6 +141,5 @@ shell runs the simulation on screen.
 
 ## Waiting on the owner
 
-Nothing. Opening Happy & Prosperous, Panda Magic and Autumn Moon once each in the app on the
-emulator would let their content download, when convenient. One decision is open: whether results
+Nothing. One decision is open: whether results
 from a recovered configuration may be published (DECISIONS D-010).

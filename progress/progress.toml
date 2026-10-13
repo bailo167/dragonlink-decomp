@@ -167,7 +167,7 @@ note = "ACT and Victorian approvals catalogued with identifiers (docs/reverse-en
 id = "mobile-inventory"
 name = "Official mobile reference inventory"
 status = "partial"
-note = "Mighty Fu Casino 5.6.0 obtained from the Play Store, hashed and inventoried, with the content it downloaded for Golden Century (docs/reverse-engineering/MOBILE_PACKAGE.md). The other three titles have not been opened, so their content is not held."
+note = "Mighty Fu Casino 5.6.0 obtained from the Play Store, hashed and inventoried, with the content it downloaded for Golden Century (docs/reverse-engineering/MOBILE_PACKAGE.md). The downloaded packages of all four titles in scope, and of four further Dragon Link titles, are held."
 
 [[category.item]]
 id = "provenance-db"
