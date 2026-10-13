@@ -71,9 +71,13 @@ reported. What they settled is no longer listed; what follows is what remains.
   so the pay table and line map as displayed in Australia; any pay table at all for Golden Century;
   any return figure; the full bet ladder; any version identifier tying a recording to a build; the
   Major's parameters and all increment rates.
-- **Not yet done, and next:** a denser scan of the two main Australian channels, since the first
-  pass sampled a frame every five to ten seconds; reading pays from the machines' line-win messages;
-  hosts other than YouTube.
+- **Settled since, by transcribing one session**
+  ([reverse-engineering/GOLDEN_CENTURY_SESSION.md](reverse-engineering/GOLDEN_CENTURY_SESSION.md)):
+  sixteen pay-table entries for Golden Century and the shapes of lines 1 to 5, read from the
+  machine's own win messages without any rules screen.
+- **Not yet done, and next:** more sessions read the same way, for the rest of the pay table and
+  the other titles; a denser scan of the two main Australian channels for a rules screen; hosts
+  other than YouTube.
 - **Not exhausted, recorded so they are not assumed done:** forums and marketplaces that refused
   automated reading; other US regulators' certification lists; open-data portals of NSW.
 - **Asked of the owner:** nothing. A visit to a machine would be asked only for a field that

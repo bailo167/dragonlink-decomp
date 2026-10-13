@@ -215,6 +215,18 @@ and merged through the gate.
 - The 583 stills are being read into a window sheet. Stills and sheet are kept privately with the
   recording.
 
+### The first transcribed session (2026-10-13)
+
+- A 53-minute Australian session of Golden Century was read game by game: 583 games, every one
+  read, 1,760 reel windows read twice by different readers with no disagreement
+  ([reverse-engineering/GOLDEN_CENTURY_SESSION.md](reverse-engineering/GOLDEN_CENTURY_SESSION.md)).
+- **Golden Century has pay-table entries at last**: sixteen, read from the machine's own win
+  messages, with the shapes of lines 1 to 5.
+- **The $1 game is a different configuration from the 1c to 10c games** on that machine: different
+  reels, and one pay seen to differ. Changing the number of lines does not change the reels.
+- Reel strips do not assemble yet. More sessions are the remedy; the tooling takes them.
+- What each game paid in total is being derived from the credit meter, to check the entries.
+
 ## Known limits of what exists
 
 - Every rule in the simulation is a generic slot-game rule, written down so it can be checked. None

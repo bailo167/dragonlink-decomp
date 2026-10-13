@@ -175,7 +175,7 @@ note = "Mighty Fu Casino 5.6.0 obtained from the Play Store, hashed and inventor
 id = "provenance-db"
 name = "Source provenance database (claims)"
 status = "implemented"
-evidence = "crates/dragonlink-model/claims/ (124 claims); crates/dragonlink-model/src/claims.rs (tests enforce the evidence rules)"
+evidence = "crates/dragonlink-model/claims/ (128 claims); crates/dragonlink-model/src/claims.rs (tests enforce the evidence rules)"
 
 [[category.item]]
 id = "format-id"
@@ -330,8 +330,8 @@ note = "Window shares with intervals, a test of equal stop likelihood, an estima
 [[category.item]]
 id = "footage-windows"
 name = "Reel windows transcribed from public cabinet footage"
-status = "investigating"
-note = "Rung 1b (DECISIONS D-015). One 53-minute Australian session of Golden Century has a still for each of 583 games, and the stills are being read into a window sheet. Not yet reconstructed into strips, not yet read a second time, and one session of one title."
+status = "partial"
+note = "Rung 1b (DECISIONS D-015). One 53-minute Australian session of Golden Century: 583 games, every one read, 1,760 reel windows read twice by different readers with no disagreement. Coverage at $1 is nearly complete on four reels, but no strip assembles yet (windows missing, and stacked symbols need multiplicities the sample cannot give). One session of one title."
 
 [[category.item]]
 id = "automated-collection"
@@ -378,7 +378,7 @@ note = "US pay tables and Hold & Spin rules of three titles transcribed from mac
 id = "denomination-bet-effects"
 name = "Denomination and bet effects"
 status = "investigating"
-note = "Lightning Link, Australia 2015: return published per denomination, rising about 0.38 points per step (docs/reverse-engineering/PUBLISHED_RETURNS.md). Regulation caps the effect of bet options at 0.20 points and requires jackpot chances linear in the bet. Nothing published for Dragon Link in Australia."
+note = "First direct observation on an Australian Dragon Link machine: Golden Century at $1 shows different reel windows and one different pay from the 1c to 10c games, which are consistent with one configuration; changing lines does not change the reels (docs/reverse-engineering/GOLDEN_CENTURY_SESSION.md). Inferred statistically from one session. Lightning Link return by denomination and the regulatory limits are in PUBLISHED_RETURNS.md. No return figure for Dragon Link in Australia."
 
 [[category.item]]
 id = "version-differences"
@@ -560,7 +560,7 @@ note = "ACT specifications across generations, Victorian builds, US personality 
 id = "layout"
 name = "Reel layout and lines"
 status = "partial"
-note = "Australia (Queensland clubs): five by three; lines chosen by the player up to 50 at 1c and 2c, 25 at 5c and 10c, 5 at $1, read from public footage. Payline shapes not found."
+note = "Australia (Queensland clubs): five by three; lines chosen by the player up to 50 at 1c and 2c, 25 at 5c and 10c, 5 at $1; the shapes of lines 1 to 5 established from win messages. Lines 6 to 50 not found."
 
 [[category.item]]
 id = "symbols"
@@ -571,14 +571,14 @@ note = "Symbol set described from Australian play in public footage; roles of sc
 [[category.item]]
 id = "paytable"
 name = "Paytable"
-status = "investigating"
-note = "No pay table for Golden Century was found in any recording, in any country. One Australian observation: three scatters pay twice the total bet. A route through the machine's line-win messages is identified and not yet worked (docs/reverse-engineering/FOOTAGE.md)."
+status = "partial"
+note = "Sixteen pay-table entries read from win messages in one transcribed Australian session, and one entry seen to differ between $1 and the cent denominations (docs/reverse-engineering/GOLDEN_CENTURY_SESSION.md). Incomplete; no rules screen found; messages read once."
 
 [[category.item]]
 id = "bets"
 name = "Denominations and bet options"
 status = "partial"
-note = "Denominations and the credit conversion read from public footage; credits per line of 1, 2, 3, 4, 5 and 10 seen. The full ladder per denomination is not shown in any recording."
+note = "Denominations, the credit conversion, and the bets of one session read from footage (credits per line by denomination). The full ladder per denomination is not shown in any recording."
 
 [[category.item]]
 id = "reel-strips"
@@ -929,7 +929,7 @@ note = "One JSON Lines format for rewrite traces and transcribed observations; h
 id = "source-recordings"
 name = "Source recordings of the original"
 status = "partial"
-note = "Public recordings of Australian and US machines located, scanned and partly read for all four titles; held privately with hashes. No recording is tied to a regulatory build (every one reads the same 2016 notice), and none has been transcribed into a trace."
+note = "Public recordings located and scanned for all four titles, held privately with hashes. One Australian Golden Century session is transcribed game by game into a window sheet and observation traces, its windows read twice. No recording is tied to a regulatory build."
 
 [[category.item]]
 id = "capture-tooling"

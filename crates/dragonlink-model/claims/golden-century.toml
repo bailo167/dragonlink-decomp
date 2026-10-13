@@ -126,6 +126,17 @@ scope = "cabinet-au, Queensland clubs"
 note = "Read from footage in one pass by one reader; not yet re-read independently. The full list of selectable counts per denomination, and the payline shapes, are not found. Only frames where lines, credits per line and denomination multiply to the displayed bet were used. See claims/family.toml, structure.lines-au and structure.lines-by-denomination-au."
 
 [[claim]]
+id = "paylines.first-five"
+statement = "Lines 1 to 5 are the middle row, the top row, the bottom row, a V from the top corners through the bottom of the third reel, and its mirror image."
+value = "rows by reel, 0 top to 2 bottom: line 1 = 1,1,1,1,1; line 2 = 0,0,0,0,0; line 3 = 2,2,2,2,2; line 4 = 0,1,2,1,0; line 5 = 2,1,0,1,2"
+confidence = "strong_evidence"
+source = "gameplay_recording"
+citation = "Public recording, YouTube id y8c8lEdPW8Y, read game by game; times and counts in docs/reverse-engineering/GOLDEN_CENTURY_SESSION.md"
+accessed = "2026-10-13"
+scope = "cabinet-au, Queensland club, one session on one machine"
+note = "Win messages were read once by one reader; the windows they are checked against were read twice. The usual shapes were assumed and tested: all 64 messages naming lines 1 to 5 are explained by a run from the left reel on the named line, and none is left over. Lines 6 to 50 are unknown; 27 messages name some of them."
+
+[[claim]]
 id = "symbols"
 statement = "The symbols seen in Australian play, described in our words."
 value = "nine, ten, jack, queen, king; two women in traditional dress; a blue-and-white vase; a red chest of gold; terracotta warriors; a yellow pennant (scatter); an emperor's face in stacks (behaves as the wild); a flaming gold disc (the Hold & Spin prize symbol); red double doors (mystery symbol, free games only)"
@@ -138,9 +149,25 @@ note = "Read from footage in one pass by one reader; not yet re-read independent
 
 [[claim]]
 id = "paytable"
-statement = "What does each symbol combination pay?"
-confidence = "unknown"
-note = "No pay table for this title was found in any recording, in any country: the rules button is on screen in every recording and is never pressed. The other three titles share one US pay table (their claim files); whether this title has it is not known. The one pay read is in paytable.scatter-three. A route through the machine's line-win messages is described in docs/reverse-engineering/FOOTAGE.md."
+statement = "Pay-table entries of the Australian game, per credit bet on the line, as win messages on lines 1 to 5 showed them."
+value = "two women 5/4/3/2 of a kind: 150 / 30 / 5 / 2; chest 5/3/2: 100 / 5 / 2; vase 3/2: 5 / 2; warriors 2: 3 at $1 and 2 at 1c to 10c; king 3: 5; queen 3: 5; jack 4/3: 10 / 5; ten 4/3: 10 / 5"
+confidence = "partial"
+source = "gameplay_recording"
+citation = "Public recording, YouTube id y8c8lEdPW8Y, read game by game; times and counts in docs/reverse-engineering/GOLDEN_CENTURY_SESSION.md"
+accessed = "2026-10-13"
+scope = "cabinet-au, Queensland club, one session on one machine"
+note = "Win messages were read once by one reader; the windows they are checked against were read twice. Sixteen combinations were seen and the table is incomplete: no pay for the nine, no five of a kind for a royal, nothing for four of a chest or vase. Entries seen once: two women for 5, 4 and 3; chest for 5; queen; jack for 4. All four pictures pay for two of a kind, so this is not the US pay table of the other three titles. No rules or pay-table screen for this title has been found in any recording."
+
+[[claim]]
+id = "paytable.varies-by-denomination"
+statement = "The pay table differs between $1 and the cent denominations: two warriors pay 3 per credit on the line at $1 and 2 at 1c, 5c and 10c."
+value = "warriors, two of a kind: 3 at $1 (eight messages); 2 at 1c, 5c, 10c (four messages)"
+confidence = "strong_evidence"
+source = "gameplay_recording"
+citation = "Public recording, YouTube id y8c8lEdPW8Y, read game by game; times and counts in docs/reverse-engineering/GOLDEN_CENTURY_SESSION.md"
+accessed = "2026-10-13"
+scope = "cabinet-au, Queensland club, one session on one machine"
+note = "Win messages were read once by one reader; the windows they are checked against were read twice. No other entry was seen to differ where both were observed. The complaint in the US litigation says pay tables vary by denomination for the family (claims/family.toml, structure.paytable-varies-by-denomination)."
 
 [[claim]]
 id = "paytable.scatter-three"
@@ -166,14 +193,14 @@ note = "Queensland club machines in public footage show the same five on a choos
 
 [[claim]]
 id = "bets"
-statement = "Credits per line seen in Australian play."
-value = "1, 2, 3, 4, 5 and 10 credits per line; largest bet seen $5.00 in Queensland and $10.00 on a NSW $2 machine"
+statement = "Bets played in one Queensland session."
+value = "1c: 50 lines x 10 credits; 2c: 50 lines x 5 or 4 credits; 5c: 25 lines x 4 credits; 10c: 25 or 20 lines x 2 credits; $1: 5, 4, 3 or 2 lines x 1 credit. Other recordings show 1, 2, 3 and 5 credits per line and a $2 denomination in NSW"
 confidence = "partial"
 source = "gameplay_recording"
-citation = "Public recordings, YouTube ids and times: y8c8lEdPW8Y; 1bAevGz0K2k 2:45; f5sMl9a5jds 0:12; cCB2KxFUzW0 0:43 (docs/reverse-engineering/FOOTAGE.md)"
+citation = "Public recording, YouTube id y8c8lEdPW8Y, read game by game; times and counts in docs/reverse-engineering/GOLDEN_CENTURY_SESSION.md; docs/reverse-engineering/FOOTAGE.md"
 accessed = "2026-10-13"
 scope = "cabinet-au"
-note = "Read from footage in one pass by one reader; not yet re-read independently. Individual bets only. The complete list of options per denomination is not shown in any recording."
+note = "Read from play. The player reduces lines one at a time. The complete list of options per denomination is not shown in any recording."
 
 # --- Features -----------------------------------------------------------------
 
@@ -187,6 +214,17 @@ citation = "Public recordings, YouTube ids and times: 1bAevGz0K2k 0:18, 1:48 to 
 accessed = "2026-10-13"
 scope = "cabinet-au"
 note = "Read from footage in one pass by one reader; not yet re-read independently. On-screen prompts and behaviour: no rules page was found for this title. One tally was checked: four prizes of 500 credits, three of 1,500 and four Mini at 1c gave $105. That the counter returns to three on a new prize symbol was not isolated in Australian footage; it is stated for the US family (claims/family.toml, hold-and-spin.respins). The set of prize values and their chances are unknown."
+
+[[claim]]
+id = "hold-and-spin.prize-values"
+statement = "A prize symbol shows a whole multiple of the game's total bet, or the name of a level."
+value = "multiples seen: 1, 2, 3, 4, 5, 10, 15, 20, 50, 200; names seen: Mini, Minor, Major"
+confidence = "strong_evidence"
+source = "gameplay_recording"
+citation = "Public recording, YouTube id y8c8lEdPW8Y, read game by game; times and counts in docs/reverse-engineering/GOLDEN_CENTURY_SESSION.md"
+accessed = "2026-10-13"
+scope = "cabinet-au, Queensland club, one session on one machine"
+note = "All 664 values read in the base game are whole multiples of the total bet, at five denominations. Read once. The ten multiples are among the twelve the US rules text lists (claims/family.toml, hold-and-spin.rules-text-us); 100 and 250 were not seen. How often each appears is not recorded here (docs/DECISIONS.md, D-010)."
 
 [[claim]]
 id = "free-games.rules"
@@ -237,6 +275,17 @@ citation = "Public recordings, YouTube ids and times: 1bAevGz0K2k 0:12; y8c8lEdP
 accessed = "2026-10-13"
 scope = "cabinet-au, Queensland clubs"
 note = "Read from footage in one pass by one reader; not yet re-read independently. Its rules were not seen."
+
+[[claim]]
+id = "math.configuration-by-denomination"
+statement = "On the machine observed, the $1 game uses different reels from the 1c, 2c, 5c and 10c games, which are consistent with sharing one set; changing the number of lines does not change the reels."
+value = "share of reel windows already seen in the other set, reels 1 to 5: 10c against $1: 64, 54, 76, 42, 72 per cent; 2c against 10c: 96, 88, 92, 88, 79 per cent; $1 with 4 lines against $1 with 5 lines: 100, 100, 100, 96, 96 per cent; yardstick ($1 second half against first half): 92, 88, 93, 88, 79 per cent"
+confidence = "strong_evidence"
+source = "gameplay_recording"
+citation = "Public recording, YouTube id y8c8lEdPW8Y, read game by game; times and counts in docs/reverse-engineering/GOLDEN_CENTURY_SESSION.md"
+accessed = "2026-10-13"
+scope = "cabinet-au, Queensland club, one session on one machine"
+note = "Inferred statistically from windows read twice: 266 base games at $1 and 276 at the cent denominations. A comparison of what was seen, not of strips, and not yet put through a formal test. With paytable.varies-by-denomination it shows the $1 game to be a different configuration from the cent games on this machine. No reel strip has been assembled."
 
 [[claim]]
 id = "math.published-return-us"
