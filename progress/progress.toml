@@ -47,8 +47,8 @@ note = "Stage D: state, spin, awards, feature state machine, deterministic trace
 [[milestone]]
 id = "M4"
 name = "Golden Century Bevy slice"
-status = "implemented"
-note = "Stage E, P0: PLAYABLE END TO END. The app runs Golden Century (synthetic maths) with denomination, line and bet selection, reel animation, line and scatter wins, the free games (reveal, retrigger), Hold & Spin with orb values and jackpots, machine-like timing and a clean return after every feature. Placeholder art and no audio; that polish is the fidelity pass."
+status = "partial"
+note = "FUNCTIONAL PROTOTYPE, not the cabinet experience. The app runs Golden Century (synthetic maths) with line/bet selection, reel animation, line and scatter wins, free games (reveal, retrigger), Hold & Spin with orb values and jackpots, and clean returns - but under PLACEHOLDER coloured rectangles and text symbols, with no authentic art or audio. The P0 target (recognisable Golden Century cabinet experience, driven by the now-extractable authentic mobile assets) is NOT met; this is the active rebuild."
 
 [[milestone]]
 id = "M5"
@@ -72,7 +72,7 @@ note = "Parallel lane. Analysis tooling exists and is tested on the synthetic fi
 id = "M7"
 name = "Happy & Prosperous, Panda Magic, Autumn Moon"
 status = "partial"
-note = "Generalise the systems proven on Golden Century to the other three titles. All three now play end to end on the shared engine with synthetic maths, the US family pay table and their own symbols: Autumn Moon (`--game autumn-moon`, free-games mystery reveal), Happy & Prosperous (`--game happy-prosperous`, royal-free feature) and Panda Magic (`--game panda-magic`, royal-free feature; Hold & Spin inside the free games is a known fidelity gap)."
+note = "FROZEN until Golden Century reaches the cabinet-experience standard (owner reset 2026-10-14). Autumn Moon, Happy & Prosperous and Panda Magic exist as FUNCTIONAL PROTOTYPES on the shared engine (synthetic maths, US family pay table, placeholder visuals) but are not worked on; the proven systems propagate only after Golden Century is genuinely reconstructed."
 
 # --------------------------------------------------------------------------
 # Foundation

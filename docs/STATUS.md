@@ -5,18 +5,31 @@ meaningful increment. Item-level state is in `progress/progress.toml`; this page
 
 **Last updated: 2026-10-14.**
 
+## Project interpretation (owner reset, 2026-10-14)
+
+**The target is to recreate the actual Dragon Link gaming-machine experience as closely as
+technically possible — launching Golden Century should feel like sitting at a real Dragon Link
+machine, recognisable against the reference footage.** The current builds do **not** meet that
+standard: they are **functional prototypes** — a working simulation under placeholder coloured
+rectangles and text symbols. That is explicitly not "finished", "polished" or "player-ready".
+
+**Priority is absolute: Golden Century cabinet experience first. Every other title is frozen**
+(Autumn Moon, Happy & Prosperous, Panda Magic, and the further titles) until Golden Century reaches
+the cabinet-experience standard, after which the proven systems propagate.
+
 ## In one paragraph
 
-The repository has its foundation, a headless game model, a first evidence base and a mathematics
-analysis subsystem. **All four titles in scope now play end to end** in the application on synthetic,
-clearly-labelled maths — Golden Century, Autumn Moon, Happy & Prosperous and Panda Magic — chosen
-from a four-title launcher, and a cross-title soak test keeps them robust. No original Dragon Link
-mathematics is reproduced: the configurations are invented behind the math interface and never
-presented as authentic (DECISIONS D-017). The first original material is held, the official mobile
-app with Golden Century's content, and is being analysed. Public research has established the titles'
-Australian approval identities and platform generations and the player-visible feature rules, and has
-established that the mathematics is not public. Work is pushed to GitHub and CI is green on Linux,
-Windows, macOS and wasm32.
+The repository has its foundation, a headless game model, an evidence base, a mathematics analysis
+subsystem, and **functional-prototype** gameplay for four titles on synthetic maths behind a
+launcher. The visual/audio layer is placeholder only and does not look like Dragon Link — the P0 now
+is to rebuild Golden Century as the authentic cabinet experience. **A major enabler just landed: the
+official mobile art and audio are now extractable.** The Mercury container parser plus a new raw-RGBA
+and ETC1 texture decoder recover Golden Century's authentic artwork, fonts and 114 Ogg audio clips to
+viewable files, and the game's own help/paytable screens were read to recover the **authentic
+player-visible paytable** (docs/reverse-engineering/GOLDEN_CENTURY_PAYTABLE.md). The encrypted `.enc`
+math tables and security-relevant native code remain out of scope (D-014/D-016); hidden probabilities
+stay synthetic (D-017). Assets never enter Git; they build into a local, ignored runtime pack. Work
+is pushed to GitHub and CI is green on Linux, Windows, macOS and wasm32.
 
 ## Done
 
@@ -246,9 +259,31 @@ and merged through the gate.
   still unknown, and B-005 narrows to exactly that.
 - Details bearing on the security of the live app are not published or built on (DECISIONS D-016).
 
-### All four titles playable, a launcher and hardening (2026-10-14)
+### Official mobile art and audio are extractable; authentic paytable recovered (2026-10-14)
 
-- **Autumn Moon, Happy & Prosperous and Panda Magic now play end to end** on the Golden Century
+- The Mercury container format was already parsed; a **raw-RGBA and ETC1 texture decoder** was added
+  (dependency-free), so Golden Century's authentic textures (symbols, backgrounds, reel art, logo,
+  the red/gold number glyph atlases), 18 embedded fonts and **114 Ogg/Vorbis audio clips** now
+  decode to viewable PNG/Ogg files. Verified by eye on the decoded output.
+- Reading the game's own help/paytable textures recovered the **authentic player-visible paytable**:
+  5 fixed paylines and their shapes, a line cost of 5 coins, all symbol pays (emperor/wild 500/100/
+  25/5, warriors 250/50/10/3, women 150/30/5/2, vase and chest 100/25/5/2, K 75/20/5, Q/J/10/9
+  50/10/5), scatter 100/10/2 × total bet, wild on reels 2–5 only, 6 free games, orb prizes and
+  jackpot rules (docs/reverse-engineering/GOLDEN_CENTURY_PAYTABLE.md). This supersedes the invented
+  Golden Century pay values.
+- **Boundary held:** only the unencrypted `.mercury` art/audio is touched. The `.enc` math tables
+  and native code are not decrypted or analysed (D-014/D-016); hidden probabilities stay synthetic
+  (D-017). Nothing from the source root is committed; assets build into a local, ignored pack.
+- This is the enabler for the P0 rebuild: render the authentic cabinet experience instead of
+  placeholder rectangles.
+
+### Four functional-prototype titles, a launcher and hardening (2026-10-14)
+
+*These are functional prototypes — working simulation under placeholder visuals, not the cabinet
+experience. Golden Century is the one under active rebuild; the other three are frozen.*
+
+- **Autumn Moon, Happy & Prosperous and Panda Magic** play end to end as prototypes on the Golden
+  Century
   engine, each as its own synthetic configuration with the title's evidenced structure (its symbols,
   the US family pay table, its free-games rule) and invented strips, weights, land chance and jackpot
   amounts. Autumn Moon has the free-games mystery reveal; Happy & Prosperous and Panda Magic remove
@@ -287,20 +322,19 @@ and merged through the gate.
 
 ## Priorities
 
-Set by the owner on 2026-10-13. **P0 is a complete, polished, playable Golden Century.** The
-mathematics stays synthetic and configurable behind the existing interface
-(`game/features -> math config -> synthetic now, authentic later`), clearly labelled and never
-presented as authentic (DECISIONS D-017).
+Reset by the owner on 2026-10-14. **P0 is the Golden Century cabinet experience**: launching it must
+be recognisable as a reconstruction of Golden Century on a Dragon Link machine — full-screen cabinet
+presentation, authentic symbol artwork, reel frame/geometry, logo, jackpot/topper area, real audio,
+machine-like timing, and proper Free Games / mystery-reveal / Hold & Spin / jackpot presentation with
+clean transitions, all driven from reference. It must not look like a Rust demo, a generic slot, a
+debug UI or coloured boxes. The maths stays synthetic and configurable behind the interface, using
+the exact known player-visible paytable/rules, never presented as authentic where hidden (D-017).
 
-1. **Complete the playable Golden Century reimplementation.** The synthetic config exists and the
-   app runs it; what remains is free games in the simulation, and turning the placeholder shell
-   into a real game (reel-spin, win presentation, feature sequences, jackpot meters, bet/line/
-   denomination controls, machine-like timing) on generated placeholder art.
-2. **Fidelity and polish** until it behaves and feels like the original.
-3. **Integrate authentic mobile or cabinet values** when recovered, by replacing the config.
-4. **Further forensic and mathematics research** (cabinet footage, the mobile hidden-math gap):
-   now secondary evidence streams, continued only when they do not slow P0.
-5. **The other three titles**, after Golden Century is solid.
+**Done means:** a side-by-side check against reference footage would make it reasonable to say "this
+is recognisably Golden Century on Dragon Link" — not merely "the rules work". Verified by inspecting
+rendered output, not unit tests alone.
+
+**Every other title is frozen** until Golden Century meets this standard.
 
 ## Golden Century: playable
 
@@ -319,23 +353,30 @@ flow with no debug or manual steps:
   labelled, replaceable with authentic values without the architecture
   changing (DECISIONS D-017). Long automated sessions run without panics.
 
-## Next
+## Next — the Golden Century cabinet rebuild (P0)
 
-The four titles, the launcher and the first hardening and polish are done
-(see 2026-10-14 above). What remains, in rough order of value:
+The asset extraction is proven; now build the authentic experience outward from the base screen.
 
-1. **Fidelity and polish across all four titles**: themed placeholder symbol
-   artwork (shapes we draw, no proprietary asset), audio, win and feature
-   transitions beyond the banner, a jackpot-win flourish, and layout polish.
-   Visual work is held back by the unreliable screenshot capture on this host;
-   it wants an eyeball pass.
-2. **Close the documented fidelity gaps**: Panda Magic's Hold & Spin inside the
-   free games (a nested-feature change to the core state machine, verifiable by
-   deterministic tests), and Autumn Moon's free-games wild line pay.
-3. **Integrate authentic values** when recovered, by replacing a config.
-4. **The further titles** (Genghis Khan, Golden Gong, Peace & Long Life,
-   Spring Festival), once their player-visible structure is evidenced; today
-   the evidence for them is thin.
+1. **Runtime asset pack.** Finish the exporter (ETC1 RGB + the second ETC1 block as **alpha**, so
+   symbols are cut out; raw RGBA; Ogg audio; fonts) and build the authentic textures/audio into a
+   local, git-ignored asset pack via the import pipeline. Clean-room generation only where no
+   authentic asset exists.
+2. **Authentic base-game screen.** Replace the placeholder reels with the real reel frame, symbol
+   artwork, background and logo, laid out from the mobile scene graph (`main.mercury`,
+   `5x3_5Paylines_LL.mercury`), at correct proportions. Get this visually close first.
+3. **Outward from there:** reel-spin animation and sound, win presentation, the jackpot/topper area,
+   Free Games (doors + mystery reveal), Hold & Spin, orb/prize and Mini/Minor/Major/Grand
+   presentation, feature transitions, attract/idle — each checked against reference.
+4. **Authentic paytable into the config** (GOLDEN_CENTURY_PAYTABLE.md): 5 lines, the real pays,
+   scatter and wild rules; hidden probabilities stay synthetic and re-tuned for a sane return.
+5. **Verification loop.** Inspect rendered output, not unit tests alone. The headless screenshot
+   capture on the Windows host returns black frames; fix it or capture interactively (the owner's
+   Mac runs the build). Resolve how the asset pack reaches the machine the build runs on.
+
+Reference checklist to drive and check each screen: idle/base, reels pre-spin, reels spinning,
+losing result, line win, larger win, scatter/free-game trigger, Free Games intro, Free Games play,
+mystery reveal, Hold & Spin trigger, Hold & Spin play, orb/prize presentation, Mini/Minor/Major/Grand
+award, feature exit to base.
 
 ## Not now (owner's direction, 2026-10-14)
 
