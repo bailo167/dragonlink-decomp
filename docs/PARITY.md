@@ -121,12 +121,17 @@ cargo run -p dragonlink-trace-cli -- transcribe sheet.jsonl --denom 1c --lines 5
 1. **Rest frames.** A game's reels start together and stop one after another, so the change in the
    reel area falls away and the picture is then still until the next game starts. `rest-frames`
    measures that change on a small grey copy of the reel area and takes, for every sharp start out
-   of rest, the frame just before it: the window of the game that ended. It reads no symbols and
-   knows nothing about any game. Its thresholds are options, and it prints the spread of its
-   measurements so they can be chosen deliberately. `stills` refuses to write into a Git work tree.
+   of rest, the stillest frame shortly before it: the window of the game that ended. Not the frame
+   just before the start: reels creep before they spin, and a creep of half a symbol barely
+   registers on a small grey picture although it ruins the window. (The first version took the
+   frame just before, and people reading its stills found a third of them mid-creep.) It reads no
+   symbols and knows nothing about any game. Its thresholds are options, it prints the spread of
+   its measurements so they can be chosen deliberately, and it records how still each chosen frame
+   was. `stills` refuses to write into a Git work tree.
 2. **The window sheet** is JSON Lines, one game per line: the time, the kind of game, the
-   denomination, the line count, the three meters as displayed, and the window as five reels of
-   three symbol codes, with `?` for anything not read (`crates/dragonlink-trace/src/transcript.rs`).
+   denomination, the line count, the three meters as displayed, any win message, and the window as
+   five reels of three symbol codes, with `?` for anything not read
+   (`crates/dragonlink-trace/src/transcript.rs`).
    A sheet is a transcription of a recording and is kept with it.
 3. **`transcribe`** takes one configuration at a time, because reels and tables are not assumed to
    be shared between denominations or line counts. It **fills nothing in**: a reel with an unread

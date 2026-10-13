@@ -8,7 +8,7 @@
 //! Reading a recording of a machine by hand means looking at the window each
 //! game ended on. `rest-frames` finds those moments without anybody watching:
 //! it measures how much the reel area changes from one frame to the next, and
-//! takes, for every game, the last moment of rest before the next game's
+//! takes, for every game, the stillest moment shortly before the next game's
 //! reels start to move. `stills` then cuts one picture per moment. The
 //! pictures are what gets transcribed into a window sheet
 //! (`dragonlink-trace transcribe`).
@@ -69,6 +69,13 @@ enum Cmd {
         /// Shortest time between two games, in seconds.
         #[arg(long, default_value_t = 1.2)]
         min_gap: f32,
+        /// How long before a start the reels may already be creeping, in
+        /// seconds: nothing closer to the start than this is taken.
+        #[arg(long, default_value_t = 0.4)]
+        lead: f32,
+        /// How far before a start to look for the stillest frame, in seconds.
+        #[arg(long, default_value_t = 1.0)]
+        lookback: f32,
         /// Write the moments to this file. Without it they are only counted.
         #[arg(long)]
         out: Option<PathBuf>,
@@ -128,10 +135,19 @@ struct Moments {
     moving: f32,
     rest: f32,
     min_gap: f32,
+    lead: f32,
+    lookback: f32,
     /// Frames measured.
     frames: usize,
-    /// Seconds into the recording, one per game, in order.
+    /// Seconds into the recording, one per game, in order: the stillest
+    /// moment shortly before the next game started.
     moments: Vec<f64>,
+    /// For each moment, the change per pixel into and out of its frame,
+    /// added. Near zero for a picture at rest; a large value marks a moment
+    /// at which nothing was really still.
+    change: Vec<f32>,
+    /// For each moment, when the next game started.
+    starts: Vec<f64>,
 }
 
 /// How much each frame differs from the one before: the mean absolute
@@ -170,16 +186,13 @@ fn difference_series(mut reader: impl Read, frame_bytes: usize) -> std::io::Resu
     }
 }
 
-/// The frames of rest that end each game: for every start of heavy motion
-/// that comes straight out of rest, the frame two before it.
+/// Where games start: every frame of heavy motion that comes straight out of
+/// rest.
 ///
 /// A game's reels stop one after another, so the change falls away gradually
 /// and then the picture is still until the next game starts with all reels at
-/// once. That start is the sharpest thing in the series, and the frames just
-/// before it are when the window of the game that ended can be read. Two
-/// frames back, not one, because the frame straddling the start may already
-/// be blurred.
-fn rest_frames(series: &[f32], moving: f32, rest: f32, min_gap_frames: usize) -> Vec<usize> {
+/// once. That start is the sharpest thing in the series.
+fn game_starts(series: &[f32], moving: f32, rest: f32, min_gap_frames: usize) -> Vec<usize> {
     let mut starts: Vec<usize> = Vec::new();
     for at in 2..series.len() {
         let from_rest = series[at - 1] < rest && series[at - 2] < rest;
@@ -190,7 +203,29 @@ fn rest_frames(series: &[f32], moving: f32, rest: f32, min_gap_frames: usize) ->
             starts.push(at);
         }
     }
-    starts.into_iter().map(|start| start - 2).collect()
+    starts
+}
+
+/// The stillest frame shortly before a start, with its change (the change
+/// into the frame plus the change out of it).
+///
+/// Not simply the frame before the start: reels creep before they spin, and a
+/// creep of half a symbol is a small change on a small grey picture although
+/// it ruins the window. So the frames within `lead` of the start are left
+/// alone, and of the `lookback` frames before those the one that changed
+/// least is taken; of equals, the latest. `None` when the start is too close
+/// to the beginning of the series for any frame to qualify.
+fn stillest_before(
+    series: &[f32],
+    start: usize,
+    lead: usize,
+    lookback: usize,
+) -> Option<(usize, f32)> {
+    let last = start.checked_sub(lead.max(1))?;
+    let first = last.saturating_sub(lookback);
+    (first..=last)
+        .filter_map(|at| Some((at, series.get(at)? + series.get(at + 1)?)))
+        .min_by(|a, b| a.1.total_cmp(&b.1).then(b.0.cmp(&a.0)))
 }
 
 /// The values of `series` at the given shares of the way through its sorted order.
@@ -223,13 +258,30 @@ fn still_name(seconds: f64) -> String {
     format!("t{seconds:07.1}.jpg")
 }
 
+/// The thresholds of one run, as given on the command line.
+#[derive(Debug, Clone, Copy)]
+struct Thresholds {
+    moving: f32,
+    rest: f32,
+    min_gap: f32,
+    lead: f32,
+    lookback: f32,
+}
+
 fn rest_frames_command(
     video: &Path,
     reels: Rect,
     fps: u32,
-    (moving, rest, min_gap): (f32, f32, f32),
+    thresholds: Thresholds,
     out: Option<&Path>,
 ) -> Result<()> {
+    let Thresholds {
+        moving,
+        rest,
+        min_gap,
+        lead,
+        lookback,
+    } = thresholds;
     if fps == 0 {
         bail!("--fps must be at least 1");
     }
@@ -263,12 +315,20 @@ fn rest_frames_command(
         bail!("ffmpeg could not read {}", video.display());
     }
 
-    let min_gap_frames = (min_gap * fps as f32).round().max(1.0) as usize;
-    let frames = rest_frames(&series, moving, rest, min_gap_frames);
-    let moments: Vec<f64> = frames
-        .iter()
-        .map(|frame| *frame as f64 / f64::from(fps))
-        .collect();
+    let in_frames = |seconds: f32| (seconds * fps as f32).round().max(1.0) as usize;
+    let seconds = |frame: usize| frame as f64 / f64::from(fps);
+    let mut moments = Vec::new();
+    let mut change = Vec::new();
+    let mut starts = Vec::new();
+    for start in game_starts(&series, moving, rest, in_frames(min_gap)) {
+        if let Some((frame, changed)) =
+            stillest_before(&series, start, in_frames(lead), in_frames(lookback))
+        {
+            moments.push(seconds(frame));
+            change.push(changed);
+            starts.push(seconds(start));
+        }
+    }
     println!(
         "{} frames measured at {fps} a second; {} games found",
         series.len(),
@@ -282,6 +342,11 @@ fn rest_frames_command(
             .map(|v| format!("{v:.1}"))
             .collect::<Vec<_>>()
             .join(", ")
+    );
+    let unsettled = change.iter().filter(|c| **c >= rest).count();
+    println!(
+        "{} of them have a frame at rest; {unsettled} do not (change of {rest} or more) and are worth a look",
+        moments.len() - unsettled
     );
     if let (Some(first), Some(last)) = (moments.first(), moments.last())
         && moments.len() > 1
@@ -300,8 +365,12 @@ fn rest_frames_command(
             moving,
             rest,
             min_gap,
+            lead,
+            lookback,
             frames: series.len(),
             moments,
+            change,
+            starts,
         };
         fs::write(out, serde_json::to_string_pretty(&record)? + "\n")
             .with_context(|| format!("writing {}", out.display()))?;
@@ -377,8 +446,22 @@ fn main() -> Result<()> {
             moving,
             rest,
             min_gap,
+            lead,
+            lookback,
             out,
-        } => rest_frames_command(&video, reels, fps, (moving, rest, min_gap), out.as_deref()),
+        } => rest_frames_command(
+            &video,
+            reels,
+            fps,
+            Thresholds {
+                moving,
+                rest,
+                min_gap,
+                lead,
+                lookback,
+            },
+            out.as_deref(),
+        ),
         Cmd::Stills {
             video,
             moments,
@@ -402,37 +485,58 @@ mod tests {
     }
 
     #[test]
-    fn the_last_frame_of_rest_before_each_game_is_found() {
+    fn every_game_start_is_found() {
         let mut series = vec![0.0, 0.5, 0.4];
         let mut expected = Vec::new();
         for still in [6, 9, 5, 30, 7] {
-            // The game starts here; the game before it is read two frames back.
-            expected.push(series.len() - 2);
+            expected.push(series.len());
             game(&mut series, still);
         }
-        assert_eq!(rest_frames(&series, 22.0, 8.0, 12), expected);
-        // The recording ends on the last game's rest, which no later start marks.
-        assert_eq!(expected.len(), 5);
+        assert_eq!(game_starts(&series, 22.0, 8.0, 12), expected);
     }
 
     #[test]
     fn motion_that_does_not_come_out_of_rest_is_not_a_new_game() {
         // A camera swing: heavy change rising out of moderate change.
         let series = [0.5, 0.5, 12.0, 30.0, 45.0, 30.0, 12.0, 0.5, 0.5];
-        assert!(rest_frames(&series, 22.0, 8.0, 12).is_empty());
+        assert!(game_starts(&series, 22.0, 8.0, 12).is_empty());
         // A flicker of one frame at rest inside a spin is not a game either:
         // two frames of rest are needed before a start.
         let series = [0.5, 0.5, 40.0, 30.0, 2.0, 35.0, 30.0, 20.0, 5.0, 0.5];
-        assert_eq!(rest_frames(&series, 22.0, 8.0, 1), vec![0]);
+        assert_eq!(game_starts(&series, 22.0, 8.0, 1), vec![2]);
     }
 
     #[test]
     fn two_starts_closer_than_the_shortest_game_count_once() {
         let series = [0.5, 0.5, 40.0, 0.5, 0.5, 40.0, 0.5, 0.5, 0.5, 0.5, 40.0];
-        assert_eq!(rest_frames(&series, 22.0, 8.0, 6), vec![0, 8]);
-        assert_eq!(rest_frames(&series, 22.0, 8.0, 1), vec![0, 3, 8]);
-        assert!(rest_frames(&[], 22.0, 8.0, 6).is_empty());
-        assert!(rest_frames(&[50.0, 50.0], 22.0, 8.0, 6).is_empty());
+        assert_eq!(game_starts(&series, 22.0, 8.0, 6), vec![2, 10]);
+        assert_eq!(game_starts(&series, 22.0, 8.0, 1), vec![2, 5, 10]);
+        assert!(game_starts(&[], 22.0, 8.0, 6).is_empty());
+        assert!(game_starts(&[50.0, 50.0], 22.0, 8.0, 6).is_empty());
+    }
+
+    #[test]
+    fn the_stillest_frame_is_taken_and_not_one_where_the_reels_already_creep() {
+        // Reels stop, rest, then creep for three frames before the start at 12.
+        //            0     1    2    3    4    5    6    7    8    9    10   11   12
+        let series = [
+            30.0, 9.0, 4.0, 0.4, 0.3, 0.2, 0.3, 0.4, 0.3, 2.0, 3.0, 2.5, 45.0,
+        ];
+        // Frames 9 to 11 are small changes and are still the wrong picture.
+        let (frame, change) = stillest_before(&series, 12, 4, 10).unwrap();
+        assert_eq!(frame, 5);
+        assert!((change - 0.5).abs() < 1e-6);
+        // Of equally still frames the latest is taken.
+        let flat = [9.0, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 40.0];
+        assert_eq!(stillest_before(&flat, 8, 3, 10).map(|f| f.0), Some(5));
+        // The search stays inside its window.
+        assert_eq!(stillest_before(&series, 12, 4, 2).map(|f| f.0), Some(7));
+        // A start with nothing still before it is reported with its change, not hidden.
+        let busy = [30.0, 28.0, 25.0, 20.0, 18.0, 7.0, 6.0, 40.0];
+        let (_, change) = stillest_before(&busy, 7, 2, 4).unwrap();
+        assert!(change > 8.0);
+        // Too close to the beginning for any frame to qualify.
+        assert_eq!(stillest_before(&series, 2, 4, 10), None);
     }
 
     #[test]
@@ -499,8 +603,12 @@ mod tests {
             moving: 22.0,
             rest: 8.0,
             min_gap: 1.2,
+            lead: 0.4,
+            lookback: 1.0,
             frames: 0,
             moments: Vec::new(),
+            change: Vec::new(),
+            starts: Vec::new(),
         };
         fs::write(&moments, serde_json::to_string(&record).unwrap()).unwrap();
         let crop = parse_rect("0:0:10:10").unwrap();

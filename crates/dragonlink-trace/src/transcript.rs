@@ -52,6 +52,9 @@ pub struct SheetRecord {
     /// The status line's text, when legible.
     #[serde(default)]
     pub status: String,
+    /// A win message shown beside it (`Line 9 wins 8`), when legible.
+    #[serde(default)]
+    pub win_text: String,
     /// Reels left to right, each top to bottom. Absent when the picture is
     /// not a reel window.
     pub grid: Option<Vec<Vec<String>>>,
