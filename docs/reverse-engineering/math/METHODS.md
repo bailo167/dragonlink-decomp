@@ -66,11 +66,21 @@ for every stop combination and evaluating it with the simulation's evaluator. Do
 of combinations is at most the limit (default 50 million). The same pass gives the mean, variance
 and maximum of the base-game award.
 
-## Whole-spin variance — simulation
+## Whole-spin variance — exact
 
-The spread of a whole spin's award, feature included, is estimated by simulation today and reported
-with the run's seed and size. (An exact value is obtainable from the feature recursion and is
-tracked as future work.)
+A whole spin's award is the base award `B` plus the feature award `F`. Given the window, `F`
+depends only on how many orbs `k` it holds, through independent draws. So
+
+```
+E[(B+F)²] = E[B²] + 2 Σ_k E[B · 1{K=k}] · E[F | k] + Σ_k P(k) · E[F² | k]
+```
+
+The enumeration supplies `E[B²]` and `E[B · 1{K=k}]`. The feature recursion gives the distribution
+of the final orb count `N` for each `k`; the award is a sum of `N` independent orb values (mean
+`m`, variance `v`) plus the full-grid award `G` when `N` is every position, so
+`E[F|k] = E[N]m + G·P(full)` and
+`E[F²|k] = E[N]v + E[N²]m² + 2G·cells·m·P(full) + G²·P(full)`.
+Needs the enumeration, so it is available when the stop combinations are few enough.
 
 ## Simulation
 
@@ -109,6 +119,7 @@ Run by `cargo test -p dragonlink-math`:
 | Line + scatter return from frequencies equals the enumerated base-game mean, to 1e-12 | two independent routes agree |
 | The feature recursion against hand-computed cases, with and without reset | the recursion is right |
 | Exact return, trigger frequency and component shares against a 400,000-spin simulation | the analysis and the state machine agree |
+| Feature award moments against hand arithmetic; exact whole-spin deviation against simulation, within 5% | the variance derivation is right |
 | At the computed break-even meter the return is exactly 1 | the EV algebra is consistent |
 
 These check our mathematics against our implementation. Agreement with an original game is a

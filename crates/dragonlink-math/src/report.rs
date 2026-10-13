@@ -202,6 +202,11 @@ pub fn game_report(
         Some(e) => {
             let _ = writeln!(
                 s,
+                "A whole spin's award, feature included, has standard deviation {:.4} × bet (exact).\n",
+                e.total_variance.sqrt()
+            );
+            let _ = writeln!(
+                s,
                 "By enumeration of all {} stop combinations: a spin pays on a line or scatter with \
                  probability {} ({}); it pays or starts the feature with probability {} ({}). \
                  Base-game award: variance {:.4}, standard deviation {:.4}, largest {:.2} (× bet).",

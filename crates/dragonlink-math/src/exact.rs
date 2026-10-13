@@ -104,6 +104,21 @@ pub struct FeatureAnalysis {
     pub jackpots: Vec<JackpotStat>,
     /// Share of the total bet returned through the whole feature.
     pub rtp: f64,
+    /// Mean and second moment of the feature award for each starting count.
+    pub award_moments: Vec<StartMoments>,
+    /// Standard deviation of the feature award given it started, in
+    /// multiples of the total bet.
+    pub std_dev_given_trigger: f64,
+}
+
+/// The feature award, in multiples of the total bet, given how many orbs it
+/// started with.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize)]
+pub struct StartMoments {
+    pub start: u8,
+    pub mean: f64,
+    /// Expected square of the award.
+    pub second_moment: f64,
 }
 
 /// Results of enumerating every stop combination.
@@ -120,6 +135,10 @@ pub struct Enumeration {
     pub base_variance: f64,
     /// Largest base-game award found, in multiples of the total bet.
     pub base_max: f64,
+    /// Variance of a whole spin's award, feature included, in multiples of
+    /// the total bet. Exact: the base award and the feature are linked only
+    /// through the number of orbs in the window, which the enumeration sees.
+    pub total_variance: f64,
 }
 
 /// The quantitative breakdown of a model.
@@ -258,10 +277,29 @@ fn analyze_feature(model: &MathModel, orb_distribution: &[f64]) -> Option<Featur
             .map(|(tier, share)| share * f64::from(multiple_of(*tier)))
             .sum::<f64>();
 
+    // Second moment of one orb's value, and the award for a full grid.
+    let orb_second_moment: f64 = hs
+        .orb_values
+        .iter()
+        .map(|entry| {
+            let value = match entry.value {
+                OrbValue::BetMultiple(m) => f64::from(m),
+                OrbValue::Jackpot(tier) => f64::from(multiple_of(tier)),
+            };
+            f64::from(entry.weight) / weight * value * value
+        })
+        .sum();
+    let orb_variance = (orb_second_moment - mean_orb_value * mean_orb_value).max(0.0);
+    let full_grid_value = hs
+        .full_grid_award
+        .map_or(0.0, |tier| f64::from(multiple_of(tier)));
+
     let mut trigger_probability = 0.0;
     let mut start_distribution = Vec::new();
     let mut final_per_spin = vec![0.0f64; cells + 1];
     let mut respins_per_spin = 0.0;
+    let mut award_moments = Vec::new();
+    let mut second_moment_per_spin = 0.0;
     for (k, pk) in orb_distribution.iter().enumerate().skip(trigger) {
         if *pk == 0.0 || k > cells {
             continue;
@@ -269,9 +307,31 @@ fn analyze_feature(model: &MathModel, orb_distribution: &[f64]) -> Option<Featur
         trigger_probability += pk;
         start_distribution.push((k as u8, *pk));
         let empty = cells - k;
+        // The award is the sum of N independent orb values, plus the full-grid
+        // award when N is every position. With N = cells - f:
+        //   E[award]   = E[N] m + G P(full)
+        //   E[award^2] = E[N] v + E[N^2] m^2 + 2 G cells m P(full) + G^2 P(full)
+        let (mut n_mean, mut n_second, mut full) = (0.0, 0.0, 0.0);
         for (f, v) in dist[empty][initial].iter().enumerate() {
             final_per_spin[cells - f] += pk * v;
+            let n = (cells - f) as f64;
+            n_mean += v * n;
+            n_second += v * n * n;
+            if f == 0 {
+                full = *v;
+            }
         }
+        let mean = n_mean * mean_orb_value + full_grid_value * full;
+        let second_moment = n_mean * orb_variance
+            + n_second * mean_orb_value * mean_orb_value
+            + 2.0 * full_grid_value * cells as f64 * mean_orb_value * full
+            + full_grid_value * full_grid_value * full;
+        award_moments.push(StartMoments {
+            start: k as u8,
+            mean,
+            second_moment,
+        });
+        second_moment_per_spin += pk * second_moment;
         respins_per_spin += pk * respins[empty][initial];
     }
 
@@ -330,6 +390,11 @@ fn analyze_feature(model: &MathModel, orb_distribution: &[f64]) -> Option<Featur
         rtp_credit_orbs,
         jackpots,
         rtp,
+        award_moments,
+        std_dev_given_trigger: (conditional(second_moment_per_spin)
+            - conditional(rtp) * conditional(rtp))
+        .max(0.0)
+        .sqrt(),
     })
 }
 
@@ -395,8 +460,14 @@ fn line_sum(model: &MathModel) -> Result<(u128, OutcomeWeights), AnalysisError> 
     Ok((numerator, outcomes))
 }
 
-fn enumerate(model: &MathModel, combinations: u128) -> Option<Enumeration> {
+fn enumerate(
+    model: &MathModel,
+    combinations: u128,
+    feature: Option<&FeatureAnalysis>,
+) -> Option<Enumeration> {
     let rows = model.grid.rows as usize;
+    // Sum of the base award over the windows holding each number of orbs.
+    let mut base_by_orbs = vec![0.0f64; model.grid.cells() + 1];
     let lines = model.paylines.len() as u64;
     let trigger = model
         .hold_and_spin
@@ -427,6 +498,7 @@ fn enumerate(model: &MathModel, combinations: u128) -> Option<Enumeration> {
         sum += x;
         sum_sq += x * x;
         max = max.max(x);
+        base_by_orbs[orbs] += x;
         let triggered = trigger.is_some_and(|t| orbs >= t);
         if award > 0 {
             base_hits += 1;
@@ -445,6 +517,18 @@ fn enumerate(model: &MathModel, combinations: u128) -> Option<Enumeration> {
     }
     let n = combinations as f64;
     let mean = sum / n;
+    // Whole spin: X = B + F. Given the window, F depends only on its orb count k, so
+    //   E[X^2] = E[B^2] + 2 * sum_k E[B; K = k] E[F | k] + sum_k P(k) E[F^2 | k].
+    let (mut cross, mut feature_second, mut feature_mean) = (0.0, 0.0, 0.0);
+    if let Some(f) = feature {
+        for (moments, (_, pk)) in f.award_moments.iter().zip(&f.start_distribution) {
+            cross += base_by_orbs[moments.start as usize] / n * moments.mean;
+            feature_second += pk * moments.second_moment;
+            feature_mean += pk * moments.mean;
+        }
+    }
+    let total_mean = mean + feature_mean;
+    let total_second = sum_sq / n + 2.0 * cross + feature_second;
     Some(Enumeration {
         combinations,
         base_hit_frequency: base_hits as f64 / n,
@@ -452,6 +536,7 @@ fn enumerate(model: &MathModel, combinations: u128) -> Option<Enumeration> {
         base_mean: mean,
         base_variance: (sum_sq / n - mean * mean).max(0.0),
         base_max: max,
+        total_variance: (total_second - total_mean * total_mean).max(0.0),
     })
 }
 
@@ -510,7 +595,7 @@ pub fn analyze(model: &MathModel, enumeration_limit: u128) -> Result<Analysis, A
     let feature = analyze_feature(model, &orb_distribution);
     let total_rtp = line_rtp + scatter_rtp + feature.as_ref().map_or(0.0, |f| f.rtp);
     let enumeration = (stop_combinations <= enumeration_limit)
-        .then(|| enumerate(model, stop_combinations))
+        .then(|| enumerate(model, stop_combinations, feature.as_ref()))
         .flatten();
 
     Ok(Analysis {
@@ -693,6 +778,8 @@ mod tests {
         // Award is 0 or 4 with equal probability: variance 4.
         assert!(close(e.base_variance, 4.0));
         assert!(close(e.base_max, 4.0));
+        // Without a feature the whole spin is the base game.
+        assert!(close(e.total_variance, e.base_variance));
     }
 
     #[test]
@@ -779,6 +866,47 @@ mod tests {
         assert!(grand.one_in().unwrap() > 1.0);
         // At least the trigger count is held at the end, at most every position.
         assert!(f.expected_final_orbs >= 4.0 && f.expected_final_orbs <= 9.0);
+    }
+
+    #[test]
+    fn feature_award_moments_match_hand_arithmetic() {
+        // With a land chance of zero the feature ends holding exactly what it
+        // started with, so the award is a sum of that many independent values.
+        // One value: mean 2.6, second moment 0.6×1 + 0.3×16 + 0.1×64 = 11.8,
+        // variance 5.04. Four orbs: mean 10.4, second moment 4×5.04 + 16×6.76.
+        let mut model = small();
+        if let Some(hs) = &mut model.hold_and_spin {
+            hs.orb_land_chance = Ratio { num: 0, den: 5 };
+        }
+        let a = analyze(&model, DEFAULT_ENUMERATION_LIMIT).unwrap();
+        let f = a.feature.unwrap();
+        let four = f.award_moments.iter().find(|m| m.start == 4).unwrap();
+        assert!(close(four.mean, 10.4));
+        assert!((four.second_moment - 128.32).abs() < 1e-9);
+        // The moments are listed for the same starting counts as the distribution.
+        let starts: Vec<u8> = f.award_moments.iter().map(|m| m.start).collect();
+        let listed: Vec<u8> = f.start_distribution.iter().map(|(k, _)| *k).collect();
+        assert_eq!(starts, listed);
+    }
+
+    #[test]
+    fn exact_whole_spin_deviation_agrees_with_simulation() {
+        // The exact figure comes from distributions; the simulated one from
+        // playing the state machine. Our mathematics against our implementation.
+        let model = small();
+        let a = analyze(&model, DEFAULT_ENUMERATION_LIMIT).unwrap();
+        let e = a.enumeration.as_ref().unwrap();
+        assert!(e.total_variance > e.base_variance);
+        let exact = e.total_variance.sqrt();
+        let sim = crate::sim::simulate(&model, 17, 400_000).unwrap();
+        assert!(
+            (sim.std_dev - exact).abs() / exact < 0.05,
+            "simulated {} vs exact {exact}",
+            sim.std_dev
+        );
+        assert!((sim.rtp.estimate - a.total_rtp).abs() < 4.5 * sim.standard_error);
+        let f = a.feature.as_ref().unwrap();
+        assert!(f.std_dev_given_trigger > 0.0);
     }
 
     #[test]

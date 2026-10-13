@@ -295,8 +295,9 @@ evidence = "crates/dragonlink-math/src/report.rs (tests); dragonlink-analyze ana
 [[category.item]]
 id = "volatility"
 name = "Whole-spin volatility"
-status = "partial"
-note = "Base-game variance is exact; the spread of a whole spin including the feature is simulated only."
+status = "implemented"
+evidence = "crates/dragonlink-math/src/exact.rs (tests: feature moments against hand arithmetic; exact deviation agrees with simulation)"
+note = "Exact when the stop combinations can be enumerated; otherwise simulated with the run stated."
 
 [[category.item]]
 id = "free-games-math"
