@@ -79,10 +79,16 @@ pub struct ScatterPay {
     pub total_bet_multiple: u32,
 }
 
-/// Bet options. Every payline is always played; the player chooses credits per line.
+/// Bet options. The player chooses credits per line and, where the game
+/// offers it, how many paylines to play.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct BetModel {
     pub credits_per_line_options: Vec<u32>,
+    /// The numbers of paylines the player may play, ascending. Playing `n`
+    /// lines plays the first `n` paylines of the model. Empty means every
+    /// payline is always played.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub line_options: Vec<u16>,
 }
 
 /// Jackpot levels by name.
@@ -168,6 +174,10 @@ pub enum ModelError {
     SymbolIdMismatch { index: usize, id: u16 },
     #[error("symbol key {0:?} is used twice")]
     DuplicateSymbolKey(String),
+    #[error(
+        "line options must be ascending numbers of paylines, each at least 1 and no more than the model has"
+    )]
+    BadLineOptions,
     #[error("{reels} reels but {strips} reel strips")]
     StripCount { reels: u8, strips: usize },
     #[error("reel strip {reel} has {len} stops; at least the {rows} visible rows are needed")]
@@ -225,6 +235,16 @@ impl MathModel {
             .iter()
             .find(|p| p.symbol == symbol && p.count == count)
             .map_or(0, |p| p.pay)
+    }
+
+    /// The numbers of paylines the player may play, ascending: the model's
+    /// line options, or only "all of them" when it has none.
+    pub fn line_counts(&self) -> Vec<u16> {
+        if self.bet.line_options.is_empty() {
+            vec![u16::try_from(self.paylines.len()).unwrap_or(u16::MAX)]
+        } else {
+            self.bet.line_options.clone()
+        }
     }
 
     /// Check that the model is internally consistent and can be run.
@@ -324,6 +344,15 @@ impl MathModel {
         }
         if self.bet.credits_per_line_options.contains(&0) {
             return Err(ModelError::ZeroBetOption);
+        }
+        let lines = &self.bet.line_options;
+        if lines.first() == Some(&0)
+            || lines
+                .last()
+                .is_some_and(|n| *n as usize > self.paylines.len())
+            || lines.windows(2).any(|pair| pair[0] >= pair[1])
+        {
+            return Err(ModelError::BadLineOptions);
         }
 
         if let Some(hs) = &self.hold_and_spin {

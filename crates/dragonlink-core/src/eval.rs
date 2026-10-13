@@ -74,17 +74,36 @@ pub fn line_run(model: &MathModel, symbols: &[SymbolId]) -> Option<(SymbolId, u8
     best.filter(|(_, _, pay)| *pay > 0)
 }
 
-/// Every award in `grid`, lines first (in payline order), then scatters (in
-/// symbol order). `None` when an award does not fit in 64 bits.
+/// Every award in `grid` with every payline played. See [`evaluate_lines`].
 pub fn evaluate(
     model: &MathModel,
     grid: &Grid,
     credits_per_line: u32,
     total_bet: u64,
 ) -> Option<Vec<Win>> {
+    evaluate_lines(
+        model,
+        grid,
+        credits_per_line,
+        total_bet,
+        model.paylines.len(),
+    )
+}
+
+/// Every award in `grid` with the first `lines` paylines played: lines first
+/// (in payline order), then scatters (in symbol order). Scatters pay on the
+/// total bet whatever the number of lines. `None` when an award does not fit
+/// in 64 bits.
+pub fn evaluate_lines(
+    model: &MathModel,
+    grid: &Grid,
+    credits_per_line: u32,
+    total_bet: u64,
+    lines: usize,
+) -> Option<Vec<Win>> {
     let mut wins = Vec::new();
     let mut on_line = Vec::with_capacity(model.grid.reels as usize);
-    for (index, line) in model.paylines.iter().enumerate() {
+    for (index, line) in model.paylines.iter().enumerate().take(lines) {
         on_line.clear();
         for (reel, row) in line.0.iter().enumerate() {
             on_line.push(grid.get(reel as u8, *row)?);

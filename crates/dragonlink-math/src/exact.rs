@@ -707,6 +707,7 @@ mod tests {
             ],
             bet: BetModel {
                 credits_per_line_options: vec![1, 3],
+                line_options: Vec::new(),
             },
             hold_and_spin: Some(HoldAndSpinModel {
                 orb: SymbolId(O),
@@ -762,6 +763,7 @@ mod tests {
             scatter_pays: vec![],
             bet: BetModel {
                 credits_per_line_options: vec![1],
+                line_options: Vec::new(),
             },
             hold_and_spin: None,
         };

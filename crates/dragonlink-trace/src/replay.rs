@@ -97,6 +97,13 @@ pub enum InconsistencyReason {
     #[error("the model has no bet option of {credits_per_line} credits per line")]
     NoSuchBet { credits_per_line: u32 },
     #[error(
+        "a bet of {total_bet} at {credits_per_line} credits per line is not a number of lines the model offers"
+    )]
+    NoSuchLineCount {
+        credits_per_line: u32,
+        total_bet: u64,
+    },
+    #[error(
         "reel {reel} stopped outside a spin, so the trace does not say which spin it belongs to"
     )]
     ReelOutsideSpin { reel: u8 },
@@ -422,7 +429,7 @@ impl Scan {
         Some(found.draw)
     }
 
-    fn bet_changed(&mut self, view: &ModelView, seq: u64, credits_per_line: u32) {
+    fn bet_changed(&mut self, view: &ModelView, seq: u64, credits_per_line: u32, total_bet: u64) {
         self.close_spin(view);
         let options = &view.model.bet.credits_per_line_options;
         let mut matching = options
@@ -444,7 +451,25 @@ impl Scan {
                 chosen: u32::try_from(index).unwrap_or(u32::MAX),
             });
         }
-        self.script(seq, Command::SetBet { index }, Vec::new());
+        // The number of lines is not shown in the event; it follows from
+        // the total bet and the credits per line.
+        let per_line = u64::from(credits_per_line);
+        let lines = (per_line > 0 && total_bet.is_multiple_of(per_line))
+            .then(|| u16::try_from(total_bet / per_line).ok())
+            .flatten()
+            .filter(|lines| view.model.line_counts().contains(lines));
+        let Some(lines) = lines else {
+            self.inconsistent(
+                seq,
+                InconsistencyReason::NoSuchLineCount {
+                    credits_per_line,
+                    total_bet,
+                },
+            );
+            self.unscriptable(seq);
+            return;
+        };
+        self.script(seq, Command::SetStake { index, lines }, Vec::new());
     }
 
     fn spin_started(&mut self, view: &ModelView, seq: u64) {
@@ -750,8 +775,9 @@ pub fn reconstruct(model: &MathModel, observation: &Trace) -> Result<Reconstruct
         let seq = record.seq;
         match &record.event {
             Event::BetChanged {
-                credits_per_line, ..
-            } => scan.bet_changed(&view, seq, *credits_per_line),
+                credits_per_line,
+                total_bet,
+            } => scan.bet_changed(&view, seq, *credits_per_line, *total_bet),
             Event::SpinStarted { .. } => scan.spin_started(&view, seq),
             Event::ReelStopped {
                 reel,
@@ -1433,6 +1459,57 @@ mod tests {
         assert!(!report.starting_credits_known);
         assert_eq!(report.starting_credits, UNOBSERVED_STARTING_CREDITS);
         assert!(report.is_complete());
+    }
+
+    #[test]
+    fn a_change_of_lines_is_replayed_from_the_bet_it_leaves() {
+        // The fixture with a choice of lines, and a game that uses it.
+        let mut model = synthetic_dev_fixture();
+        model.bet.line_options = vec![1, 3, 5];
+        let mut game = Game::new(model.clone(), 100_000).unwrap();
+        let mut rng = dragonlink_core::DevRng::new(8);
+        let mut events = Vec::new();
+        for (stake, spins) in [
+            (Command::SetLines { lines: 3 }, 40),
+            (Command::SetBet { index: 2 }, 40),
+            (Command::SetStake { index: 0, lines: 1 }, 40),
+            (Command::SetLines { lines: 5 }, 40),
+        ] {
+            events.extend(game.apply(stake, &mut rng).unwrap());
+            for _ in 0..spins {
+                events.extend(game.play_spin(&mut rng).unwrap());
+            }
+        }
+        let mut trace = rewrite(1, 0);
+        trace.header.math_id = Some(model.id.clone());
+        trace.records = events
+            .into_iter()
+            .enumerate()
+            .map(|(seq, event)| TraceRecord {
+                seq: seq as u64,
+                t_ms: None,
+                event,
+            })
+            .collect();
+        let observation = as_observation(&trace, 50);
+        let report = replay(&model, &observation, None).unwrap();
+        assert!(
+            report.inconsistencies.is_empty(),
+            "{:?}",
+            report.inconsistencies
+        );
+        assert!(report.agrees(), "{:?}", report.comparison.first_divergence);
+
+        // Through a model that does not offer three lines the same trace is a finding.
+        let report = replay(&synthetic_dev_fixture(), &observation, None).unwrap();
+        assert_eq!(
+            report.inconsistencies[0].reason,
+            InconsistencyReason::NoSuchLineCount {
+                credits_per_line: 1,
+                total_bet: 3
+            }
+        );
+        assert!(!report.is_complete());
     }
 
     #[test]

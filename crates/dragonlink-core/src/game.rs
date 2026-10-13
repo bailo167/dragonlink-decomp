@@ -30,7 +30,7 @@ use dragonlink_model::{
 };
 use serde::{Deserialize, Serialize};
 
-use crate::eval::{Win, evaluate};
+use crate::eval::{Win, evaluate_lines};
 use crate::event::{CreditReason, Event, Feature, LockedOrb};
 use crate::grid::Grid;
 use crate::rng::{OutcomeRng, RngError};
@@ -41,6 +41,11 @@ use crate::rng::{OutcomeRng, RngError};
 pub enum Command {
     /// Choose a bet option by index. Only while idle.
     SetBet { index: usize },
+    /// Choose how many paylines to play: one of the model's line counts.
+    /// Only while idle.
+    SetLines { lines: u16 },
+    /// Choose a bet option and a number of paylines at once. Only while idle.
+    SetStake { index: usize, lines: u16 },
     /// Place the bet and spin. Only while idle.
     Spin,
     /// Play the next step of the feature in progress.
@@ -62,6 +67,8 @@ pub enum GameError {
     InsufficientCredits { needed: u64, available: u64 },
     #[error("there is no bet option {index}")]
     NoSuchBet { index: usize },
+    #[error("the game does not offer {lines} lines")]
+    NoSuchLineCount { lines: u16 },
     #[error("an amount does not fit in 64 bits")]
     Overflow,
     #[error("internal invariant broken: {0}")]
@@ -105,6 +112,9 @@ pub struct GameState {
     /// Play credits. Simulation credits only; they stand for no money.
     pub credits: u64,
     pub bet_index: usize,
+    /// Paylines played. `None` is every payline of the model.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub lines: Option<u16>,
     pub phase: Phase,
     /// Spins started so far.
     pub spins: u64,
@@ -160,6 +170,7 @@ impl Game {
             state: GameState {
                 credits,
                 bet_index: 0,
+                lines: None,
                 phase: Phase::Idle,
                 spins: 0,
                 last_grid: None,
@@ -211,9 +222,16 @@ impl Game {
             .unwrap_or(0)
     }
 
-    /// Credits one spin costs at the current bet option.
+    /// Paylines played: the first this many of the model's.
+    pub fn lines(&self) -> u16 {
+        self.state
+            .lines
+            .unwrap_or(u16::try_from(self.model.paylines.len()).unwrap_or(u16::MAX))
+    }
+
+    /// Credits one spin costs at the current bet option and line count.
     pub fn total_bet(&self) -> u64 {
-        u64::from(self.credits_per_line()) * self.model.paylines.len() as u64
+        u64::from(self.credits_per_line()) * u64::from(self.lines())
     }
 
     fn key(&self, id: SymbolId) -> String {
@@ -234,7 +252,15 @@ impl Game {
         let mut next = self.state.clone();
         let mut events = Vec::new();
         match command {
-            Command::SetBet { index } => self.set_bet(&mut next, index, &mut events)?,
+            Command::SetBet { index } => {
+                self.set_stake(&mut next, index, self.lines(), &mut events)?;
+            }
+            Command::SetLines { lines } => {
+                self.set_stake(&mut next, self.state.bet_index, lines, &mut events)?;
+            }
+            Command::SetStake { index, lines } => {
+                self.set_stake(&mut next, index, lines, &mut events)?;
+            }
             Command::Spin => self.spin(&mut next, rng, &mut events)?,
             Command::Advance => self.advance(&mut next, rng, &mut events)?,
         }
@@ -251,10 +277,11 @@ impl Game {
         Ok(events)
     }
 
-    fn set_bet(
+    fn set_stake(
         &self,
         next: &mut GameState,
         index: usize,
+        lines: u16,
         events: &mut Vec<Event>,
     ) -> Result<(), GameError> {
         if next.phase != Phase::Idle {
@@ -266,10 +293,14 @@ impl Game {
             .credits_per_line_options
             .get(index)
             .ok_or(GameError::NoSuchBet { index })?;
+        if !self.model.line_counts().contains(&lines) {
+            return Err(GameError::NoSuchLineCount { lines });
+        }
         next.bet_index = index;
+        next.lines = (usize::from(lines) != self.model.paylines.len()).then_some(lines);
         events.push(Event::BetChanged {
             credits_per_line,
-            total_bet: u64::from(credits_per_line) * self.model.paylines.len() as u64,
+            total_bet: u64::from(credits_per_line) * u64::from(lines),
         });
         Ok(())
     }
@@ -333,8 +364,14 @@ impl Game {
         }
 
         // Pays.
-        let wins =
-            evaluate(&self.model, &grid, credits_per_line, total_bet).ok_or(GameError::Overflow)?;
+        let wins = evaluate_lines(
+            &self.model,
+            &grid,
+            credits_per_line,
+            total_bet,
+            usize::from(self.lines()),
+        )
+        .ok_or(GameError::Overflow)?;
         let mut base_award = 0u64;
         for win in &wins {
             base_award = add(base_award, win.award())?;
@@ -556,6 +593,7 @@ mod tests {
             scatter_pays: vec![],
             bet: BetModel {
                 credits_per_line_options: vec![10, 20],
+                line_options: Vec::new(),
             },
             hold_and_spin: Some(HoldAndSpinModel {
                 orb,
@@ -693,6 +731,104 @@ mod tests {
             Err(GameError::Rng(RngError::ScriptExhausted { position: 3 }))
         ));
         assert_eq!(game, before);
+    }
+
+    #[test]
+    fn the_player_chooses_how_many_lines_to_play() {
+        let mut model = synthetic_dev_fixture();
+        model.bet.line_options = vec![1, 3, 5];
+        model.validate().unwrap();
+        let mut game = Game::new(model.clone(), 100_000).unwrap();
+        let mut rng = DevRng::new(4);
+        // All lines until told otherwise.
+        assert_eq!((game.lines(), game.total_bet()), (5, 5));
+        let events = game
+            .apply(Command::SetLines { lines: 3 }, &mut rng)
+            .unwrap();
+        assert_eq!(
+            events,
+            vec![Event::BetChanged {
+                credits_per_line: 1,
+                total_bet: 3
+            }]
+        );
+        assert_eq!((game.lines(), game.total_bet()), (3, 3));
+        // A bet option and a line count together are one change.
+        let events = game
+            .apply(Command::SetStake { index: 3, lines: 1 }, &mut rng)
+            .unwrap();
+        assert_eq!(
+            events,
+            vec![Event::BetChanged {
+                credits_per_line: 10,
+                total_bet: 10
+            }]
+        );
+        // A count the game does not offer is refused, and nothing changes.
+        for lines in [0, 2, 4, 6] {
+            assert_eq!(
+                game.apply(Command::SetLines { lines }, &mut rng),
+                Err(GameError::NoSuchLineCount { lines })
+            );
+        }
+        assert_eq!((game.lines(), game.credits_per_line()), (1, 10));
+
+        // Only the lines played can win, and the bet taken is for those lines.
+        game.apply(Command::SetStake { index: 0, lines: 1 }, &mut rng)
+            .unwrap();
+        let mut staked = 0;
+        for _ in 0..3000 {
+            let before = game.credits();
+            let events = game.play_spin(&mut rng).unwrap();
+            assert_eq!(events[0], Event::BetPlaced { total_bet: 1 });
+            staked += 1;
+            for event in &events {
+                if let Event::LineWin { line, .. } = event {
+                    assert_eq!(*line, 0, "a line that was not played paid");
+                }
+            }
+            assert!(game.credits() + 1 >= before);
+        }
+        assert_eq!(staked, 3000);
+        // A saved game keeps its line count; a save from before lines existed means all lines.
+        let saved = serde_json::to_string(game.state()).unwrap();
+        assert!(saved.contains("\"lines\":1"));
+        let resumed = Game::resume(model.clone(), serde_json::from_str(&saved).unwrap()).unwrap();
+        assert_eq!(resumed.lines(), 1);
+        let all = Game::new(model, 10).unwrap();
+        assert!(
+            !serde_json::to_string(all.state())
+                .unwrap()
+                .contains("lines")
+        );
+
+        // A model without line options offers exactly "all of them".
+        let mut plain = Game::new(synthetic_dev_fixture(), 10).unwrap();
+        assert_eq!(
+            plain.apply(Command::SetLines { lines: 3 }, &mut rng),
+            Err(GameError::NoSuchLineCount { lines: 3 })
+        );
+        assert!(
+            plain
+                .apply(Command::SetLines { lines: 5 }, &mut rng)
+                .is_ok()
+        );
+    }
+
+    #[test]
+    fn line_options_that_make_no_sense_are_refused() {
+        for bad in [vec![0, 5], vec![3, 3], vec![5, 3], vec![1, 6]] {
+            let mut model = synthetic_dev_fixture();
+            model.bet.line_options = bad.clone();
+            assert_eq!(
+                model.validate(),
+                Err(dragonlink_model::ModelError::BadLineOptions),
+                "{bad:?}"
+            );
+        }
+        // The fixture as written does not mention lines, so its exported form is unchanged.
+        let json = serde_json::to_string(&synthetic_dev_fixture()).unwrap();
+        assert!(!json.contains("\"line_options\""));
     }
 
     #[test]

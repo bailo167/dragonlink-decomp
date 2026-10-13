@@ -180,6 +180,7 @@ pub fn synthetic_dev_fixture() -> MathModel {
         scatter_pays,
         bet: BetModel {
             credits_per_line_options: vec![1, 2, 5, 10],
+            line_options: Vec::new(),
         },
         hold_and_spin: Some(HoldAndSpinModel {
             orb: SymbolId(ORB),
