@@ -11,6 +11,19 @@
 
 No original game material is needed to build, test or run.
 
+## Running the application
+
+```sh
+cargo run -p dragonlink                                   # placeholder mode
+cargo run -p dragonlink -- --seed 7 --credits 5000
+cargo run -p dragonlink -- --smoke-frames 600 --screenshot shot.png   # unattended, then a picture
+```
+
+Space or Enter spins and steps a feature; Up and Down change the bet; Escape quits.
+Without imported assets the application runs in placeholder mode, with a banner saying so.
+An unattended run advances on a fixed time step, so the same seed and frame count show the same
+thing on any display.
+
 ## Everyday commands
 
 ```sh
@@ -39,10 +52,10 @@ powershell -NoProfile -ExecutionPolicy Bypass -File tools\dev\gate.ps1 -Release
 | `test` | `cargo test --workspace --locked` (simulation, fixtures, tools) | active |
 | `hygiene` | `cargo run -p repo-hygiene` | active |
 | `progress` | `cargo run -p progress-gen -- --check` | active |
-| `app` | `cargo build -p dragonlink` | switches on when `apps/dragonlink` exists |
-| `smoke` | start the app, run a fixed number of frames, exit | with the app |
-| `wasm` | `cargo build -p dragonlink --target wasm32-unknown-unknown` | with the app |
-| `release` | `cargo build --release -p dragonlink` (with `-Release`) | with the app |
+| `app` | `cargo build -p dragonlink` | active |
+| `smoke` | `dragonlink --smoke-frames 180`: open the window, spin unattended on a fixed time step, exit 0 | active |
+| `wasm` | `cargo build -p dragonlink --target wasm32-unknown-unknown` | active |
+| `release` | `cargo build --release -p dragonlink` (with `-Release`) | active |
 
 Each step prints one line; full output is in `target\gate\<step>.log` and a summary in
 `target\gate\summary.json` (commit, whether the tree was dirty, toolchain, per-step result and time).

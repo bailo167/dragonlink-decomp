@@ -1,6 +1,7 @@
 [workspace]
 resolver = "3"
 members = [
+    "apps/dragonlink",
     "crates/dragonlink-model",
     "crates/dragonlink-core",
     "crates/dragonlink-math",

@@ -14,7 +14,7 @@
 
 schema = 1
 title = "dragonlink-decomp — preservation progress"
-current_milestone = "M0"
+current_milestone = "M1"
 
 # --------------------------------------------------------------------------
 # Milestones (the Golden Century acceptance path, then the other titles)
@@ -23,8 +23,8 @@ current_milestone = "M0"
 [[milestone]]
 id = "M0"
 name = "Foundation"
-status = "partial"
-note = "Stage A: workspace, hygiene, progress tooling, docs, Windows gate, CI, source root."
+status = "implemented"
+note = "Stage A: workspace, hygiene, progress tooling, docs, Windows gate, CI and the source root all exist and work. RE applications are installed when first needed."
 
 [[milestone]]
 id = "M1"
@@ -47,8 +47,8 @@ note = "Stage D: state, spin, awards, feature state machine, deterministic trace
 [[milestone]]
 id = "M4"
 name = "Golden Century Bevy slice"
-status = "not_started"
-note = "Stage E: title boots, UI, reels, spin, imported local assets, audio, win and feature presentation."
+status = "partial"
+note = "Stage E. A placeholder shell runs the synthetic fixture through the real simulation: window, reels, spin, Hold & Spin stepping. Nothing in it is Golden Century yet: no assets, no audio, no title data."
 
 [[milestone]]
 id = "M5"
@@ -117,7 +117,7 @@ id = "windows-gate"
 name = "Windows pre-merge gate"
 status = "implemented"
 evidence = "tools/dev/gate.ps1; docs/BUILDING.md"
-note = "fmt, clippy, test, hygiene, progress check today; app, smoke, wasm and release steps switch on when the app exists."
+note = "All nine steps active: fmt, clippy, test, hygiene, progress, app build, smoke launch, wasm32 build, release build."
 
 [[category.item]]
 id = "ci"
@@ -457,7 +457,8 @@ note = "Generic left-to-right line rules and scatter pays, each stated in eval.r
 [[category.item]]
 id = "win-presentation"
 name = "Win presentation"
-status = "not_started"
+status = "partial"
+note = "A status line per award and a meter that follows presented credit events. No count-up, no line highlighting, no animation."
 
 [[category.item]]
 id = "feature-trigger"
@@ -500,12 +501,14 @@ status = "not_started"
 [[category.item]]
 id = "ui"
 name = "UI"
-status = "not_started"
+status = "partial"
+note = "Placeholder HUD: banner, credit meter, bet, status line, generated cells. Nothing reproduces the original UI."
 
 [[category.item]]
 id = "input"
 name = "Input"
-status = "not_started"
+status = "partial"
+note = "Keyboard only: spin and feature step, bet up and down, quit."
 
 [[category.item]]
 id = "save-settings"
@@ -884,6 +887,7 @@ status = "not_started"
 id = "visual-comparison"
 name = "Visual comparison"
 status = "not_started"
+note = "The app can save a picture of its window from a reproducible unattended run (--smoke-frames with --screenshot); there is nothing to compare it with yet."
 
 [[category.item]]
 id = "audio-comparison"
@@ -914,7 +918,7 @@ name = "Platforms"
 id = "windows"
 name = "Windows"
 status = "partial"
-note = "Headless crates and tools build and pass the gate on the Windows host and in CI; no app yet."
+note = "The app builds in debug and release and smoke-launches on the Windows host; the gate passes. Placeholder mode only."
 
 [[category.item]]
 id = "linux"
@@ -932,7 +936,7 @@ note = "Headless crates and tools build and test in CI; no app yet."
 id = "web"
 name = "Web / WASM"
 status = "partial"
-note = "The simulation and its data model compile for wasm32 in CI; no app yet."
+note = "The app compiles for wasm32-unknown-unknown in the gate and in CI. Not yet bundled or run in a browser."
 
 # --------------------------------------------------------------------------
 # Packaging
@@ -961,7 +965,8 @@ status = "not_started"
 [[category.item]]
 id = "asset-free-build"
 name = "Public asset-free build"
-status = "not_started"
+status = "partial"
+note = "The app runs with no assets in a clearly labelled placeholder mode. No packaged release yet."
 
 [[category.item]]
 id = "release-process"

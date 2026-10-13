@@ -40,7 +40,7 @@
 | `crates/dragonlink-trace` | planned | Trace format shared by rewrite traces and transcribed observations; comparison. |
 | `crates/dragonlink-formats` | exists | File identification by content, entropy, listing of ZIP-family archives. |
 | `crates/dragonlink-assets` | planned | Asset manifest, logical asset ids, discovery of the asset set, placeholder mode. |
-| `apps/dragonlink` | planned | The Bevy executable. |
+| `apps/dragonlink` | exists | The Bevy executable. Placeholder mode only: generated cells, synthetic fixture. |
 | `tools/dragonlink-inventory` | exists | Create and check the private source root; hash and classify everything under a source folder. |
 | `tools/dragonlink-inspect` | planned | Look at one unknown file: signature, entropy profile, structure. |
 | `tools/dragonlink-import` | planned | Source material → normalised asset set + manifest. |
@@ -63,6 +63,11 @@ The order in which it requests draws is documented (`game.rs`) because a recordi
 **The renderer does not do mathematics.** The application sends commands and presents the events and
 state it gets back. Presentation timing (how long a reel takes to stop) belongs to the application
 and is recorded with its own evidence; whether a reel stops on a given symbol does not.
+
+**The screen shows what has been presented, not what the simulation knows.** A command resolves
+at once in the simulation; the application then reveals its events over time. Anything on screen
+(the credit meter, the window) follows the events as they are shown, so a result is never visible
+before the reels that produced it. The first screenshot of the shell caught exactly this mistake.
 
 **Claims and math models are different things.** A claim is one statement about the original with
 its support. A math model is a complete, runnable configuration with a provenance. Nothing converts
