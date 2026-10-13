@@ -35,7 +35,8 @@ use bevy::render::view::screenshot::{Screenshot, save_to_disk};
 use dragonlink_core::{Command, CreditReason, DevRng, Event, Game};
 use dragonlink_model::MathModel;
 use dragonlink_model::fixtures::{
-    autumn_moon_synthetic, golden_century_synthetic, synthetic_dev_fixture,
+    autumn_moon_synthetic, golden_century_synthetic, happy_prosperous_synthetic,
+    synthetic_dev_fixture,
 };
 use dragonlink_model::{JackpotTier, OrbValue, SymbolKind};
 
@@ -57,7 +58,7 @@ const REEL_CYCLE_SECONDS: f32 = 0.05;
 /// Background of a cell on a winning line, and of a feature banner.
 const WIN_COLOR: Color = Color::srgb(0.85, 0.62, 0.12);
 
-const USAGE: &str = "usage: dragonlink [--game golden-century|autumn-moon|synthetic] \n[--smoke-frames N [--screenshot FILE]] [--seed N] [--credits N]";
+const USAGE: &str = "usage: dragonlink [--game golden-century|autumn-moon|happy-prosperous|synthetic] \n[--smoke-frames N [--screenshot FILE]] [--seed N] [--credits N]";
 
 /// Which math configuration the application runs. Both are synthetic: Golden
 /// Century has the game's evidenced structure with invented numbers, the dev
@@ -66,6 +67,7 @@ const USAGE: &str = "usage: dragonlink [--game golden-century|autumn-moon|synthe
 enum GameChoice {
     GoldenCentury,
     AutumnMoon,
+    HappyProsperous,
     Synthetic,
 }
 
@@ -74,6 +76,7 @@ impl GameChoice {
         match self {
             GameChoice::GoldenCentury => golden_century_synthetic(),
             GameChoice::AutumnMoon => autumn_moon_synthetic(),
+            GameChoice::HappyProsperous => happy_prosperous_synthetic(),
             GameChoice::Synthetic => synthetic_dev_fixture(),
         }
     }
@@ -170,11 +173,11 @@ fn parse_args(args: &[String]) -> Result<Cli, String> {
                 cli.game = match it.next().map(String::as_str) {
                     Some("golden-century") => GameChoice::GoldenCentury,
                     Some("autumn-moon") => GameChoice::AutumnMoon,
+                    Some("happy-prosperous") => GameChoice::HappyProsperous,
                     Some("synthetic") => GameChoice::Synthetic,
                     _ => {
-                        return Err(
-                            "--game is golden-century, autumn-moon or synthetic".to_string()
-                        );
+                        return Err("--game is golden-century, autumn-moon, \nhappy-prosperous or synthetic"
+                            .to_string());
                     }
                 };
             }
@@ -326,6 +329,8 @@ fn setup(mut commands: Commands, sim: Res<Sim>) {
         "GOLDEN CENTURY"
     } else if model.id.starts_with("autumn-moon") {
         "AUTUMN MOON"
+    } else if model.id.starts_with("happy-prosperous") {
+        "HAPPY & PROSPEROUS"
     } else {
         "DRAGONLINK (synthetic fixture)"
     };

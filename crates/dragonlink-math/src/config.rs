@@ -315,6 +315,32 @@ impl GameConfiguration {
         }
     }
 
+    /// A **synthetic** Happy & Prosperous configuration (`dragonlink_model::fixtures`).
+    pub fn happy_prosperous_synthetic() -> GameConfiguration {
+        let model = dragonlink_model::fixtures::happy_prosperous_synthetic();
+        let constants = required_paths(&model)
+            .into_iter()
+            .map(|path| ConstantRecord {
+                path: path.to_string(),
+                provenance: ConstantProvenance::Synthetic,
+                source: String::new(),
+                note: String::new(),
+            })
+            .collect();
+        GameConfiguration {
+            schema: SCHEMA.to_string(),
+            identity: ConfigIdentity {
+                name: "Happy & Prosperous (synthetic)".to_string(),
+                notes: "Happy & Prosperous's evidenced structure with invented strips, weights                         and jackpot amounts. Not recovered from any machine; its statistics are                         its own (docs/reverse-engineering/FOOTAGE.md)."
+                    .to_string(),
+                ..ConfigIdentity::default()
+            },
+            model,
+            constants,
+            behaviour: Behaviour::default(),
+        }
+    }
+
     /// Parse and check a configuration.
     pub fn from_json(text: &str) -> Result<GameConfiguration, ConfigError> {
         let config: GameConfiguration = serde_json::from_str(text)?;
