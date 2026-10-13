@@ -49,46 +49,55 @@ access to operating gaming systems ([LEGAL.md](LEGAL.md)).
   ([reverse-engineering/MOBILE_PACKAGE.md](reverse-engineering/MOBILE_PACKAGE.md)): the engine, the
   formats, and that the four titles are two pairs sharing their tables.
 
-## Under investigation, not yet blockers
+## Narrowed by the online evidence passes
 
-These were listed as blockers on 2026-10-13 and were withdrawn the same day: a first search had
-come up empty, which is not the same as the sources being exhausted. Each is now an active online
-evidence pass. It returns here only as a narrowed entry naming exactly what could not be found.
+Two entries were withdrawn as blockers on 2026-10-13 pending a serious search of public sources.
+The passes over the litigation record, archives and regulators, and public platform sources have
+reported. What they settled is no longer listed; what follows is what remains.
 
-### B-002 (withdrawn) — Cabinet mathematics and software
+### B-004 (narrowed) — Player-visible facts of the Australian release
 
-- **What is missing:** reel strips, weighting, RTP and its composition, feature and jackpot
-  probabilities, the outcome generator, cabinet-specific assets and timing.
-- **What is known:** the manufacturer asserts the mathematics as trade secrets and says it is not
-  in its patents (`docs/reverse-engineering/math/EVIDENCE_STATE.md`). That is a statement about what
-  the manufacturer published, not about what is public.
-- **Being searched:** litigation discovery and exhibits; regulatory exhibits and submissions;
-  patents; archived technical documents; academic and security research; preservation forums;
-  public repositories; the Internet Archive; lawfully public service documentation; machine
-  listings with media or storage photographs; publicly exposed package and file metadata; related
-  Lightning Link and Dragon Link platform research.
-- **Limit:** material that exists publicly but could only be obtained by taking pirated cabinet
-  software is recorded as a lead and not obtained.
-- **Path if that comes up empty:** the official mobile implementation, first analysed locally,
-  then, if outcomes are decided server-side, observed through automated collection and
-  reconstructed (DECISIONS D-013). So this lane is not blocked.
-- **The only residue that can stay open:** proof that the hidden probabilities are those of the
-  Australian cabinet. That needs genuine cabinet software or configuration and nothing else settles
-  it. It is recorded as a known limit of the result, not as work waiting on anyone.
+- **Settled from public sources** ([reverse-engineering/AUSTRALIAN_CONFIGURATION.md](reverse-engineering/AUSTRALIAN_CONFIGURATION.md)):
+  the line configurations (50, 25 and 5 lines), the denominations per state, the launch cabinets,
+  each title's free-games rule, the retrigger for two titles, the four jackpot levels and, at
+  strong evidence, which are progressive; and venue start-up values for the Grand.
+- **Still not found**, for all four titles: any return figure; the bet ladder and which
+  denominations use which line count; the pay table; the free-games trigger count and initial award
+  on an Australian machine; the Hold & Spin instruction text and prize values per denomination; the
+  Major's parameters and all increment rates; whether the 2024 and later builds keep the
+  configuration.
+- **Still being searched:** the two footage passes, frame by frame, for exactly those screens.
+- **Not exhausted, recorded so they are not assumed done:** forums and marketplaces that refused
+  automated reading; other US regulators' certification lists; open-data portals of NSW.
+- **Asked of the owner:** nothing. A visit to a machine would be asked only for a field that
+  footage turns out not to show.
 
-### B-004 (withdrawn) — Player-visible rules, pay tables and game information
+### B-002 (narrowed) — Cabinet software and mathematics
 
-- **What is missing:** per title and build, the number of lines, the bet ladder, denominations, the
-  pay table, feature rules (free games count and retriggers), which jackpot levels are progressive,
-  and the displayed return figure.
-- **What is known:** these are shown to players on the machine's own screens. Footage of all four
-  titles exists, including Australian footage, and the litigation record reproduces pay-table
-  screens.
-- **Being searched:** recordings of each title for the Help, Rules, Paytable and Game Information
-  screens, cross-referenced between recordings to tell cabinet generations and configurations
-  apart; the full litigation filings and exhibits; archived product pages, brochures and manuals.
-- **Not asked of the owner:** a visit to a machine. That would be asked only for a specific field
-  that the online pass shows cannot be recovered.
+- **Settled from public sources**
+  ([reverse-engineering/PUBLISHED_RETURNS.md](reverse-engineering/PUBLISHED_RETURNS.md),
+  [reverse-engineering/PLATFORM_SOFTWARE.md](reverse-engineering/PLATFORM_SOFTWARE.md),
+  [reverse-engineering/LITIGATION.md](reverse-engineering/LITIGATION.md)): a published US payout
+  range for Golden Century and Happy & Prosperous; Lightning Link's Australian denominations,
+  maximum bet and return by denomination; the rules any compliant build must satisfy on outcome
+  selection, timing, independence and jackpots; the base-software lineage and identifiers from
+  Gen7 to Gen10; the Gen7 storage layout and boot-chain design; that the feature draws from its
+  own reels in Lightning Link.
+- **Not public**, after these passes:
+  - *mathematics, every Australian build:* reel strips for base game, free games and the feature;
+    symbol and prize weight tables; variations and their returns; return composition; hit, feature
+    and free-games frequency; jackpot hit probabilities, start-up, increment and ceiling; what
+    changed between generations;
+  - *platform, Gen8 and later:* the storage and file-system layout from a primary source; the game
+    package format and its protection; the engine; the random number generator's algorithm and
+    call sites; any file listing or hash of a Dragon Link build.
+- **Path that needs no software:** reel windows read from public footage of machines and assembled
+  into strips (DECISIONS D-015). It will not give prize weighting or jackpot rates.
+- **Not exhausted:** the patent sweep (several sources refused automated reading; some patents
+  unread); regulators' disclosure logs; test laboratories' public reports.
+- **Exists and is not obtained** (the owner's decisions, none taken): leaked or unlicensed copies of
+  machine software and confidential sheets; used game media sold by equipment resellers; a formal
+  information request to a regulator; redacted court filings available for a fee.
 
 ## Resolved
 

@@ -21,6 +21,10 @@ and the content it downloads for Golden Century ([MOBILE_PACKAGE.md](MOBILE_PACK
 | Mathematics and analysis (a research lane of its own) | [math/](math/README.md) | no original mathematics held; method and tooling |
 | Official mobile reference software | [MOBILE_REFERENCE.md](MOBILE_REFERENCE.md) | apps identified from listings |
 | The official mobile package, first inventory | [MOBILE_PACKAGE.md](MOBILE_PACKAGE.md) | Mighty Fu Casino 5.6.0 held, hashed and measured; formats under analysis |
+| The Australian release: lines, denominations, cabinets, free games, jackpots | [AUSTRALIAN_CONFIGURATION.md](AUSTRALIAN_CONFIGURATION.md) | established from the manufacturer's archived pages; pay table, bet ladder and returns not found |
+| Published return figures; what regulation requires | [PUBLISHED_RETURNS.md](PUBLISHED_RETURNS.md) | a US range for two titles; Lightning Link in Australia by denomination; constraints with clause numbers |
+| The litigation record | [LITIGATION.md](LITIGATION.md) | free public record read; structure, admissions, the Australian launch year |
+| Platform software | [PLATFORM_SOFTWARE.md](PLATFORM_SOFTWARE.md) | lineage and Gen7 layout public; Gen8 and later internals not |
 | Patents | [PATENTS.md](PATENTS.md) | core family summarised |
 | Reference footage | [REFERENCE_MEDIA.md](REFERENCE_MEDIA.md) | sources listed; nothing watched |
 | Conflicts, things not found, leads | [OPEN_QUESTIONS.md](OPEN_QUESTIONS.md) | current |

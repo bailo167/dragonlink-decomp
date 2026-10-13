@@ -154,14 +154,16 @@ name = "Reverse engineering"
 [[category.item]]
 id = "platform-research"
 name = "Dragon Link cabinet and platform research"
-status = "partial"
-note = "Three Australian generations and their platforms established from ACT instruments (docs/reverse-engineering/PLATFORMS.md); launch cabinet and what changed between generations unknown."
+status = "implemented"
+evidence = "docs/reverse-engineering/PLATFORMS.md; PLATFORM_SOFTWARE.md; AUSTRALIAN_CONFIGURATION.md"
+note = "Generations, base-software lineage and the launch cabinets are documented from regulators' records and the manufacturer's archived pages. The internals of Gen8 and later are not public."
 
 [[category.item]]
 id = "regulatory-inventory"
 name = "Regulatory source inventory"
-status = "partial"
-note = "ACT and Victorian approvals catalogued with identifiers (docs/reverse-engineering/REGULATORY.md); no register found for NSW, Qld, SA, Tas, NT, WA; no RTP in any source."
+status = "implemented"
+evidence = "docs/reverse-engineering/REGULATORY.md; PUBLISHED_RETURNS.md; AUSTRALIAN_CONFIGURATION.md"
+note = "ACT register swept 2016 to 2026; Victoria and one US regulator mined; the national standard's requirements recorded. No title-level register exists publicly for NSW, Qld, SA, Tas, NT or WA. No Australian return figure for Dragon Link exists publicly."
 
 [[category.item]]
 id = "mobile-inventory"
@@ -376,31 +378,31 @@ note = "Not found in a first search. Footage of all four titles and pay-table sc
 id = "denomination-bet-effects"
 name = "Denomination and bet effects"
 status = "investigating"
-note = "Lead: the complaint quotes different pay-table figures for two denominations. Nothing established for Australia."
+note = "Lightning Link, Australia 2015: return published per denomination, rising about 0.38 points per step (docs/reverse-engineering/PUBLISHED_RETURNS.md). Regulation caps the effect of bet options at 0.20 points and requires jackpot chances linear in the bet. Nothing published for Dragon Link in Australia."
 
 [[category.item]]
 id = "version-differences"
 name = "Mathematical differences between program versions"
 status = "investigating"
-note = "No source held. An online evidence pass over litigation, regulatory, archival and research sources is under way (docs/BLOCKERS.md); it is not treated as blocked until those are exhausted."
+note = "Identifiers of every Australian generation and of US builds are recorded, and the manufacturer says dozens of iterations share a similar design (LITIGATION.md). What differs is not public."
 
 [[category.item]]
 id = "rng-architecture"
 name = "RNG architecture and call sites"
 status = "investigating"
-note = "No source held. An online evidence pass over litigation, regulatory, archival and research sources is under way (docs/BLOCKERS.md); it is not treated as blocked until those are exhausted."
+note = "Regulatory requirements by revision are documented (continuous cycling before 2021, a cryptographic generator after). The algorithm, seeding and call sites of the product are not public."
 
 [[category.item]]
 id = "outcome-selection"
 name = "Outcome selection, reel-stop relationship and input timing"
 status = "investigating"
-note = "No source held. An online evidence pass over litigation, regulatory, archival and research sources is under way (docs/BLOCKERS.md); it is not treated as blocked until those are exhausted."
+note = "What regulation requires is documented with clause numbers (PUBLISHED_RETURNS.md): outcome from the generator before presentation; timing cannot change the distribution. Not verified in any Dragon Link software."
 
 [[category.item]]
 id = "state-dependence"
 name = "State dependence and persistence between spins"
 status = "investigating"
-note = "No source held. An online evidence pass over litigation, regulatory, archival and research sources is under way (docs/BLOCKERS.md); it is not treated as blocked until those are exhausted."
+note = "Regulation requires independent outcomes and permits only declared metamorphic tokens and progressive pools as carried state (PUBLISHED_RETURNS.md). Not verified in any Dragon Link software."
 
 [[category.item]]
 id = "mobile-vs-cabinet"
@@ -550,14 +552,15 @@ name = "Golden Century"
 [[category.item]]
 id = "identity"
 name = "Title identity, versions and regulatory identifiers"
-status = "partial"
-note = "Four ACT specifications and two Victorian builds recorded (docs/reverse-engineering/GOLDEN_CENTURY.md); other jurisdictions and what changed between generations unknown."
+status = "implemented"
+evidence = "docs/reverse-engineering/REGULATORY.md; AUSTRALIAN_CONFIGURATION.md"
+note = "ACT specifications across generations, Victorian builds, US personality identifiers and the 2016 Australian launch are recorded. NSW and Queensland approvals are not public; what changed between generations is unknown."
 
 [[category.item]]
 id = "layout"
 name = "Reel layout and lines"
-status = "investigating"
-note = "Five reels by three rows stated for the US family; five paylines found in the mobile build's payline module (one analysis pass). The Australian build is unconfirmed."
+status = "partial"
+note = "Australia: five reels by three rows (stated for the family) with 50-, 25- and 5-line configurations, from the manufacturer's archived pages. Which denomination uses which line count, and the payline shapes, are not found."
 
 [[category.item]]
 id = "symbols"
@@ -573,7 +576,8 @@ status = "not_started"
 [[category.item]]
 id = "bets"
 name = "Denominations and bet options"
-status = "not_started"
+status = "partial"
+note = "Australian denominations per state are established from the manufacturer's archived pages. The bet ladder is not found."
 
 [[category.item]]
 id = "reel-strips"
@@ -589,13 +593,14 @@ note = "Trigger of six prize symbols confirmed in the mobile build's own strings
 [[category.item]]
 id = "jackpots"
 name = "Jackpot levels and presentation"
-status = "not_started"
+status = "investigating"
+note = "Four levels; strong evidence that in Australia the Grand is linked, the Major a stand-alone progressive, and the Minor and Mini fixed. Venue start-up values for the Grand recorded. Major parameters and increment rates not public. Not implemented."
 
 [[category.item]]
 id = "free-games"
 name = "Free games feature"
 status = "investigating"
-note = "Trigger of three scatters confirmed in the mobile build's own strings and in the US complaint; the mystery-symbol rule from official pages; count and retriggers unknown; not implemented."
+note = "Australia: mystery symbols all reveal the same symbol, and can lead into Hold & Spin (manufacturer's archived page). Trigger of three scatters from the US record and the mobile build. Initial award not stated officially. Not implemented."
 
 [[category.item]]
 id = "art-ui"
@@ -639,13 +644,15 @@ name = "Happy & Prosperous"
 [[category.item]]
 id = "identity"
 name = "Title identity, versions and regulatory identifiers"
-status = "partial"
-note = "ACT specifications and Victorian builds recorded; other jurisdictions unknown."
+status = "implemented"
+evidence = "docs/reverse-engineering/REGULATORY.md; AUSTRALIAN_CONFIGURATION.md"
+note = "ACT specifications across generations, Victorian builds, US personality identifiers and the 2016 Australian launch are recorded. NSW and Queensland approvals are not public; what changed between generations is unknown."
 
 [[category.item]]
 id = "layout"
 name = "Reel layout and lines"
-status = "not_started"
+status = "partial"
+note = "Australia: five reels by three rows (stated for the family) with 50-, 25- and 5-line configurations, from the manufacturer's archived pages. Which denomination uses which line count, and the payline shapes, are not found."
 
 [[category.item]]
 id = "symbols"
@@ -660,7 +667,8 @@ status = "not_started"
 [[category.item]]
 id = "bets"
 name = "Denominations and bet options"
-status = "not_started"
+status = "partial"
+note = "Australian denominations per state are established from the manufacturer's archived pages. The bet ladder is not found."
 
 [[category.item]]
 id = "reel-strips"
@@ -675,12 +683,14 @@ status = "not_started"
 [[category.item]]
 id = "jackpots"
 name = "Jackpot levels and presentation"
-status = "not_started"
+status = "investigating"
+note = "Four levels; strong evidence that in Australia the Grand is linked, the Major a stand-alone progressive, and the Minor and Mini fixed. Venue start-up values for the Grand recorded. Major parameters and increment rates not public. Not implemented."
 
 [[category.item]]
 id = "free-games"
 name = "Free games feature"
-status = "not_started"
+status = "investigating"
+note = "Australia: royals removed, and three extra free games on any scatter win during the feature (manufacturer's archived page). Initial award not found. Not implemented."
 
 [[category.item]]
 id = "art-ui"
@@ -723,13 +733,15 @@ name = "Panda Magic"
 [[category.item]]
 id = "identity"
 name = "Title identity, versions and regulatory identifiers"
-status = "partial"
-note = "ACT specifications and Victorian builds recorded; other jurisdictions unknown."
+status = "implemented"
+evidence = "docs/reverse-engineering/REGULATORY.md; AUSTRALIAN_CONFIGURATION.md"
+note = "ACT specifications across generations, Victorian builds, US personality identifiers and the 2016 Australian launch are recorded. NSW and Queensland approvals are not public; what changed between generations is unknown."
 
 [[category.item]]
 id = "layout"
 name = "Reel layout and lines"
-status = "not_started"
+status = "partial"
+note = "Australia: five reels by three rows (stated for the family) with 50-, 25- and 5-line configurations, from the manufacturer's archived pages. Which denomination uses which line count, and the payline shapes, are not found."
 
 [[category.item]]
 id = "symbols"
@@ -744,7 +756,8 @@ status = "not_started"
 [[category.item]]
 id = "bets"
 name = "Denominations and bet options"
-status = "not_started"
+status = "partial"
+note = "Australian denominations per state are established from the manufacturer's archived pages. The bet ladder is not found."
 
 [[category.item]]
 id = "reel-strips"
@@ -759,12 +772,14 @@ status = "not_started"
 [[category.item]]
 id = "jackpots"
 name = "Jackpot levels and presentation"
-status = "not_started"
+status = "investigating"
+note = "Four levels; strong evidence that in Australia the Grand is linked, the Major a stand-alone progressive, and the Minor and Mini fixed. Venue start-up values for the Grand recorded. Major parameters and increment rates not public. Not implemented."
 
 [[category.item]]
 id = "free-games"
 name = "Free games feature"
-status = "not_started"
+status = "investigating"
+note = "Australia: royals removed, and three extra free games on any scatter during the feature (manufacturer's archived page). Initial award not found. Not implemented."
 
 [[category.item]]
 id = "art-ui"
@@ -807,13 +822,15 @@ name = "Autumn Moon"
 [[category.item]]
 id = "identity"
 name = "Title identity, versions and regulatory identifiers"
-status = "partial"
-note = "ACT specifications and Victorian builds recorded; other jurisdictions unknown."
+status = "implemented"
+evidence = "docs/reverse-engineering/REGULATORY.md; AUSTRALIAN_CONFIGURATION.md"
+note = "ACT specifications across generations, Victorian builds, US personality identifiers and the 2016 Australian launch are recorded. NSW and Queensland approvals are not public; what changed between generations is unknown."
 
 [[category.item]]
 id = "layout"
 name = "Reel layout and lines"
-status = "not_started"
+status = "partial"
+note = "Australia: five reels by three rows (stated for the family) with 50-, 25- and 5-line configurations, from the manufacturer's archived pages. Which denomination uses which line count, and the payline shapes, are not found."
 
 [[category.item]]
 id = "symbols"
@@ -828,7 +845,8 @@ status = "not_started"
 [[category.item]]
 id = "bets"
 name = "Denominations and bet options"
-status = "not_started"
+status = "partial"
+note = "Australian denominations per state are established from the manufacturer's archived pages. The bet ladder is not found."
 
 [[category.item]]
 id = "reel-strips"
@@ -843,12 +861,14 @@ status = "not_started"
 [[category.item]]
 id = "jackpots"
 name = "Jackpot levels and presentation"
-status = "not_started"
+status = "investigating"
+note = "Four levels; strong evidence that in Australia the Grand is linked, the Major a stand-alone progressive, and the Minor and Mini fixed. Venue start-up values for the Grand recorded. Major parameters and increment rates not public. Not implemented."
 
 [[category.item]]
 id = "free-games"
 name = "Free games feature"
-status = "not_started"
+status = "investigating"
+note = "Australia: the same reveal rule as Golden Century (manufacturer's archived page). Initial award and retrigger not found. Not implemented."
 
 [[category.item]]
 id = "art-ui"

@@ -132,6 +132,22 @@ shell runs the simulation on screen.
 - An assertion in the filings that confidential PAR sheets were posted online is recorded and not
   followed.
 
+### Online evidence passes: archives, regulators, platform (2026-10-13)
+
+- **The Australian configuration is established** from the manufacturer's own archived pages: 50-,
+  25- and 5-line configurations, denominations per state, the Helix launch cabinets, each title's
+  free-games rule, and at strong evidence the jackpot structure
+  ([reverse-engineering/AUSTRALIAN_CONFIGURATION.md](reverse-engineering/AUSTRALIAN_CONFIGURATION.md)).
+- **Return figures exist publicly after all**: a US regulator prints a payout range for Golden
+  Century and Happy & Prosperous, and the ACT printed Lightning Link's return per denomination in
+  2015. No Australian figure for Dragon Link was found
+  ([reverse-engineering/PUBLISHED_RETURNS.md](reverse-engineering/PUBLISHED_RETURNS.md)).
+- **What regulation requires** on outcome selection, timing, independence and jackpots is recorded
+  with clause numbers, answering several of the mathematics lane's questions as constraints.
+- **Platform lineage** from Gen7 to Gen10 is documented; the internals of Gen8 and later are not
+  public ([reverse-engineering/PLATFORM_SOFTWARE.md](reverse-engineering/PLATFORM_SOFTWARE.md)).
+- The blocker entries are narrowed to what these passes could not find.
+
 ## Known limits of what exists
 
 - Every rule in the simulation is a generic slot-game rule, written down so it can be checked. None
