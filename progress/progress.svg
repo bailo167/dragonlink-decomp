@@ -20,7 +20,7 @@ text{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,san
 </style>
 <rect class="bg" x="0.5" y="0.5" width="979" height="552" rx="8"/>
 <text class="ttl" x="24" y="38">dragonlink-decomp — preservation progress</text>
-<text class="sub" x="24" y="62">Completion 23% (35 of 151 items implemented or verified) · Verified 0% (0) · Current milestone: M1 — Evidence</text>
+<text class="sub" x="24" y="62">Completion 23% (36 of 151 items implemented or verified) · Verified 0% (0) · Current milestone: M1 — Evidence</text>
 <text class="muted" x="24" y="84">Generated from progress/progress.toml by tools/progress-gen. Completion = (implemented + verified) / total; floored.</text>
 <text class="lbl" x="24" y="117">Milestones</text>
 <rect class="c implemented" x="206" y="104" width="18" height="18" rx="2"><title>M0 — Foundation: Implemented — Stage A: workspace, hygiene, progress tooling, docs, Windows gate, CI and the source root all exist and work. RE applications are installed when first needed.</title></rect>
@@ -113,14 +113,14 @@ text{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,san
 <g><title>Shared game runtime / Feature triggering — Partial — Hold &amp; Spin by orb count only.</title><rect class="c partial-o" x="413.5" y="261.5" width="17" height="17" rx="2"/><path class="partial-f" d="M413 261h9v18h-9z"/></g>
 <g><title>Shared game runtime / Hold &amp; Spin framework — Partial — Parameterised respin loop with tests; trigger count, respins, chances and values are synthetic.</title><rect class="c partial-o" x="436.5" y="261.5" width="17" height="17" rx="2"/><path class="partial-f" d="M436 261h9v18h-9z"/></g>
 <g><title>Shared game runtime / Jackpot model and presentation — Partial — Four named levels with fixed amounts; progressive meters and presentation are not started.</title><rect class="c partial-o" x="459.5" y="261.5" width="17" height="17" rx="2"/><path class="partial-f" d="M459 261h9v18h-9z"/></g>
-<rect class="c not_started" x="482.5" y="261.5" width="17" height="17" rx="2"><title>Shared game runtime / Free-game framework — Not started</title></rect>
+<rect class="c implemented" x="482" y="261" width="18" height="18" rx="2"><title>Shared game runtime / Free-game framework — Implemented — Scatter trigger, an award of free games on their own reels played without a bet, a mystery-symbol reveal (one drawn symbol fills every mystery position), retrigger, and a clean return to the base game. Modelled as FreeGamesModel; the synthetic Golden Century config uses it. The exact free-game strips, reveal weights and retrigger size are synthetic.</title></rect>
 <rect class="c not_started" x="505.5" y="261.5" width="17" height="17" rx="2"><title>Shared game runtime / Audio — Not started</title></rect>
 <rect class="c not_started" x="528.5" y="261.5" width="17" height="17" rx="2"><title>Shared game runtime / Animation — Not started</title></rect>
 <rect class="c not_started" x="551.5" y="261.5" width="17" height="17" rx="2"><title>Shared game runtime / VFX — Not started</title></rect>
 <g><title>Shared game runtime / UI — Partial — Placeholder HUD: banner, credit meter, bet, status line, generated cells. Nothing reproduces the original UI.</title><rect class="c partial-o" x="574.5" y="261.5" width="17" height="17" rx="2"/><path class="partial-f" d="M574 261h9v18h-9z"/></g>
 <g><title>Shared game runtime / Input — Partial — Keyboard only: spin and feature step, bet up and down, quit.</title><rect class="c partial-o" x="597.5" y="261.5" width="17" height="17" rx="2"/><path class="partial-f" d="M597 261h9v18h-9z"/></g>
 <g><title>Shared game runtime / Save and settings handling — Partial — Game state serialises and resumes mid-feature; no settings, no persistence in an app.</title><rect class="c partial-o" x="620.5" y="261.5" width="17" height="17" rx="2"/><path class="partial-f" d="M620 261h9v18h-9z"/></g>
-<text class="pct" x="830" y="274">10%</text><text class="muted" x="876" y="274">2/19 · ✓0</text>
+<text class="pct" x="830" y="274">15%</text><text class="muted" x="876" y="274">3/19 · ✓0</text>
 <text class="lbl" x="24" y="305">Golden Century</text>
 <rect class="c implemented" x="206" y="292" width="18" height="18" rx="2"><title>Golden Century / Title identity, versions and regulatory identifiers — Implemented — ACT specifications across generations, Victorian builds, US personality identifiers and the 2016 Australian launch are recorded. NSW and Queensland approvals are not public; what changed between generations is unknown.</title></rect>
 <g><title>Golden Century / Reel layout and lines — Partial — Australia (Queensland clubs): five by three; lines chosen by the player up to 50 at 1c and 2c, 25 at 5c and 10c, 5 at $1; the shapes of lines 1 to 5 established from win messages. Lines 6 to 50 not found.</title><rect class="c partial-o" x="229.5" y="292.5" width="17" height="17" rx="2"/><path class="partial-f" d="M229 292h9v18h-9z"/></g>
@@ -130,7 +130,7 @@ text{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,san
 <rect class="c not_started" x="321.5" y="292.5" width="17" height="17" rx="2"><title>Golden Century / Reel strips and weighting — Not started</title></rect>
 <rect class="c investigating" x="344" y="292" width="18" height="18" rx="2"><title>Golden Century / Hold &amp; Spin rules and presentation — Investigating — Australia, from public footage: six prize symbols trigger; spins-remaining and collected-of-fifteen counters; prizes in credits or a level's name, tallied at the end. No rules text for this title; value set and weights unknown. Not implemented to these observations.</title></rect>
 <rect class="c investigating" x="367" y="292" width="18" height="18" rx="2"><title>Golden Century / Jackpot levels and presentation — Investigating — Australia, from public footage: Grand and Major are running meters; Mini and Minor are fixed per denomination (1,000 and 5,000 credits up to 10c; 250 and 1,250 at $1). Strong evidence the Grand is linked and the Major stand-alone. Start-up values, rates and ceilings not public. Not implemented.</title></rect>
-<g><title>Golden Century / Free games feature — Partial — Australia: three scatters award six free games; mystery symbols land in blocks and reveal one symbol (public footage, agreeing with the manufacturer's page). Retrigger not seen. Not implemented.</title><rect class="c partial-o" x="390.5" y="292.5" width="17" height="17" rx="2"/><path class="partial-f" d="M390 292h9v18h-9z"/></g>
+<g><title>Golden Century / Free games feature — Partial — Australia: three scatters award six free games; mystery symbols reveal one symbol; retriggers (public footage and the manufacturer's page). The synthetic Golden Century config implements this (six games, reveal, retrigger) with synthetic strips and weights; the app does not yet present it. Initial award six is official.</title><rect class="c partial-o" x="390.5" y="292.5" width="17" height="17" rx="2"/><path class="partial-f" d="M390 292h9v18h-9z"/></g>
 <rect class="c not_started" x="413.5" y="292.5" width="17" height="17" rx="2"><title>Golden Century / Title artwork, UI layout and typography — Not started</title></rect>
 <rect class="c not_started" x="436.5" y="292.5" width="17" height="17" rx="2"><title>Golden Century / Sound and music — Not started</title></rect>
 <rect class="c not_started" x="459.5" y="292.5" width="17" height="17" rx="2"><title>Golden Century / Animation and sequence timing — Not started</title></rect>
@@ -217,7 +217,7 @@ text{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,san
 <g><title>Verified</title><rect class="c verified" x="24" y="516" width="18" height="18" rx="2"/><path class="mark" d="M27 525l4 4l7 -8"/></g>
 <text class="muted" x="48" y="527">Verified (0)</text>
 <rect class="c implemented" x="154" y="516" width="18" height="18" rx="2"><title>Implemented</title></rect>
-<text class="muted" x="178" y="527">Implemented (35)</text>
+<text class="muted" x="178" y="527">Implemented (36)</text>
 <g><title>Partial</title><rect class="c partial-o" x="312.5" y="516.5" width="17" height="17" rx="2"/><path class="partial-f" d="M312 516h9v18h-9z"/></g>
 <text class="muted" x="336" y="527">Partial (49)</text>
 <rect class="c investigating" x="442" y="516" width="18" height="18" rx="2"><title>Investigating</title></rect>
@@ -225,5 +225,5 @@ text{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,san
 <g><title>Blocked</title><rect class="c blocked" x="614" y="516" width="18" height="18" rx="2"/><path class="mark" d="M619 521l8 8M627 521l-8 8"/></g>
 <text class="muted" x="638" y="527">Blocked (2)</text>
 <rect class="c not_started" x="737.5" y="516.5" width="17" height="17" rx="2"><title>Not started</title></rect>
-<text class="muted" x="761" y="527">Not started (45)</text>
+<text class="muted" x="761" y="527">Not started (44)</text>
 </svg>

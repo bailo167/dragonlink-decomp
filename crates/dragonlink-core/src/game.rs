@@ -26,7 +26,8 @@
 //! of the original.
 
 use dragonlink_model::{
-    HoldAndSpinModel, JackpotTier, MathModel, ModelError, OrbValue, SymbolId, SymbolKind,
+    FreeGamesModel, HoldAndSpinModel, JackpotTier, MathModel, ModelError, OrbValue, SymbolId,
+    SymbolKind,
 };
 use serde::{Deserialize, Serialize};
 
@@ -98,12 +99,32 @@ impl HoldAndSpinState {
     }
 }
 
+/// Free games in progress. Taken out of the phase while one is played, so the
+/// credit meter can change without aliasing.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct FreeGamesState {
+    /// Free games still to play, including any added by a retrigger.
+    pub games_left: u32,
+    /// Free games played so far.
+    pub games_played: u32,
+    /// Everything paid since the feature began, the triggering spin included.
+    pub total_award: u64,
+    /// What the triggering spin itself paid; the free games are `total_award`
+    /// less this.
+    pub base_award: u64,
+    /// The stake fixed when the feature began.
+    pub total_bet: u64,
+    pub credits_per_line: u32,
+    pub lines: u16,
+}
+
 /// Where the game is.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Phase {
     Idle,
     HoldAndSpin(HoldAndSpinState),
+    FreeGames(FreeGamesState),
 }
 
 /// Everything that changes while playing.
@@ -144,6 +165,21 @@ fn draw_orb_value(hs: &HoldAndSpinModel, rng: &mut dyn OutcomeRng) -> Result<Orb
         pick -= entry.weight;
     }
     Err(GameError::Invariant("orb value draw past the table"))
+}
+
+/// Draw the symbol a mystery reveals to. The weights are nonzero and sum to a
+/// positive total (checked by [`MathModel::validate`]).
+fn draw_reveal(fg: &FreeGamesModel, rng: &mut dyn OutcomeRng) -> Result<SymbolId, GameError> {
+    let total: u64 = fg.reveal_values.iter().map(|v| u64::from(v.weight)).sum();
+    let total = u32::try_from(total).map_err(|_| GameError::Overflow)?;
+    let mut pick = rng.below(total)?;
+    for entry in &fg.reveal_values {
+        if pick < entry.weight {
+            return Ok(entry.symbol);
+        }
+        pick -= entry.weight;
+    }
+    Err(GameError::Invariant("reveal draw past the table"))
 }
 
 fn jackpot_award(
@@ -408,15 +444,26 @@ impl Game {
             next.credits = to;
         }
 
-        // Feature.
+        // Feature. Hold & Spin takes precedence over free games on a spin
+        // that could start both.
         let orb_count = orbs.iter().flatten().count();
-        let trigger = self
+        let scatter_count = self
+            .model
+            .scatter_symbol()
+            .map(|sc| grid.iter().filter(|(_, _, s)| *s == sc).count())
+            .unwrap_or(0);
+        let hs_trigger = self
             .model
             .hold_and_spin
             .as_ref()
             .filter(|hs| orb_count >= hs.trigger_count as usize);
+        let fg_trigger = self
+            .model
+            .free_games
+            .as_ref()
+            .filter(|fg| hs_trigger.is_none() && scatter_count >= fg.trigger_count as usize);
         next.last_grid = Some(grid);
-        if let Some(hs) = trigger {
+        if let Some(hs) = hs_trigger {
             events.push(Event::FeatureTriggered {
                 feature: Feature::HoldAndSpin,
                 count: orb_count as u8,
@@ -432,6 +479,23 @@ impl Game {
                 total_bet,
                 base_award,
             });
+        } else if let Some(fg) = fg_trigger {
+            events.push(Event::FeatureTriggered {
+                feature: Feature::FreeGames,
+                count: scatter_count as u8,
+            });
+            events.push(Event::FreeGamesStarted {
+                games: fg.initial_games,
+            });
+            next.phase = Phase::FreeGames(FreeGamesState {
+                games_left: u32::from(fg.initial_games),
+                games_played: 0,
+                total_award: base_award,
+                base_award,
+                total_bet,
+                credits_per_line,
+                lines: self.lines(),
+            });
         } else {
             events.push(Event::SpinCompleted {
                 spin: next.spins,
@@ -442,6 +506,165 @@ impl Game {
     }
 
     fn advance(
+        &self,
+        next: &mut GameState,
+        rng: &mut dyn OutcomeRng,
+        events: &mut Vec<Event>,
+    ) -> Result<(), GameError> {
+        match next.phase {
+            Phase::HoldAndSpin(_) => self.advance_hold_and_spin(next, rng, events),
+            Phase::FreeGames(_) => self.advance_free_games(next, rng, events),
+            Phase::Idle => Err(GameError::NoFeatureInProgress),
+        }
+    }
+
+    /// Play one free game.
+    fn advance_free_games(
+        &self,
+        next: &mut GameState,
+        rng: &mut dyn OutcomeRng,
+        events: &mut Vec<Event>,
+    ) -> Result<(), GameError> {
+        let fg = self.model.free_games.as_ref().ok_or(GameError::Invariant(
+            "free games without a free-games model",
+        ))?;
+        // Take the state out so the credit meter can change without aliasing.
+        let Phase::FreeGames(mut state) = std::mem::replace(&mut next.phase, Phase::Idle) else {
+            return Err(GameError::NoFeatureInProgress);
+        };
+        let rows = self.model.grid.rows as usize;
+        let number = state
+            .games_played
+            .checked_add(1)
+            .ok_or(GameError::Overflow)?;
+        state.games_played = number;
+        state.games_left = state.games_left.saturating_sub(1);
+        events.push(Event::FreeGameStarted {
+            number,
+            remaining: state.games_left,
+        });
+
+        // The free reels.
+        let mut cells = Vec::with_capacity(self.model.grid.cells());
+        for (reel, strip) in fg.free_reel_strips.iter().enumerate() {
+            let len = u32::try_from(strip.len()).map_err(|_| GameError::Overflow)?;
+            let stop = rng.below(len)?;
+            let visible: Vec<SymbolId> = (0..rows)
+                .map(|row| strip[(stop as usize + row) % strip.len()])
+                .collect();
+            events.push(Event::ReelStopped {
+                reel: reel as u8,
+                stop: Some(stop),
+                symbols: visible.iter().map(|s| self.key(*s)).collect(),
+            });
+            cells.extend(visible);
+        }
+        let mut grid = Grid::new(self.model.grid, cells).ok_or(GameError::Invariant(
+            "free window size does not match the model",
+        ))?;
+
+        // The reveal: one drawn symbol fills every mystery position.
+        if let Some(mystery) = fg.mystery {
+            let count = grid.iter().filter(|(_, _, s)| *s == mystery).count();
+            if count > 0 {
+                let revealed = draw_reveal(fg, rng)?;
+                let new_cells: Vec<SymbolId> = grid
+                    .iter()
+                    .map(|(_, _, s)| if s == mystery { revealed } else { s })
+                    .collect();
+                grid = Grid::new(self.model.grid, new_cells)
+                    .ok_or(GameError::Invariant("reveal window size"))?;
+                events.push(Event::MysteryRevealed {
+                    symbol: self.key(revealed),
+                    count: count as u8,
+                });
+            }
+        }
+
+        // Pays. A free game takes no bet.
+        let wins = evaluate_lines(
+            &self.model,
+            &grid,
+            state.credits_per_line,
+            state.total_bet,
+            usize::from(state.lines),
+        )
+        .ok_or(GameError::Overflow)?;
+        let mut award = 0u64;
+        for win in &wins {
+            award = add(award, win.award())?;
+            events.push(match win {
+                Win::Line {
+                    line,
+                    symbol,
+                    count,
+                    award,
+                } => Event::LineWin {
+                    line: *line,
+                    symbol: self.key(*symbol),
+                    count: *count,
+                    award: *award,
+                },
+                Win::Scatter {
+                    symbol,
+                    count,
+                    award,
+                } => Event::ScatterWin {
+                    symbol: self.key(*symbol),
+                    count: *count,
+                    award: *award,
+                },
+            });
+        }
+        if award > 0 {
+            let to = add(next.credits, award)?;
+            events.push(Event::CreditsChanged {
+                from: next.credits,
+                to,
+                reason: CreditReason::Win,
+            });
+            next.credits = to;
+        }
+        state.total_award = add(state.total_award, award)?;
+
+        // Retrigger.
+        if fg.retrigger_count > 0 {
+            let scatters = self
+                .model
+                .scatter_symbol()
+                .map(|sc| grid.iter().filter(|(_, _, s)| *s == sc).count())
+                .unwrap_or(0);
+            if scatters >= fg.retrigger_count as usize {
+                state.games_left = state
+                    .games_left
+                    .checked_add(u32::from(fg.retrigger_games))
+                    .ok_or(GameError::Overflow)?;
+                events.push(Event::FreeGamesRetriggered {
+                    added: fg.retrigger_games,
+                    remaining: state.games_left,
+                });
+            }
+        }
+        events.push(Event::FreeGameCompleted { number, award });
+
+        if state.games_left == 0 {
+            events.push(Event::FreeGamesCompleted {
+                games_played: state.games_played,
+                total_award: state.total_award - state.base_award,
+            });
+            events.push(Event::SpinCompleted {
+                spin: next.spins,
+                total_award: state.total_award,
+            });
+            // next.phase is already Idle.
+        } else {
+            next.phase = Phase::FreeGames(state);
+        }
+        Ok(())
+    }
+
+    /// Play one Hold & Spin respin, and finish the feature when it ends.
+    fn advance_hold_and_spin(
         &self,
         next: &mut GameState,
         rng: &mut dyn OutcomeRng,
@@ -623,6 +846,7 @@ mod tests {
                     },
                 ],
             }),
+            free_games: None,
         }
     }
 

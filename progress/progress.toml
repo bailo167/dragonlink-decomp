@@ -507,7 +507,9 @@ note = "Four named levels with fixed amounts; progressive meters and presentatio
 [[category.item]]
 id = "free-games"
 name = "Free-game framework"
-status = "not_started"
+status = "implemented"
+evidence = "crates/dragonlink-core/src/game.rs (advance_free_games); crates/dragonlink-math/tests/gc_synthetic_plays.rs"
+note = "Scatter trigger, an award of free games on their own reels played without a bet, a mystery-symbol reveal (one drawn symbol fills every mystery position), retrigger, and a clean return to the base game. Modelled as FreeGamesModel; the synthetic Golden Century config uses it. The exact free-game strips, reveal weights and retrigger size are synthetic."
 
 [[category.item]]
 id = "audio"
@@ -602,7 +604,7 @@ note = "Australia, from public footage: Grand and Major are running meters; Mini
 id = "free-games"
 name = "Free games feature"
 status = "partial"
-note = "Australia: three scatters award six free games; mystery symbols land in blocks and reveal one symbol (public footage, agreeing with the manufacturer's page). Retrigger not seen. Not implemented."
+note = "Australia: three scatters award six free games; mystery symbols reveal one symbol; retriggers (public footage and the manufacturer's page). The synthetic Golden Century config implements this (six games, reveal, retrigger) with synthetic strips and weights; the app does not yet present it. Initial award six is official."
 
 [[category.item]]
 id = "art-ui"

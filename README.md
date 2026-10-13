@@ -88,7 +88,7 @@ evidence about the original. Compiling, passing our own tests or looking right n
 | Foundation | 10 | 9 | 0 | 1 | 90% | 0% |
 | Reverse engineering | 13 | 3 | 0 | 5 | 23% | 0% |
 | Mathematics and analysis | 30 | 11 | 0 | 13 | 36% | 0% |
-| Shared game runtime | 19 | 2 | 0 | 13 | 10% | 0% |
+| Shared game runtime | 19 | 3 | 0 | 13 | 15% | 0% |
 | Golden Century | 15 | 1 | 0 | 7 | 6% | 0% |
 | Happy & Prosperous | 15 | 1 | 0 | 7 | 6% | 0% |
 | Panda Magic | 15 | 1 | 0 | 7 | 6% | 0% |
@@ -96,7 +96,7 @@ evidence about the original. Compiling, passing our own tests or looking right n
 | Parity | 10 | 5 | 0 | 2 | 50% | 0% |
 | Platforms | 4 | 0 | 0 | 4 | 0% | 0% |
 | Packaging | 5 | 1 | 0 | 3 | 20% | 0% |
-| **Overall** | **151** | **35** | **0** | **69** | **23%** | **0%** |
+| **Overall** | **151** | **36** | **0** | **69** | **23%** | **0%** |
 
 <!-- progress-table:end -->
 

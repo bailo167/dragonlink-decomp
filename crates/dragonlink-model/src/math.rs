@@ -147,6 +147,38 @@ pub struct HoldAndSpinModel {
     pub jackpots: Vec<JackpotDef>,
 }
 
+/// One weighted choice of a symbol, for the free-games reveal.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct WeightedSymbol {
+    pub weight: u32,
+    pub symbol: SymbolId,
+}
+
+/// Free games: a number of spins played without a bet, on their own reels,
+/// started by scatters in the base window, with an optional retrigger and an
+/// optional mystery-symbol reveal (all mystery positions become one drawn
+/// symbol, as Golden Century's free games do).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct FreeGamesModel {
+    /// Scatters in the base window that start the free games.
+    pub trigger_count: u8,
+    /// Free games awarded at the start.
+    pub initial_games: u8,
+    /// Scatters during a free game that add more games. 0 means no retrigger.
+    pub retrigger_count: u8,
+    /// Free games added on a retrigger.
+    pub retrigger_games: u8,
+    /// One strip per reel, played during the free games.
+    pub free_reel_strips: Vec<Vec<SymbolId>>,
+    /// A symbol in the free reels that, when it appears, reveals to one drawn
+    /// symbol across all of its positions. `None` for no reveal.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mystery: Option<SymbolId>,
+    /// What the mystery reveals to, weighted. Required when `mystery` is set.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub reveal_values: Vec<WeightedSymbol>,
+}
+
 /// A complete, runnable game configuration.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct MathModel {
@@ -163,6 +195,9 @@ pub struct MathModel {
     pub scatter_pays: Vec<ScatterPay>,
     pub bet: BetModel,
     pub hold_and_spin: Option<HoldAndSpinModel>,
+    /// Free games (scatter triggered), when the game has them.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub free_games: Option<FreeGamesModel>,
 }
 
 /// Why a [`MathModel`] cannot be run.
@@ -208,6 +243,10 @@ pub enum ModelError {
     TriggerCount { count: u8, cells: usize },
     #[error("Hold & Spin starts with 0 respins")]
     NoRespins,
+    #[error("free games need a scatter symbol to be triggered by, and the model has none")]
+    FreeGamesWithoutScatter,
+    #[error("free games: {0}")]
+    BadFreeGames(&'static str),
     #[error("orb land chance {num}/{den} is not a probability")]
     BadChance { num: u32, den: u32 },
     #[error("the orb value table is empty or has no weight")]
@@ -235,6 +274,14 @@ impl MathModel {
             .iter()
             .find(|p| p.symbol == symbol && p.count == count)
             .map_or(0, |p| p.pay)
+    }
+
+    /// The first scatter symbol, if any. Scatters start the free games.
+    pub fn scatter_symbol(&self) -> Option<SymbolId> {
+        self.symbols
+            .iter()
+            .find(|s| s.kind == SymbolKind::Scatter)
+            .map(|s| s.id)
     }
 
     /// The numbers of paylines the player may play, ascending: the model's
@@ -397,6 +444,65 @@ impl MathModel {
                 if !tiers.contains(&t) {
                     return Err(ModelError::UndefinedJackpot(t));
                 }
+            }
+        }
+
+        if let Some(fg) = &self.free_games {
+            if self.scatter_symbol().is_none() {
+                return Err(ModelError::FreeGamesWithoutScatter);
+            }
+            if fg.trigger_count == 0 || fg.initial_games == 0 {
+                return Err(ModelError::BadFreeGames(
+                    "the trigger count and the initial games must be at least 1",
+                ));
+            }
+            if fg.retrigger_count == 0 && fg.retrigger_games != 0 {
+                return Err(ModelError::BadFreeGames(
+                    "games are added on a retrigger but no scatter count triggers one",
+                ));
+            }
+            if fg.free_reel_strips.len() != self.grid.reels as usize {
+                return Err(ModelError::StripCount {
+                    reels: self.grid.reels,
+                    strips: fg.free_reel_strips.len(),
+                });
+            }
+            for (reel, strip) in fg.free_reel_strips.iter().enumerate() {
+                if strip.len() < self.grid.rows as usize {
+                    return Err(ModelError::StripTooShort {
+                        reel,
+                        len: strip.len(),
+                        rows: self.grid.rows,
+                    });
+                }
+                for id in strip {
+                    defined("a free-game strip", *id)?;
+                }
+            }
+            match (fg.mystery, fg.reveal_values.is_empty()) {
+                (Some(m), _) => {
+                    defined("the mystery symbol", m)?;
+                    if fg
+                        .reveal_values
+                        .iter()
+                        .map(|v| v.weight as u64)
+                        .sum::<u64>()
+                        == 0
+                    {
+                        return Err(ModelError::BadFreeGames(
+                            "a mystery symbol is set but nothing is weighted for it to reveal",
+                        ));
+                    }
+                    for v in &fg.reveal_values {
+                        defined("a reveal value", v.symbol)?;
+                    }
+                }
+                (None, false) => {
+                    return Err(ModelError::BadFreeGames(
+                        "reveal values are given but no mystery symbol uses them",
+                    ));
+                }
+                (None, true) => {}
             }
         }
         Ok(())

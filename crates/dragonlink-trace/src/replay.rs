@@ -799,6 +799,15 @@ pub fn reconstruct(model: &MathModel, observation: &Trace) -> Result<Reconstruct
             | Event::HoldAndSpinStarted { .. }
             | Event::JackpotAwarded { .. }
             | Event::SpinCompleted { .. } => {}
+            // Free-game events are not yet modelled by reconstruction: replay
+            // of a trace with free games is out of scope for this tool, which
+            // is secondary research tooling (docs/PARITY.md).
+            Event::FreeGamesStarted { .. }
+            | Event::FreeGameStarted { .. }
+            | Event::MysteryRevealed { .. }
+            | Event::FreeGamesRetriggered { .. }
+            | Event::FreeGameCompleted { .. }
+            | Event::FreeGamesCompleted { .. } => {}
         }
     }
     scan.close_spin(&view);

@@ -14,8 +14,8 @@
 
 use crate::layout::{GridShape, Payline};
 use crate::math::{
-    BetModel, HoldAndSpinModel, JackpotDef, JackpotTier, LinePay, MathModel, MathProvenance,
-    OrbValue, Ratio, ScatterPay, WeightedOrbValue,
+    BetModel, FreeGamesModel, HoldAndSpinModel, JackpotDef, JackpotTier, LinePay, MathModel,
+    MathProvenance, OrbValue, Ratio, ScatterPay, WeightedOrbValue, WeightedSymbol,
 };
 use crate::symbol::{SymbolDef, SymbolId, SymbolKind};
 
@@ -187,11 +187,12 @@ pub fn synthetic_dev_fixture() -> MathModel {
             trigger_count: 6,
             initial_respins: 3,
             reset_respins_on_new_orb: true,
-            orb_land_chance: Ratio { num: 1, den: 14 },
+            orb_land_chance: Ratio { num: 1, den: 20 },
             orb_values,
             full_grid_award: Some(JackpotTier::Grand),
             jackpots,
         }),
+        free_games: None,
     }
 }
 
@@ -235,6 +236,7 @@ pub fn golden_century_synthetic() -> MathModel {
     const EMPEROR: u16 = 9; // wild, reels 2 to 4 only
     const PENNANT: u16 = 10; // scatter
     const ORB: u16 = 11; // Hold & Spin prize symbol
+    const DOORS: u16 = 12; // free-games mystery symbol
 
     let symbols = [
         ("9", SymbolKind::Regular),
@@ -249,6 +251,7 @@ pub fn golden_century_synthetic() -> MathModel {
         ("emperor", SymbolKind::Wild),
         ("pennant", SymbolKind::Scatter),
         ("orb", SymbolKind::Orb),
+        ("doors", SymbolKind::Regular),
     ]
     .into_iter()
     .enumerate()
@@ -474,6 +477,115 @@ pub fn golden_century_synthetic() -> MathModel {
     })
     .collect();
 
+    // Free-game reels: like the base reels but with no orbs (so the Hold &
+    // Spin feature does not nest here) and a mystery symbol (`doors`) that,
+    // when it appears, reveals to one drawn symbol across all its positions,
+    // as Golden Century's free games do. The scatter stays, so free games can
+    // retrigger. Strips, weights and the reveal table are synthetic.
+    let free_reel_strips = vec![
+        reel(&[
+            (NINE, 6),
+            (DOORS, 2),
+            (TEN, 5),
+            (WARRIORS, 2),
+            (JACK, 5),
+            (CHEST, 1),
+            (QUEEN, 4),
+            (PENNANT, 1),
+            (KING, 4),
+            (VASE, 2),
+            (NINE, 5),
+            (WOMEN, 1),
+            (TEN, 5),
+            (JACK, 5),
+        ]),
+        reel(&[
+            (TEN, 5),
+            (EMPEROR, 2),
+            (NINE, 6),
+            (DOORS, 2),
+            (JACK, 5),
+            (VASE, 2),
+            (QUEEN, 4),
+            (PENNANT, 1),
+            (KING, 4),
+            (CHEST, 1),
+            (WARRIORS, 2),
+            (TEN, 6),
+            (WOMEN, 1),
+            (NINE, 5),
+            (JACK, 5),
+        ]),
+        reel(&[
+            (JACK, 6),
+            (DOORS, 2),
+            (NINE, 6),
+            (EMPEROR, 2),
+            (TEN, 5),
+            (WARRIORS, 2),
+            (QUEEN, 4),
+            (PENNANT, 1),
+            (VASE, 2),
+            (KING, 4),
+            (CHEST, 1),
+            (NINE, 5),
+            (WOMEN, 1),
+            (TEN, 5),
+            (JACK, 5),
+        ]),
+        reel(&[
+            (NINE, 6),
+            (DOORS, 2),
+            (TEN, 5),
+            (EMPEROR, 2),
+            (JACK, 5),
+            (CHEST, 1),
+            (QUEEN, 4),
+            (VASE, 2),
+            (PENNANT, 1),
+            (KING, 4),
+            (WARRIORS, 2),
+            (NINE, 5),
+            (WOMEN, 1),
+            (TEN, 6),
+            (JACK, 5),
+        ]),
+        reel(&[
+            (TEN, 6),
+            (DOORS, 2),
+            (NINE, 6),
+            (WARRIORS, 2),
+            (JACK, 5),
+            (VASE, 2),
+            (QUEEN, 4),
+            (PENNANT, 1),
+            (KING, 4),
+            (CHEST, 1),
+            (TEN, 5),
+            (WOMEN, 1),
+            (NINE, 5),
+            (JACK, 5),
+        ]),
+    ];
+    // What the mystery reveals to, weighted towards the lower symbols. Synthetic.
+    let reveal_values = [
+        (28, NINE),
+        (24, TEN),
+        (20, JACK),
+        (14, QUEEN),
+        (10, KING),
+        (7, WARRIORS),
+        (5, VASE),
+        (4, CHEST),
+        (2, WOMEN),
+    ]
+    .into_iter()
+    .map(|(weight, symbol)| WeightedSymbol {
+        weight,
+        symbol: SymbolId(symbol),
+    })
+    .collect();
+
     MathModel {
         id: GOLDEN_CENTURY_SYNTHETIC_ID.to_string(),
         provenance: MathProvenance::SyntheticDevFixture,
@@ -503,6 +615,15 @@ pub fn golden_century_synthetic() -> MathModel {
             orb_values,
             full_grid_award: Some(JackpotTier::Grand),
             jackpots,
+        }),
+        free_games: Some(FreeGamesModel {
+            trigger_count: 3,  // three scatters (read)
+            initial_games: 6,  // six free games (official)
+            retrigger_count: 3,
+            retrigger_games: 6, // synthetic
+            free_reel_strips,
+            mystery: Some(SymbolId(DOORS)),
+            reveal_values,
         }),
     }
 }

@@ -15,7 +15,7 @@ fn the_synthetic_golden_century_is_playable() {
     model.validate().expect("the synthetic model is runnable");
     assert_eq!(model.paylines.len(), 50);
     assert_eq!(model.bet.line_options, vec![5, 25, 50]);
-    assert_eq!(model.symbols.len(), 12);
+    assert_eq!(model.symbols.len(), 13);
 
     let report = simulate(&model, 1, 400_000).expect("simulate");
     eprintln!(
@@ -49,4 +49,42 @@ fn the_synthetic_golden_century_is_playable() {
         report.feature_frequency.estimate
     );
     assert!(report.hit_frequency.estimate > 0.05 && report.hit_frequency.estimate < 0.95);
+}
+
+#[test]
+fn the_free_games_feature_triggers_plays_and_returns_cleanly() {
+    use dragonlink_core::{DevRng, Event, Game};
+    let model = golden_century_synthetic();
+    let mut game = Game::new(model, 1_000_000_000).unwrap();
+    let mut rng = DevRng::new(4);
+    let mut free_rounds = 0usize;
+    let mut reveals = 0usize;
+    let mut retriggers = 0usize;
+    for _ in 0..60_000 {
+        let events = game.play_spin(&mut rng).unwrap();
+        for e in &events {
+            match e {
+                Event::FreeGamesStarted { games } => {
+                    assert_eq!(*games, 6, "six free games");
+                    free_rounds += 1;
+                }
+                Event::MysteryRevealed { count, .. } => {
+                    assert!(*count >= 1);
+                    reveals += 1;
+                }
+                Event::FreeGamesRetriggered { added, .. } => {
+                    assert_eq!(*added, 6);
+                    retriggers += 1;
+                }
+                _ => {}
+            }
+        }
+        // play_spin plays features to the end, so we are always back to idle.
+        assert!(game.is_idle(), "did not return to the base game");
+    }
+    eprintln!(
+        "free games: {free_rounds} rounds, {reveals} reveals, {retriggers} retriggers in 60k spins"
+    );
+    assert!(free_rounds > 0, "free games never triggered");
+    assert!(reveals > 0, "the reveal never happened");
 }

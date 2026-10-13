@@ -741,6 +741,7 @@ mod tests {
                     },
                 ],
             }),
+            free_games: None,
         }
     }
 
@@ -766,6 +767,7 @@ mod tests {
                 line_options: Vec::new(),
             },
             hold_and_spin: None,
+            free_games: None,
         };
         let a = analyze(&model, DEFAULT_ENUMERATION_LIMIT).unwrap();
         assert_eq!(a.stop_combinations, 4);

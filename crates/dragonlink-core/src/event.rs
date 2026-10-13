@@ -103,6 +103,38 @@ pub enum Event {
         total_award: u64,
         full_grid: bool,
     },
+    FreeGamesStarted {
+        /// Free games awarded at the start.
+        games: u8,
+    },
+    FreeGameStarted {
+        /// 1 for the first free game.
+        number: u32,
+        /// Free games left to play after this one, before any retrigger.
+        remaining: u32,
+    },
+    /// The mystery symbol revealed to `symbol` across all `count` of its
+    /// positions in a free game.
+    MysteryRevealed {
+        symbol: String,
+        count: u8,
+    },
+    FreeGamesRetriggered {
+        /// Free games added.
+        added: u8,
+        /// Free games remaining after the retrigger.
+        remaining: u32,
+    },
+    FreeGameCompleted {
+        number: u32,
+        /// What this free game paid (lines and scatters).
+        award: u64,
+    },
+    FreeGamesCompleted {
+        games_played: u32,
+        /// Everything the free games paid together.
+        total_award: u64,
+    },
     SpinCompleted {
         spin: u64,
         /// Everything the spin paid, features included.
@@ -127,6 +159,12 @@ impl Event {
             Event::HoldAndSpinRespin { .. } => "hold_and_spin_respin",
             Event::JackpotAwarded { .. } => "jackpot_awarded",
             Event::HoldAndSpinCompleted { .. } => "hold_and_spin_completed",
+            Event::FreeGamesStarted { .. } => "free_games_started",
+            Event::FreeGameStarted { .. } => "free_game_started",
+            Event::MysteryRevealed { .. } => "mystery_revealed",
+            Event::FreeGamesRetriggered { .. } => "free_games_retriggered",
+            Event::FreeGameCompleted { .. } => "free_game_completed",
+            Event::FreeGamesCompleted { .. } => "free_games_completed",
             Event::SpinCompleted { .. } => "spin_completed",
         }
     }
