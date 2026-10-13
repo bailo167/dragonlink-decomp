@@ -275,14 +275,42 @@ presented as authentic (DECISIONS D-017).
    now secondary evidence streams, continued only when they do not slow P0.
 5. **The other three titles**, after Golden Century is solid.
 
-## Next for P0
+## Golden Century: playable
 
-1. Free games in `dragonlink-core`: scatter trigger, the award, the mystery-symbol reveal,
-   retrigger. With tests.
-2. The app into a real game: reel-spin animation; win lines; free-games and Hold & Spin
-   sequences; jackpot meters; bet, line and denomination controls; machine-like timing.
-3. Generated placeholder symbol art for Golden Century (shapes and colours we draw; no original
-   asset), so the game reads as Golden Century without using proprietary material.
+As of 2026-10-14 Golden Century plays end to end in the app
+(`cargo run -p dragonlink -- --game golden-century`), from a normal player
+flow with no debug or manual steps:
+
+- denomination (1c to $1, display only), line (5/25/50) and bet (credits per
+  line) selection; spin as long as you like;
+- reel-spin animation; line and scatter wins with the winning payline lit and
+  a win meter; a jackpot bar;
+- the free games (scatter trigger, six games, the mystery reveal, retriggers)
+  and Hold & Spin (six orbs, three respins resetting, orb values, full grid),
+  both playing themselves with machine-like timing and a clean return;
+- synthetic maths behind the existing math interface (about 93% RTP), clearly
+  labelled, replaceable with authentic values without the architecture
+  changing (DECISIONS D-017). Long automated sessions run without panics.
+
+## Next (P1 fidelity, then P2 Autumn Moon)
+
+1. **Fidelity for Golden Century**: themed placeholder symbol artwork (shapes
+   we draw, no proprietary asset), audio, win and feature transitions, a
+   jackpot-win flourish, and layout polish. Integrate official visible
+   values/rules where known.
+2. **Autumn Moon** (P2): the next complete playable title, reusing the Dragon
+   Link shell, reel renderer, pay/line evaluation, free-games framework,
+   reveal, Hold & Spin, jackpots and the synthetic config system; a
+   title-specific configuration and evidence.
+3. Then Happy & Prosperous, Panda Magic, and a four-title launcher.
+
+## Not now (owner's direction, 2026-10-14)
+
+Hidden-probability research (exact RTP, reel weights, protected tables,
+active MathVariant, cabinet statistical reconstruction) is tabled. Hidden
+values stay synthetic and configurable. The existing cabinet-footage readers
+may finish in the background; only high-value player-visible findings are
+integrated opportunistically.
 
 
 ## Waiting on the owner

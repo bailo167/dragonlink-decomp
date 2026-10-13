@@ -47,8 +47,8 @@ note = "Stage D: state, spin, awards, feature state machine, deterministic trace
 [[milestone]]
 id = "M4"
 name = "Golden Century Bevy slice"
-status = "partial"
-note = "Stage E, now P0. A synthetic Golden Century math config exists (golden_century_synthetic: evidenced structure, invented numbers, ~85% synthetic RTP, feature about 1 in 158) and the app runs it (dragonlink --game golden-century): window, reels, spin, Hold & Spin stepping, bet and line selection. Remaining for a complete slice: free games in the simulation, and a real presentation (reel-spin, win and feature sequences, jackpot meters, controls, timing) on generated Golden Century placeholder art."
+status = "implemented"
+note = "Stage E, P0: PLAYABLE END TO END. The app runs Golden Century (synthetic maths) with denomination, line and bet selection, reel animation, line and scatter wins, the free games (reveal, retrigger), Hold & Spin with orb values and jackpots, machine-like timing and a clean return after every feature. Placeholder art and no audio; that polish is the fidelity pass."
 
 [[milestone]]
 id = "M5"
@@ -483,8 +483,9 @@ note = "Generic left-to-right line rules and scatter pays, each stated in eval.r
 [[category.item]]
 id = "win-presentation"
 name = "Win presentation"
-status = "partial"
-note = "A status line per award and a meter that follows presented credit events. No count-up, no line highlighting, no animation."
+status = "implemented"
+evidence = "apps/dragonlink/src/main.rs (present: line highlight and win meter)"
+note = "A winning line lights up its run on its payline, and a win meter counts up what the spin paid, features included. No win-amount animation or sound yet."
 
 [[category.item]]
 id = "feature-trigger"
@@ -502,7 +503,7 @@ note = "Parameterised respin loop with tests; trigger count, respins, chances an
 id = "jackpots"
 name = "Jackpot model and presentation"
 status = "partial"
-note = "Four named levels with fixed amounts; progressive meters and presentation are not started."
+note = "Four tiers with synthetic fixed amounts, shown on a jackpot bar and awarded in Hold & Spin (full grid awards the Grand). Progressive meters that build and reset are not modelled; the real levels are progressive and unknown."
 
 [[category.item]]
 id = "free-games"
@@ -519,7 +520,9 @@ status = "not_started"
 [[category.item]]
 id = "animation"
 name = "Animation"
-status = "not_started"
+status = "implemented"
+evidence = "apps/dragonlink/src/main.rs (animate_reels; feature stepping)"
+note = "Reels run through the symbols while spinning and settle on their stops; features play on a timer with a clean return. No symbol artwork or transition effects yet (placeholder coloured tiles)."
 
 [[category.item]]
 id = "vfx"
@@ -529,14 +532,16 @@ status = "not_started"
 [[category.item]]
 id = "ui"
 name = "UI"
-status = "partial"
-note = "Placeholder HUD: banner, credit meter, bet, status line, generated cells. Nothing reproduces the original UI."
+status = "implemented"
+evidence = "apps/dragonlink/src/main.rs (setup, hud)"
+note = "Title, a jackpot bar (Grand/Major/Minor/Mini with amounts), framed reels, credit/bet/win meters in credits and dollars, a denomination selector and a compact synthetic disclaimer. Placeholder art; no themed artwork or audio yet."
 
 [[category.item]]
 id = "input"
 name = "Input"
-status = "partial"
-note = "Keyboard only: spin and feature step, bet up and down, quit."
+status = "implemented"
+evidence = "apps/dragonlink/src/main.rs (input)"
+note = "Spin, credits per line, line count and denomination from the keyboard; features play themselves. No autoplay or settings menu yet."
 
 [[category.item]]
 id = "save-settings"
@@ -609,7 +614,8 @@ note = "Australia: three scatters award six free games; mystery symbols reveal o
 [[category.item]]
 id = "art-ui"
 name = "Title artwork, UI layout and typography"
-status = "not_started"
+status = "partial"
+note = "The app renders Golden Century as a game: title, jackpot bar, framed reels, meters, denomination, disclaimer. Symbols are coloured placeholder tiles with their names, not artwork; no audio. Themed art and audio are the fidelity pass."
 
 [[category.item]]
 id = "audio"
