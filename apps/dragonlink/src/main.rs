@@ -61,6 +61,8 @@ const FEATURE_STEP_PAUSE: f32 = 0.5;
 const REEL_CYCLE_SECONDS: f32 = 0.05;
 /// Background of a cell on a winning line, and of a feature banner.
 const WIN_COLOR: Color = Color::srgb(0.85, 0.62, 0.12);
+/// Seconds a feature or jackpot banner stays on screen.
+const BANNER_HOLD: f32 = 1.6;
 
 const USAGE: &str = "usage: dragonlink \n[--game golden-century|autumn-moon|happy-prosperous|panda-magic|synthetic] \n[--smoke-frames N [--screenshot FILE]] [--seed N] [--credits N]";
 
@@ -280,6 +282,10 @@ struct Presentation {
     shown_win: u64,
     /// Seconds left before a feature plays its next step by itself.
     step_timer: f32,
+    /// A large banner announcing a feature or a jackpot, shown while
+    /// `banner_timer` is positive and then cleared.
+    banner: String,
+    banner_timer: f32,
 }
 
 /// Which reels are spinning, for the reel animation.
@@ -322,6 +328,10 @@ struct HudText;
 
 #[derive(Component)]
 struct StatusText;
+
+/// The large centered banner that announces a feature or a jackpot.
+#[derive(Component)]
+struct FeatureBanner;
 
 /// Give each event of one command its delay. Reels stop one after another;
 /// everything else follows at a steady pace.
@@ -544,6 +554,55 @@ not evidence of any real game, simulation credits only (no real money).",
                 TextLayout::justify(Justify::Center),
             ));
         });
+    // A full-screen overlay for the feature/jackpot banner, on top of the
+    // game. Empty until an event raises it (see `present` and `banner`).
+    commands
+        .spawn(Node {
+            position_type: PositionType::Absolute,
+            width: Val::Percent(100.0),
+            height: Val::Percent(100.0),
+            align_items: AlignItems::Center,
+            justify_content: JustifyContent::Center,
+            ..default()
+        })
+        .with_children(|overlay| {
+            overlay.spawn((
+                FeatureBanner,
+                Text::new(""),
+                TextFont {
+                    font_size: FontSize::Px(72.0),
+                    ..default()
+                },
+                TextColor(gold),
+                TextLayout::justify(Justify::Center),
+            ));
+        });
+}
+
+/// Show and fade the feature/jackpot banner while its timer runs.
+fn banner(
+    time: Res<Time>,
+    smoke: Res<Smoke>,
+    mut presentation: ResMut<Presentation>,
+    mut banners: Query<(&mut Text, &mut TextColor), With<FeatureBanner>>,
+) {
+    if presentation.banner_timer > 0.0 {
+        presentation.banner_timer -= if smoke.frames_left.is_some() {
+            SMOKE_FRAME_SECONDS
+        } else {
+            time.delta_secs()
+        };
+    }
+    let showing = presentation.banner_timer > 0.0 && !presentation.banner.is_empty();
+    // Fade out over the last part of the hold.
+    let alpha = (presentation.banner_timer / (BANNER_HOLD * 0.5)).clamp(0.0, 1.0);
+    for (mut text, mut color) in &mut banners {
+        let wanted = if showing { &presentation.banner } else { "" };
+        if text.0 != wanted {
+            text.0 = wanted.to_string();
+        }
+        color.0 = Color::srgb(1.0, 0.80, 0.28).with_alpha(if showing { alpha } else { 0.0 });
+    }
 }
 
 /// Turn key presses into commands. The simulation answers with events, which
@@ -756,6 +815,9 @@ fn present(
                 for s in reels_spin.spinning.iter_mut() {
                     *s = true;
                 }
+                // A new base spin clears any lingering feature banner.
+                presentation.banner.clear();
+                presentation.banner_timer = 0.0;
                 presentation.status = format!("Spin {spin}");
             }
             Event::ReelStopped { reel, symbols, .. } => {
@@ -798,6 +860,8 @@ fn present(
                 presentation.status = format!("{symbol} x{count} pays {award}");
             }
             Event::FreeGamesStarted { games } => {
+                presentation.banner = "FREE GAMES".to_string();
+                presentation.banner_timer = BANNER_HOLD;
                 presentation.status = format!("FREE GAMES  -  {games} games won");
             }
             Event::FreeGameStarted { number, remaining } => {
@@ -807,6 +871,8 @@ fn present(
                 presentation.status = format!("Mystery reveals {symbol} x{count}");
             }
             Event::FreeGamesRetriggered { added, remaining } => {
+                presentation.banner = "RETRIGGER".to_string();
+                presentation.banner_timer = BANNER_HOLD;
                 presentation.status =
                     format!("RETRIGGER  +{added} free games  ({remaining} to come)");
             }
@@ -828,6 +894,8 @@ fn present(
                 for orb in locked {
                     set_cell(orb.reel, orb.row, orb_text(orb.value), orb_color);
                 }
+                presentation.banner = "HOLD & SPIN".to_string();
+                presentation.banner_timer = BANNER_HOLD;
                 presentation.status = format!("HOLD & SPIN - {respins} respins - Space to respin");
             }
             Event::HoldAndSpinRespin {
@@ -843,12 +911,18 @@ fn present(
                     format!("{locked_total} held - {respins_left} respins left - Space to respin");
             }
             Event::JackpotAwarded { tier, award } => {
+                presentation.banner = format!("{tier:?} JACKPOT").to_uppercase();
+                presentation.banner_timer = BANNER_HOLD;
                 presentation.status = format!("{tier:?} awarded: {award}");
             }
             Event::HoldAndSpinCompleted {
                 total_award,
                 full_grid,
             } => {
+                if *full_grid {
+                    presentation.banner = "FULL GRID".to_string();
+                    presentation.banner_timer = BANNER_HOLD;
+                }
                 presentation.status = if *full_grid {
                     format!("Feature complete, every position held: {total_award}")
                 } else {
@@ -1191,7 +1265,15 @@ fn main() -> AppExit {
         .add_systems(OnEnter(Screen::Playing), setup)
         .add_systems(
             Update,
-            (smoke, input, drive_features, present, animate_reels, hud)
+            (
+                smoke,
+                input,
+                drive_features,
+                present,
+                animate_reels,
+                hud,
+                banner,
+            )
                 .chain()
                 .run_if(in_state(Screen::Playing)),
         );
