@@ -207,3 +207,23 @@ device) is not available through the project's tooling beyond what inventory and
 comparison give. Rung 3 (observing many automated spins) may meet the same kind of limit and is
 not assumed to be available. Rung 1, cabinet-side evidence from lawful public sources, and the
 online evidence passes for player-visible facts, are unaffected.
+
+## D-015 — Reel data is pursued from public footage of the cabinet game (2026-10-13)
+
+**Decision.** The route to cabinet-side reel data is rung 1b: read the stopped reel windows frame
+by frame from public recordings of machines, per title and per identified build, and assemble the
+strips with the project's reconstruction tooling. Each recording set is tied to a market and, where
+it can be told, a cabinet generation; sets are never pooled across builds.
+
+**Why.** It needs no software, so it is unaffected by B-005. It yields cabinet data, not mobile
+data. The method is described in the court record as something the industry itself did, and the
+court found that orb-landing chances follow from what can be observed
+(`docs/reverse-engineering/LITIGATION.md`). The tooling exists and is tested on simulated play.
+
+**What it will not give.** The prize-value weighting and the jackpot rates, which the same court
+treated as secret and not observable; and anything about the random number generator. Those stay
+unknown unless cabinet-side documents surface lawfully.
+
+**Honesty conditions.** A window is recorded only when legible in a frame. Completeness is
+estimated, and a strip is not asserted while unseen windows are still expected. A reconstruction
+says which footage it rests on and how many stops were observed.

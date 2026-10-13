@@ -326,6 +326,12 @@ evidence = "crates/dragonlink-math/src/reconstruct.rs (tests: fixture reels rebu
 note = "Window shares with intervals, a test of equal stop likelihood, an estimate of unseen windows, and exact strip assembly with the number of equivalent orders. Exercised on our own simulation only; no observed game yet. Feature probabilities are not reconstructed."
 
 [[category.item]]
+id = "footage-windows"
+name = "Reel windows transcribed from public cabinet footage"
+status = "not_started"
+note = "Rung 1b (DECISIONS D-015): frame-by-frame reading of stopped windows per title and build, as input to strip reconstruction. Footage passes for all four titles are under way to locate usable recordings."
+
+[[category.item]]
 id = "automated-collection"
 name = "Automated spin collection from the official mobile app"
 status = "not_started"

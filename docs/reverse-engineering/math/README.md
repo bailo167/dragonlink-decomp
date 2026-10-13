@@ -40,8 +40,15 @@ Where a configuration comes from, in order of preference (DECISIONS D-013):
 | Rung | Source | Result | Provenance of its constants |
 |---|---|---|---|
 | 1 | Cabinet-side evidence: litigation exhibits, regulatory material, patents, research, lawfully held cabinet software | exact where found | `extracted`, `regulatory`, `derived` |
+| 1b | **The cabinet game observed in public recordings**: reel windows read frame by frame from footage of machines | reel strips assembled exactly from stopped windows where a recording set is large enough; stop weighting tested; orb-landing rates counted. Not the prize weighting or jackpot rates | `observed` for what a frame shows, `inferred_statistically` for rates; scope is the market and build of the footage |
 | 2 | The official mobile app, analysed on the device | exact for the mobile implementation | `official_mobile` |
 | 3 | The official mobile app, observed over very many automated spins | reel strips assembled exactly from stopped windows where strips are fixed; weights and feature probabilities estimated with intervals | `inferred_statistically`, scope mobile |
+
+Rung 1b is the only one that yields **cabinet-side** reel data without any software. The court
+record describes a competitor rebuilding base reel strips from public gameplay video, and a court
+finding that orb-landing chances can be found by playing and counting
+([../LITIGATION.md](../LITIGATION.md)). Rungs 2 and 3 are not available through this project's
+tooling ([../../BLOCKERS.md](../../BLOCKERS.md), B-005).
 
 A rung is used only as far as the one above fails, and a configuration never hides which rung each
 constant came from. A model from rung 2 or 3 is a mobile model: the closest authentic

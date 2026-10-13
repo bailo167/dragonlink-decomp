@@ -120,6 +120,18 @@ shell runs the simulation on screen.
   controls of the tooling. That is treated as a boundary (DECISIONS D-014, BLOCKERS B-005). Nothing
   has been decrypted, exported or imported.
 
+### The litigation record (2026-10-13)
+
+- The free public record of the US and Australian proceedings was read
+  ([reverse-engineering/LITIGATION.md](reverse-engineering/LITIGATION.md)). It holds no number for the
+  mathematics. It does give the Australian launch year (2016), an adverse party's admission of the
+  window and denominations, sworn evidence that the feature draws from its own set of reels, and a
+  description of base reel strips being rebuilt from public gameplay video.
+- That last point sets the route for cabinet-side reel data: read reel windows from public footage
+  and assemble the strips (DECISIONS D-015).
+- An assertion in the filings that confidential PAR sheets were posted online is recorded and not
+  followed.
+
 ## Known limits of what exists
 
 - Every rule in the simulation is a generic slot-game rule, written down so it can be checked. None
