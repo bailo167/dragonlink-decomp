@@ -227,8 +227,8 @@ note = "The mathematics is not public and is asserted as trade secrets (docs/rev
 #
 # An end-state of its own: explain quantitatively, from evidence, how the real
 # games behave. The first items are our tooling (tested on the synthetic
-# fixture). The rest are knowledge about the originals, and stay blocked or
-# open until a mathematics source exists. See docs/reverse-engineering/math/.
+# fixture). The rest are knowledge about the originals and stay open until
+# evidence exists. See docs/reverse-engineering/math/.
 # --------------------------------------------------------------------------
 
 [[category]]
@@ -323,32 +323,32 @@ status = "not_started"
 [[category.item]]
 id = "gc-config"
 name = "Recovered configuration: Golden Century"
-status = "blocked"
-blocker = "No cabinet or regulatory mathematics source is held (docs/BLOCKERS.md B-002)."
+status = "investigating"
+note = "No source held. An online evidence pass over litigation, regulatory, archival and research sources is under way (docs/BLOCKERS.md); it is not treated as blocked until those are exhausted."
 
 [[category.item]]
 id = "hp-config"
 name = "Recovered configuration: Happy & Prosperous"
-status = "blocked"
-blocker = "No cabinet or regulatory mathematics source is held (docs/BLOCKERS.md B-002)."
+status = "investigating"
+note = "No source held. An online evidence pass over litigation, regulatory, archival and research sources is under way (docs/BLOCKERS.md); it is not treated as blocked until those are exhausted."
 
 [[category.item]]
 id = "pm-config"
 name = "Recovered configuration: Panda Magic"
-status = "blocked"
-blocker = "No cabinet or regulatory mathematics source is held (docs/BLOCKERS.md B-002)."
+status = "investigating"
+note = "No source held. An online evidence pass over litigation, regulatory, archival and research sources is under way (docs/BLOCKERS.md); it is not treated as blocked until those are exhausted."
 
 [[category.item]]
 id = "am-config"
 name = "Recovered configuration: Autumn Moon"
-status = "blocked"
-blocker = "No cabinet or regulatory mathematics source is held (docs/BLOCKERS.md B-002)."
+status = "investigating"
+note = "No source held. An online evidence pass over litigation, regulatory, archival and research sources is under way (docs/BLOCKERS.md); it is not treated as blocked until those are exhausted."
 
 [[category.item]]
 id = "visible-paytables"
 name = "Player-visible pay tables, lines and bet structures"
 status = "investigating"
-note = "Published nowhere found. Unverified US figures quoted in the manufacturer's complaint; needs recordings of the rules screens (BLOCKERS B-004)."
+note = "Not found in a first search. Footage of all four titles and pay-table screens in the litigation record exist; a frame-by-frame and full-filings pass is under way (docs/BLOCKERS.md)."
 
 [[category.item]]
 id = "denomination-bet-effects"
@@ -359,38 +359,38 @@ note = "Lead: the complaint quotes different pay-table figures for two denominat
 [[category.item]]
 id = "version-differences"
 name = "Mathematical differences between program versions"
-status = "blocked"
-blocker = "Version identities are established (docs/reverse-engineering/PLATFORMS.md) but no version's mathematics is held (docs/BLOCKERS.md B-002)."
+status = "investigating"
+note = "No source held. An online evidence pass over litigation, regulatory, archival and research sources is under way (docs/BLOCKERS.md); it is not treated as blocked until those are exhausted."
 
 [[category.item]]
 id = "rng-architecture"
 name = "RNG architecture and call sites"
-status = "blocked"
-blocker = "No cabinet or regulatory mathematics source is held (docs/BLOCKERS.md B-002)."
+status = "investigating"
+note = "No source held. An online evidence pass over litigation, regulatory, archival and research sources is under way (docs/BLOCKERS.md); it is not treated as blocked until those are exhausted."
 
 [[category.item]]
 id = "outcome-selection"
 name = "Outcome selection, reel-stop relationship and input timing"
-status = "blocked"
-blocker = "No cabinet or regulatory mathematics source is held (docs/BLOCKERS.md B-002)."
+status = "investigating"
+note = "No source held. An online evidence pass over litigation, regulatory, archival and research sources is under way (docs/BLOCKERS.md); it is not treated as blocked until those are exhausted."
 
 [[category.item]]
 id = "state-dependence"
 name = "State dependence and persistence between spins"
-status = "blocked"
-blocker = "No cabinet or regulatory mathematics source is held (docs/BLOCKERS.md B-002)."
+status = "investigating"
+note = "No source held. An online evidence pass over litigation, regulatory, archival and research sources is under way (docs/BLOCKERS.md); it is not treated as blocked until those are exhausted."
 
 [[category.item]]
 id = "mobile-vs-cabinet"
 name = "Mobile versus cabinet mathematics"
 status = "not_started"
-note = "Needs official mobile software (BLOCKERS B-003) and a cabinet source (B-002)."
+note = "Needs official mobile software (BLOCKERS B-003, in progress) and cabinet-side evidence."
 
 [[category.item]]
 id = "progressive-thresholds"
 name = "Progressive break-even thresholds of the originals"
-status = "blocked"
-blocker = "No cabinet or regulatory mathematics source is held (docs/BLOCKERS.md B-002)."
+status = "investigating"
+note = "No source held. An online evidence pass over litigation, regulatory, archival and research sources is under way (docs/BLOCKERS.md); it is not treated as blocked until those are exhausted."
 
 [[category.item]]
 id = "beliefs"

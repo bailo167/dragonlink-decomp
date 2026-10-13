@@ -6,42 +6,79 @@ unfinished work is in `progress/progress.toml`, not here.
 
 A blocker stops one lane, not the project. Each entry says what proceeds meanwhile.
 
+## The rule for what counts
+
+**Something is a blocker only after lawful public sources have been seriously exhausted for the
+exact piece of information that is missing.** "Not on the manufacturer's website" is not "not
+available anywhere publicly". Before an item asks anything of the owner, the project searches and
+analyses, for each title separately and for each specific field:
+
+- gameplay recordings, including long sessions frame by frame, looking specifically for the Help,
+  Game Rules, Paytable and Game Information screens, denomination and bet selectors, line counts,
+  displayed return figures, feature and jackpot rules, and version or specification identifiers;
+- court filings and their exhibits, read in full rather than from summaries;
+- regulatory approvals, standards and submissions;
+- archived manufacturer pages, brochures, manuals and promotional material, including the
+  Internet Archive;
+- patents, academic and security research, preservation forums, public repositories, lawfully
+  public service documentation, and listings or photographs that show media or identifiers;
+- secondary sites, as leads to stronger evidence only.
+
+A blocker is then narrowed to whatever specific information remains. An entry here names the
+fields still missing and what was searched, not a general wish for a source.
+
+This does not change what may be obtained: no pirated cabinet software, no leaked credentials, no
+access to operating gaming systems ([LEGAL.md](LEGAL.md)).
+
 ## Open
 
-### B-002 — No cabinet software or mathematics source
-
-- **Since:** project start
-- **Blocks:** every item about original mathematics (reel strips, weighting, RTP, jackpot odds,
-  feature probabilities, the outcome generator), and cabinet-specific assets and timing.
-- **Needs:** lawfully possessed cabinet software or machine images, or regulatory documentation
-  that states the mathematics. Not obtainable by the project on its own within its rules. The
-  mathematics is not public: the manufacturer asserts it as trade secrets
-  (`docs/reverse-engineering/math/EVIDENCE_STATE.md`).
-- **Meanwhile:** the engine is developed on a labelled synthetic fixture; presentation research
-  proceeds from official media and, when obtained, official mobile software; the cabinet workflow
-  is designed so that a source slots in ([SOURCES.md](SOURCES.md)).
-
-### B-003 — Official mobile software needs a store account on a device or emulator
+### B-003 — Official mobile software needs a store login on an emulator
 
 - **Since:** 2026-10-13
 - **Blocks:** acquiring and inventorying the official mobile reference (first target: Mighty Fu
   Casino, the only listing that names all four titles), and everything downstream of it: asset
   formats, imported artwork and sound, presentation timing from the app.
-- **Needs:** the owner to install the app from the official store on a device or emulator they
-  control (a store account login is a human step), so the package can be copied out with the
-  platform's own tools into the private source root.
+- **Needs:** the owner to sign in to the store on an emulator the project sets up on the Windows
+  host, and install the app, so the package can be copied out with the platform's own tools. A
+  mirror-site copy is not used: its provenance could not be shown.
+- **State:** in progress. The emulator tooling is being installed; the owner has agreed to sign in.
 - **Meanwhile:** the inventory, inspection and import tooling is built and tested on synthetic
-  packages; presentation research continues from official pages.
+  packages; presentation research continues from official pages and footage.
 
-### B-004 — Rules and information screens of an Australian machine
+## Under investigation, not yet blockers
 
-- **Since:** 2026-10-13
-- **Blocks:** lines, bet ladder, denominations, pay tables, feature rules and the displayed RTP
-  range for the Australian builds. These are player-visible but published nowhere that was found.
-- **Needs:** a person to record the rules, pay-table and game-information screens of each title on
-  an Australian machine, noting the venue's jurisdiction and any version shown. Existing third-party
-  footage may contain some of it and will be checked first.
-- **Meanwhile:** the claims stay PARTIAL (US family) or UNKNOWN; the engine stays on the fixture.
+These were listed as blockers on 2026-10-13 and were withdrawn the same day: a first search had
+come up empty, which is not the same as the sources being exhausted. Each is now an active online
+evidence pass. It returns here only as a narrowed entry naming exactly what could not be found.
+
+### B-002 (withdrawn) — Cabinet mathematics and software
+
+- **What is missing:** reel strips, weighting, RTP and its composition, feature and jackpot
+  probabilities, the outcome generator, cabinet-specific assets and timing.
+- **What is known:** the manufacturer asserts the mathematics as trade secrets and says it is not
+  in its patents (`docs/reverse-engineering/math/EVIDENCE_STATE.md`). That is a statement about what
+  the manufacturer published, not about what is public.
+- **Being searched:** litigation discovery and exhibits; regulatory exhibits and submissions;
+  patents; archived technical documents; academic and security research; preservation forums;
+  public repositories; the Internet Archive; lawfully public service documentation; machine
+  listings with media or storage photographs; publicly exposed package and file metadata; related
+  Lightning Link and Dragon Link platform research.
+- **Limit:** material that exists publicly but could only be obtained by taking pirated cabinet
+  software is recorded as a lead and not obtained.
+
+### B-004 (withdrawn) — Player-visible rules, pay tables and game information
+
+- **What is missing:** per title and build, the number of lines, the bet ladder, denominations, the
+  pay table, feature rules (free games count and retriggers), which jackpot levels are progressive,
+  and the displayed return figure.
+- **What is known:** these are shown to players on the machine's own screens. Footage of all four
+  titles exists, including Australian footage, and the litigation record reproduces pay-table
+  screens.
+- **Being searched:** recordings of each title for the Help, Rules, Paytable and Game Information
+  screens, cross-referenced between recordings to tell cabinet generations and configurations
+  apart; the full litigation filings and exhibits; archived product pages, brochures and manuals.
+- **Not asked of the owner:** a visit to a machine. That would be asked only for a specific field
+  that the online pass shows cannot be recovered.
 
 ## Resolved
 

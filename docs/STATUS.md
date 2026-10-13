@@ -128,7 +128,10 @@ shell runs the simulation on screen.
 
 ## Waiting on the owner
 
-See [BLOCKERS.md](BLOCKERS.md). Nothing stops the work above. Three things would unlock more:
-official mobile software installed from the store (B-003), recordings of an Australian machine's
-rules and information screens (B-004), and any lawfully held cabinet software (B-002). One decision
-is open: whether results from a recovered configuration may be published (DECISIONS D-010).
+See [BLOCKERS.md](BLOCKERS.md). One thing: signing in to the store on the emulator being set up
+on the Windows host, to obtain the official mobile reference (B-003). Nothing else is asked.
+
+Rules, pay tables and cabinet mathematics are **not** waiting on the owner: an online evidence
+pass over footage, the litigation record, regulatory and archival material and public research is
+under way, and only what that pass cannot recover will be listed as a blocker. One decision is
+open: whether results from a recovered configuration may be published (DECISIONS D-010).
