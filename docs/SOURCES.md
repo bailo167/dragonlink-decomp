@@ -50,6 +50,7 @@ do when it is unset. Tests that need real material skip when it is unset.
   audio/  images/  video/       loose reference media that is not part of a package
   manifests/                    inventories and manifests produced by the tools
   hashes/                       hash lists of originals, for integrity checks
+  math/                         recovered game configurations and reports generated from them
   research/                     private notes, strings dumps, anything not fit to publish
   imported/                     the normalised runtime asset set (default DRAGONLINK_DATA_DIR)
   packages/                     local full packages (never distributed)
@@ -82,7 +83,22 @@ do when it is unset. Tests that need real material skip when it is unset.
 9. Compare behaviour against existing findings.
 10. Update parity status and the tracker.
 
-The tools for steps 2 to 4 and 8 are tracked in `progress/progress.toml` and are not written yet.
+Step 2 exists (`dragonlink-inventory scan`); steps 3, 4 and 8 are tracked in
+`progress/progress.toml` and are not written yet.
+
+### Creating and checking the source root
+
+```sh
+cargo run -p dragonlink-inventory -- init <folder outside any repository>
+# set DRAGONLINK_SOURCE_ROOT to that folder, then:
+cargo run -p dragonlink-inventory -- check
+cargo run -p dragonlink-inventory -- scan <a folder of source material>
+```
+
+`init` and `check` refuse a location inside a Git work tree. `scan` reads and never modifies; it
+records relative paths, sizes, SHA-256, what the content looks like, entropy, and the entry list
+of ZIP-family packages, and writes the inventory to `manifests/` in the source root. It refuses
+to write an inventory into a repository.
 
 ## The normalised asset set
 

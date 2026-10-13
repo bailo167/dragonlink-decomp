@@ -56,6 +56,16 @@ is not public. Work is pushed to GitHub and CI is green on Linux, Windows, macOS
 - The synthetic fixture was retuned with the tool (`synthetic-dev-2`).
 - The lane's documents under `docs/reverse-engineering/math/`.
 
+### Source root and inventory (2026-10-13)
+
+- `dragonlink-formats`: file identification by content (public formats only, unknown stays
+  unknown), entropy, and a bounds-checked central-directory reader for ZIP-family packages, tested
+  on hand-built archives, every truncation and every single-byte corruption.
+- `dragonlink-inventory`: `init` and `check` for the private source root, `scan` to hash and
+  classify a folder into an inventory with no absolute paths.
+- The source root exists on the Windows host, outside every repository, and the boundary between
+  it and Git was exercised end to end ([BUILDING.md](BUILDING.md), "Source root on the host").
+
 ## Known limits of what exists
 
 - Every rule in the simulation is a generic slot-game rule, written down so it can be checked. None
@@ -68,15 +78,12 @@ is not public. Work is pushed to GitHub and CI is green on Linux, Windows, macOS
 
 ## Next
 
-1. Private source root: create it on the Windows host, with the tool that creates and checks it.
-2. `dragonlink-formats` and `dragonlink-inventory`: identify files by content, hash and inventory a
-   source folder, read ZIP-family packages safely.
-3. `dragonlink-trace`: the trace format, a rewrite-trace producer and the comparison tool.
-4. `dragonlink-assets`, `dragonlink-import`, `dragonlink-pack`: manifest, first importer stage,
+1. `dragonlink-trace`: the trace format, a rewrite-trace producer and the comparison tool.
+2. `dragonlink-assets`, `dragonlink-import`, `dragonlink-pack`: manifest, first importer stage,
    local package validation.
-5. The Bevy application shell in placeholder mode, with the smoke launch and wasm build in the gate.
-6. Check existing third-party footage for rules, pay-table and information screens.
-7. Re-read the once-read sources so their claims can be labelled VERIFIED.
+3. The Bevy application shell in placeholder mode, with the smoke launch and wasm build in the gate.
+4. Check existing third-party footage for rules, pay-table and information screens.
+5. Re-read the once-read sources so their claims can be labelled VERIFIED.
 
 ## Waiting on the owner
 

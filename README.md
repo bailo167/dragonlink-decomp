@@ -78,8 +78,8 @@ evidence about the original. Compiling, passing our own tests or looking right n
 
 | Category | Items | Implemented + verified | Verified | In progress | Completion | Verified % |
 |---|---:|---:|---:|---:|---:|---:|
-| Foundation | 10 | 8 | 0 | 1 | 80% | 0% |
-| Reverse engineering | 13 | 1 | 0 | 4 | 7% | 0% |
+| Foundation | 10 | 9 | 0 | 1 | 90% | 0% |
+| Reverse engineering | 13 | 1 | 0 | 5 | 7% | 0% |
 | Mathematics and analysis | 27 | 9 | 0 | 3 | 33% | 0% |
 | Shared game runtime | 19 | 1 | 0 | 11 | 5% | 0% |
 | Golden Century | 15 | 0 | 0 | 4 | 0% | 0% |
@@ -88,8 +88,8 @@ evidence about the original. Compiling, passing our own tests or looking right n
 | Autumn Moon | 15 | 0 | 0 | 1 | 0% | 0% |
 | Parity | 8 | 1 | 0 | 0 | 12% | 0% |
 | Platforms | 4 | 0 | 0 | 4 | 0% | 0% |
-| Packaging | 5 | 0 | 0 | 0 | 0% | 0% |
-| **Overall** | **146** | **20** | **0** | **30** | **13%** | **0%** |
+| Packaging | 5 | 0 | 0 | 1 | 0% | 0% |
+| **Overall** | **146** | **21** | **0** | **32** | **14%** | **0%** |
 
 <!-- progress-table:end -->
 
@@ -137,11 +137,13 @@ See [docs/SOURCES.md](docs/SOURCES.md).
 | `crates/dragonlink-core` | The deterministic simulation: state machine, pay evaluation, Hold & Spin, events, outcome sources. No rendering, no files, no clock. |
 | `crates/dragonlink-math` | Mathematics analysis of a game configuration: exact, simulated, comparative. |
 | `tools/dragonlink-analyze` | `analyze-game`, `compare-games`, `progressive-ev`, `simulate`. |
+| `crates/dragonlink-formats` | Identify files by content, measure entropy, list ZIP-family packages. |
+| `tools/dragonlink-inventory` | Create and check the private source root; hash and classify source material. |
 | `tools/progress-gen` | Validates the tracker and renders the progress matrix and table above. |
 | `tools/repo-hygiene` | Refuses proprietary material, dumps, secrets and private paths. |
 
-Planned and tracked: the trace format and comparison tools, the format identification library, the
-inventory, inspection, import and packaging tools, the asset manifest, and the Bevy application.
+Planned and tracked: the trace format and comparison tools, the inspection, import and packaging
+tools, the asset manifest, and the Bevy application.
 The renderer will read simulation state and events; it will never decide an outcome.
 Details: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 

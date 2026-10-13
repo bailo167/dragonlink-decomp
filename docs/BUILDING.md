@@ -81,6 +81,16 @@ Not installed yet, to be installed when the work that needs them starts: 7-Zip, 
 tools (ADB), Ghidra, JADX, Apktool. Reverse-engineering applications that have no installer are
 unpacked under a tools folder next to the private source root, never inside the repository.
 
+### Source root on the host
+
+The private source root was created with `dragonlink-inventory init` on the host's fixed data
+drive, in a `dragonlink\source-root` folder beside the sibling project's work folder and outside
+every repository, and `DRAGONLINK_SOURCE_ROOT` is set for the user. The boundary was exercised on
+2026-10-13: a source root inside the repository is refused; an inventory cannot be written into
+the repository; the source root's folder names are ignored by Git; and a synthetic package
+renamed to a text extension and copied into the work tree is refused by `repo-hygiene` on its
+content.
+
 ### Rules for the host
 
 - Install only tooling the project needs, and record it in the table above.
