@@ -97,6 +97,8 @@ shell runs the simulation on screen.
 - `dragonlink-pack`: `verify`, and `assemble` for a local full package with a do-not-distribute
   notice, refused inside a Git work tree.
 - The application reports at start-up why it is in placeholder mode.
+- `dragonlink-inspect`: one unknown file measured (type, hash, entropy overall and by block,
+  strings statistics, archive summary) without printing any of its content.
 - The whole chain was run on the Windows host's source root with synthetic files: import, verify,
   discovery by the application, package assembly, tamper detection.
 

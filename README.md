@@ -145,7 +145,7 @@ See [docs/SOURCES.md](docs/SOURCES.md).
 | `crates/dragonlink-math` | Mathematics analysis of a game configuration: exact, simulated, comparative. |
 | `tools/dragonlink-analyze` | `analyze-game`, `compare-games`, `progressive-ev`, `simulate`. |
 | `crates/dragonlink-formats` | Identify files by content, measure entropy, list ZIP-family packages. |
-| `tools/dragonlink-inventory` | Create and check the private source root; hash and classify source material. |
+| `tools/dragonlink-inventory`, `tools/dragonlink-inspect` | Create and check the private source root; hash and classify source material; measure one unknown file. |
 | `apps/dragonlink` | The Bevy application. Placeholder mode only so far. |
 | `crates/dragonlink-trace`, `tools/dragonlink-trace` | The behavioural trace format, recording and comparison. |
 | `crates/dragonlink-assets` | The asset manifest: ids, provenance, hashes, verification, discovery. |

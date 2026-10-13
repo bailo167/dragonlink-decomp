@@ -93,6 +93,7 @@ cargo run -p dragonlink-inventory -- init <folder outside any repository>
 # set DRAGONLINK_SOURCE_ROOT to that folder, then:
 cargo run -p dragonlink-inventory -- check
 cargo run -p dragonlink-inventory -- scan <a folder of source material>
+cargo run -p dragonlink-inspect -- <one file that is not understood yet>
 ```
 
 `init` and `check` refuse a location inside a Git work tree. `scan` reads and never modifies; it
