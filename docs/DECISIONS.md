@@ -253,3 +253,26 @@ safety boundary rules out (CLAUDE.md, "Safety boundary").
 **Consequence.** `reverse-engineering/MOBILE_MATH_ARCHITECTURE.md` is the public record. The
 mobile draw order, the reveal, the per-position Hold & Spin strips and the prize codes become
 configuration of the simulation, labelled mobile. B-005 narrows to the tables.
+
+## D-017 — What is published from reconstruction, and how cabinet and mobile are kept apart (2026-10-13)
+
+**Decided by the owner.** Two rulings, which settle questions D-010 and D-015 left open.
+
+1. **Reconstructed reel-strip contents and prize-frequency data stay private for now.** Published:
+   methods, counts, player-visible facts (rules, pay tables, paylines, bet structure, the set of
+   prize values a player sees), and conclusions derived from the private data (that two
+   configurations differ, how complete a reconstruction is, whether a strip assembles).
+2. **Australian cabinet evidence and official mobile evidence are separate configurations, each
+   with its own provenance.** A constant recovered from the mobile app is not put into the cabinet
+   model unless cabinet evidence supports it independently. Agreement between the two is recorded
+   as agreement, not used to fill either side in.
+
+**Why.** The first follows D-010's reasoning: what a manufacturer asserts as secret is not
+published by default, wherever it was recovered from. The second is rule 4 of the evidence system
+made operational: the mobile game is a different implementation, and a model that mixed the two
+could not say what it was a model of.
+
+**Consequence.** A configuration names one provenance. The simulation's mechanisms that come from
+the mobile analysis (draw order, reveal, per-position Hold & Spin strips, prize codes) are options
+a configuration selects, and a cabinet configuration selects only what cabinet evidence shows.
+Reports and strips generated from private data are written beside it, never into the work tree.

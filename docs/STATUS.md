@@ -286,11 +286,11 @@ In order of value. The first four need nothing from anyone.
 
 ## Waiting on the owner
 
-Three decisions, none of which stops other work:
+One thing, which stops no other work:
 
 - how the mobile game's table contents might be supplied without attacking their protection: its
-  algorithms are now described, its numbers are not (BLOCKERS B-005);
-- whether results from a recovered configuration may be published (DECISIONS D-010);
-- whether reel strips reconstructed from **public footage** may be published. They are treated
-  like any recovered mathematics until decided: the method, the counts and what a player can see
-  are public; strips and how often each prize value appears are kept privately.
+  algorithms are described, its numbers are not (BLOCKERS B-005). A separate specialist pass on
+  that gap is under way outside this project's tooling.
+
+Decided on 2026-10-13 (DECISIONS D-017): reconstructed strips and prize frequencies stay private;
+cabinet and mobile are separate configurations.
