@@ -38,10 +38,10 @@
 | `crates/dragonlink-math` | exists | Mathematics analysis of a game configuration: exact return and feature analysis, seeded simulation, progressive EV, comparison, reports. |
 | `tools/dragonlink-analyze` | exists | `analyze-game`, `compare-games`, `progressive-ev`, `simulate`. |
 | `crates/dragonlink-trace` | planned | Trace format shared by rewrite traces and transcribed observations; comparison. |
-| `crates/dragonlink-formats` | planned | File identification by content, entropy, safe archive reading. |
+| `crates/dragonlink-formats` | exists | File identification by content, entropy, listing of ZIP-family archives. |
 | `crates/dragonlink-assets` | planned | Asset manifest, logical asset ids, discovery of the asset set, placeholder mode. |
 | `apps/dragonlink` | planned | The Bevy executable. |
-| `tools/dragonlink-inventory` | planned | Hash and classify everything under a source folder. |
+| `tools/dragonlink-inventory` | exists | Create and check the private source root; hash and classify everything under a source folder. |
 | `tools/dragonlink-inspect` | planned | Look at one unknown file: signature, entropy profile, structure. |
 | `tools/dragonlink-import` | planned | Source material → normalised asset set + manifest. |
 | `tools/dragonlink-pack` | planned | Validate an asset set and assemble a local full package. |

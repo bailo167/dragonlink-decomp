@@ -103,8 +103,8 @@ evidence = "docs/EVIDENCE.md; crates/dragonlink-model/src/evidence.rs (tests)"
 [[category.item]]
 id = "source-root"
 name = "Private source root outside Git"
-status = "not_started"
-note = "Layout is specified in docs/SOURCES.md; the tool that creates and checks it is not written yet."
+status = "implemented"
+evidence = "tools/dragonlink-inventory (init, check; tests); docs/SOURCES.md; created on the Windows host and the Git boundary exercised (docs/STATUS.md)"
 
 [[category.item]]
 id = "windows-env"
@@ -178,7 +178,8 @@ evidence = "crates/dragonlink-model/claims/ (99 claims); crates/dragonlink-model
 [[category.item]]
 id = "format-id"
 name = "Package and file-format identification"
-status = "not_started"
+status = "partial"
+note = "dragonlink-formats identifies public formats by content, measures entropy and lists ZIP-family packages; dragonlink-inventory hashes and classifies a folder. No real package has been examined yet."
 
 [[category.item]]
 id = "exe-analysis"
@@ -944,7 +945,8 @@ name = "Packaging"
 [[category.item]]
 id = "source-importer"
 name = "Source importer"
-status = "not_started"
+status = "partial"
+note = "The inventory stage exists (hash, classify, list). Extraction and conversion are not started."
 
 [[category.item]]
 id = "asset-manifest"
