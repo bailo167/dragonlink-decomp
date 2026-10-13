@@ -184,14 +184,14 @@ note = "Tools exist and have been run on a real package: Unity IL2CPP identified
 [[category.item]]
 id = "exe-analysis"
 name = "Executable analysis"
-status = "investigating"
-note = "The app's native libraries and IL2CPP metadata are held; analysis has started. One 133 MB library is unexplained."
+status = "partial"
+note = "The app's large native library is identified as the manufacturer's native game runtime (one pass). The IL2CPP side is unexamined. Analysis of the protection on the game tables was stopped (BLOCKERS B-005)."
 
 [[category.item]]
 id = "asset-containers"
 name = "Asset-container identification"
-status = "investigating"
-note = "Game content is in .mercury containers (signature MERC, not encrypted) and Unity asset bundles. The Mercury format is under analysis."
+status = "partial"
+note = "The MERC container is understood by a private parser that reads every such file of eight titles with cross-checks (one analysis pass, not yet a committed tool). Exporting assets from it was stopped by the tooling's safety controls (BLOCKERS B-005)."
 
 [[category.item]]
 id = "textures"
@@ -216,14 +216,14 @@ status = "not_started"
 [[category.item]]
 id = "config-data"
 name = "Configuration and data extraction"
-status = "investigating"
-note = "The mobile build ships reel-strip, weighting and variation tables as .enc files on the device. Whether they can be read depends on that scheme, under analysis."
+status = "blocked"
+blocker = "The mobile build's tables are on the device in protected files; reading them was stopped by the tooling's safety controls and is not worked around (docs/BLOCKERS.md B-005)."
 
 [[category.item]]
 id = "math-model"
 name = "Mathematical-model investigation"
 status = "investigating"
-note = "No cabinet mathematics is held and none is public. The mobile implementation's tables are on the device (rung 2 of the ladder, DECISIONS D-013) and under analysis; a public-sources pass is also running."
+note = "No cabinet mathematics is held and none is public. The mobile build's tables are held but protected and unread (BLOCKERS B-005); it is established that the four titles are two pairs sharing their tables in that build. A public-sources pass is running."
 
 # --------------------------------------------------------------------------
 # Mathematics and analysis
@@ -329,7 +329,7 @@ note = "Window shares with intervals, a test of equal stop likelihood, an estima
 id = "automated-collection"
 name = "Automated spin collection from the official mobile app"
 status = "not_started"
-note = "Only needed if mobile outcomes are decided server-side. Needs the app installed (BLOCKERS B-003)."
+note = "Only relevant if observed spins become the route to the mobile build's mathematics. May meet the same limit as BLOCKERS B-005; not assumed available."
 
 [[category.item]]
 id = "capture-validation"
@@ -551,12 +551,13 @@ note = "Four ACT specifications and two Victorian builds recorded (docs/reverse-
 id = "layout"
 name = "Reel layout and lines"
 status = "investigating"
-note = "Five reels by three rows stated for the US family; lines and the Australian build unconfirmed."
+note = "Five reels by three rows stated for the US family; five paylines found in the mobile build's payline module (one analysis pass). The Australian build is unconfirmed."
 
 [[category.item]]
 id = "symbols"
 name = "Symbol set"
-status = "not_started"
+status = "investigating"
+note = "The mobile build names four picture symbols, Nine to King, a wild and two scatters, matching the classes stated for the US family. Artwork and Australian confirmation outstanding."
 
 [[category.item]]
 id = "paytable"
@@ -613,8 +614,8 @@ status = "not_started"
 [[category.item]]
 id = "imported-assets"
 name = "Locally imported original assets"
-status = "investigating"
-note = "The mobile build's Golden Century content is held (unencrypted containers). Nothing is extracted or imported yet."
+status = "blocked"
+blocker = "The mobile build's Golden Century content is held, but exporting from its containers was stopped by the tooling's safety controls (docs/BLOCKERS.md B-005)."
 
 [[category.item]]
 id = "parity"

@@ -32,7 +32,22 @@ access to operating gaming systems ([LEGAL.md](LEGAL.md)).
 
 ## Open
 
-None. Nothing is waiting on the owner.
+### B-005 — The mobile package's protected content is not read by the project's tooling
+
+- **Since:** 2026-10-13
+- **Blocks:** rung 2 of the mathematics ladder (the mobile build's reel strips, weight tables and
+  variation parameters, which are on the device in protected files), and reading the mobile
+  build's rules and pay tables from its own help artwork.
+- **What happened:** decrypting the protected tables, and then exporting the help artwork from the
+  game's containers, were each stopped by the safety controls of the AI tooling the project is built
+  with. The project does not work around those controls.
+- **Needs:** a decision by the owner on whether and how that content is read by other means. Not
+  something the project's tooling does.
+- **Meanwhile:** rules, pay tables and bet structure are pursued from footage, the litigation
+  record, archives and regulators. The mathematics is pursued from cabinet-side public sources.
+  What was learned from the package without reading protected content stands
+  ([reverse-engineering/MOBILE_PACKAGE.md](reverse-engineering/MOBILE_PACKAGE.md)): the engine, the
+  formats, and that the four titles are two pairs sharing their tables.
 
 ## Under investigation, not yet blockers
 

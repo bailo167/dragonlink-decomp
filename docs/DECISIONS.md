@@ -190,3 +190,20 @@ that. Everything else has a path.
 **Risk noted.** Automated play of the mobile app is very likely against its terms of service and
 may cost the account used. That is the owner's decision; an account kept for the purpose is used.
 Collection runs on the owner's own machines against the owner's own account and nothing else.
+
+## D-014 — Safety controls on the tooling are a boundary (2026-10-13)
+
+**Decision.** When the safety controls of the AI tooling stop a step, the project does not attempt
+the same step by rewording it, by another technical route, or through another agent. It records
+what was stopped, continues on the lanes that are unaffected, and leaves the decision about that
+step to the owner.
+
+**What this applied to.** Recovering the key for, and decrypting, the mobile package's protected
+tables; and exporting the help and pay-table artwork from the game's containers. Both were stopped
+on 2026-10-13.
+
+**Effect on D-013.** Rung 2 of the mathematics ladder (the mobile implementation analysed on the
+device) is not available through the project's tooling beyond what inventory and structural
+comparison give. Rung 3 (observing many automated spins) may meet the same kind of limit and is
+not assumed to be available. Rung 1, cabinet-side evidence from lawful public sources, and the
+online evidence passes for player-visible facts, are unaffected.

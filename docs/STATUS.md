@@ -113,7 +113,12 @@ shell runs the simulation on screen.
   plain-text strings written for a gaming machine, which is strong evidence that the mobile build
   hosts a package built on the manufacturer's own game framework
   ([reverse-engineering/MOBILE_PACKAGE.md](reverse-engineering/MOBILE_PACKAGE.md)).
-- Nothing has been decrypted, decompiled, extracted or imported yet.
+- A structural analysis identified the app's native game runtime, worked out the container format,
+  and found, re-checked by hash, that the four titles in scope are two pairs sharing their table
+  files: Golden Century with Autumn Moon, Happy & Prosperous with Panda Magic.
+- Decrypting the protected tables, and exporting the help artwork, were stopped by the safety
+  controls of the tooling. That is treated as a boundary (DECISIONS D-014, BLOCKERS B-005). Nothing
+  has been decrypted, exported or imported.
 
 ## Known limits of what exists
 
@@ -141,5 +146,8 @@ shell runs the simulation on screen.
 
 ## Waiting on the owner
 
-Nothing. One decision is open: whether results
-from a recovered configuration may be published (DECISIONS D-010).
+Two decisions, neither of which stops other work:
+
+- whether and how the mobile package's protected content is read, since the project's tooling
+  does not do it (BLOCKERS B-005);
+- whether results from a recovered configuration may be published (DECISIONS D-010).

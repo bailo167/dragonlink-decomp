@@ -116,12 +116,55 @@ Three things stand out, each to be tested against the contents:
 - Titles differ in whether the main reel strips are shared by all variations or supplied per
   variation, so "what a variation changes" is not one answer for the family.
 
+## Structural analysis (2026-10-13)
+
+A static analysis pass over the held files, on the private side. "Checked" says how each finding
+stands: *re-checked* means repeated independently; *one pass* means reported by a single analysis
+and not yet reproduced by a committed tool, so it is STRONG EVIDENCE at most.
+
+| Finding | Checked |
+|---|---|
+| The large native library is the manufacturer's own native game runtime: its symbol names are dominated by the manufacturer's and the container format's namespaces, with slot-game, recovery, trace and market-configuration components. It is not specific to a title; one runtime loads any game folder | one pass |
+| The container format (`MERC`) is understood well enough that a private parser reads every such file of all eight titles with internal cross-checks: a tree of typed nodes and properties followed by a block of bulk data. Node types include timelines, sprites, text, sounds, textures, video textures and fonts | one pass |
+| Golden Century's asset library holds 114 audio clips in Ogg Vorbis, 95 textures (uncompressed RGBA, ETC1, and video textures in WebM), and 18 bitmap fonts | one pass |
+| The help and pay-table screens are **images**, not text. Pay values cannot be read from text in the clear files | one pass |
+| Golden Century's payline module defines **five** paylines on a five-by-three window | one pass |
+| The symbol set as the game names it: four picture symbols, five card symbols (Nine to King), a wild, "Scatter1" (Free Games) and "Scatter2" (the Hold & Spin prize symbol). This matches the classes Aristocrat states for the US cabinet family ([FEATURES.md](FEATURES.md)) | one pass |
+| Four jackpot levels are named: Grand, Major, Minor, Mini | one pass |
+| There are 350 `.enc` files across the eight titles | re-checked |
+| **Golden Century and Autumn Moon**: 48 `.enc` files each, **45 byte-identical**; the three that differ are the `configuration` files of variations 88, 90 and 92 | re-checked |
+| **Happy & Prosperous and Panda Magic**: 47 `.enc` files each, **46 byte-identical**; the one that differs is the top-level `configuration` | re-checked |
+| `respin_reelstrips` is the same file in all four titles in scope | re-checked |
+| Golden Century against Happy & Prosperous: of 25 files with the same name, one is identical | re-checked |
+
+**What follows from the identical files.** The table files are encrypted with one scheme, and
+identical encrypted files hold identical contents. So in this mobile build the four titles in scope
+are **two pairs that share their tables**: Golden Century with Autumn Moon, and Happy & Prosperous
+with Panda Magic, each pair differing in artwork, sound and a few configuration files. That is
+consistent with the official pages, which describe the same free-games mechanic within each pair.
+Label: STRONG EVIDENCE, for the mobile build only.
+
+### What has not been read, and will not be by this project's tooling
+
+The `.enc` tables are protected, and the key material is in the app. Recovering it and decrypting
+the tables was **stopped by the safety controls of the AI tooling this project is built with**, as
+was exporting the help and pay-table artwork from the containers. Those controls are treated as a
+boundary, not worked around. Consequently:
+
+- no reel strip, weight table, pay value or variation parameter of the mobile build has been read;
+- what the variation names mean is still a hypothesis;
+- the rules and pay tables are pursued from footage, the litigation record and archives instead
+  ([../BLOCKERS.md](../BLOCKERS.md)).
+
+Whether that content is read by other means is the owner's decision and outside this repository.
+
 ## What this changes
 
-- **Rung 2 of the mathematics ladder is open** ([math/README.md](math/README.md)): this
-  implementation's tables are on the device, not only on a server. Whether they can be read
-  depends on the `.enc` scheme, which is under analysis.
-- **The rules, pay-table and help screens of the mobile build** are in an unencrypted container.
+- **The mobile implementation's tables are on the device**, not only on a server, but protected;
+  they have not been read (see above), so rung 2 of the mathematics ladder
+  ([math/README.md](math/README.md)) is not available through this project's tooling.
+- **The four titles are two mathematical pairs in this build**, which halves the number of distinct
+  models to understand.
 - **Leads, each to be tested and none yet established:** that the module name `5x3_5Paylines_LL`
   means this build plays five lines on a five-by-three window with a Lightning Link framework
   module; that the Hold & Spin feature has reels of its own (`respin_reelstrips`), as the court
@@ -130,4 +173,5 @@ Three things stand out, each to be tested against the contents:
 
 ## Not done
 
-Nothing has been decrypted, decompiled or extracted yet. No asset has been imported.
+Nothing has been decrypted. No asset has been exported from a container or imported. The
+IL2CPP side of the app has not been examined.
