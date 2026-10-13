@@ -19,11 +19,17 @@
 //! module](mod@replay) for what that does and does not establish.
 
 pub mod replay;
+pub mod transcript;
 
 pub use replay::{
     Ambiguity, AmbiguousChoice, Inconsistency, InconsistencyReason, Reconstruction, ReplayReport,
     ReplayStop, ScriptedCommand, StopReason, UNOBSERVED_STARTING_CREDITS, reconstruct, replay,
     replay_kind,
+};
+
+pub use transcript::{
+    MeterCheck, ObservationSource, Selection, SheetError, SheetRecord, SheetSummary, parse_sheet,
+    sheet_to_trace,
 };
 
 use dragonlink_core::{DevRng, Event, Game, GameError};

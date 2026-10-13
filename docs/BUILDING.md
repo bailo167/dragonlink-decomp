@@ -89,7 +89,7 @@ The host the gate currently runs on, recorded so the environment can be reproduc
 | Node.js | 22.17.0 | not used by the native build; serves and checks the web bundle |
 | wasm-bindgen CLI | 0.2.129 | `cargo install wasm-bindgen-cli --version 0.2.129 --locked`; must equal the `wasm-bindgen` version in `Cargo.lock` |
 | Microsoft Edge | 155 | the headless browser the web check drives; any Chromium-family browser works |
-| ffmpeg | 8.1 | for inspecting and measuring reference media |
+| ffmpeg | 8.1 | for inspecting and measuring reference media; `dragonlink-capture` runs it |
 | winget | 1.29 | used by the setup script |
 
 | yt-dlp | 2026.08.19 | per-user Python package; fetches public video and its metadata for the footage passes |

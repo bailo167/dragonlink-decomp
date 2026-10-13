@@ -5,6 +5,8 @@
 //! dragonlink-trace validate <FILE>
 //! dragonlink-trace compare  <A> <B> [--timing-tolerance-ms N] [--json]
 //! dragonlink-trace replay   <TRACE> [--model synthetic|CONFIG] [--credits N] [--json]
+//! dragonlink-trace transcribe <SHEET> --denom 1c --lines 50 --capture-sha256 HASH
+//!                             --scope cabinet-au [--title T] [--state base] [--out FILE] [--json]
 //! ```
 //!
 //! `compare` says what kind of comparison it made. Two rewrite traces give a
@@ -17,6 +19,12 @@
 //! what is left is a difference in rules. It prints what the replay amounts
 //! to, and writes nothing.
 //!
+//! `transcribe` turns a window sheet (one line per game read from a
+//! recording: the window, the denomination, the line count and the meters)
+//! into an observation trace of one configuration, and reports what it left
+//! out and whether the meters agree with each other. Without `--out` it only
+//! reports, which is how to see which configurations a sheet holds.
+//!
 //! Observation traces are transcribed from recordings of the original, which
 //! are source material; keep them in the private source root.
 
@@ -26,9 +34,12 @@ use std::path::{Path, PathBuf};
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
 use dragonlink_math::GameConfiguration;
-use dragonlink_model::MathModel;
 use dragonlink_model::fixtures::synthetic_dev_fixture;
-use dragonlink_trace::{ComparisonKind, ReplayReport, Trace, compare, record_rewrite, replay};
+use dragonlink_model::{MathModel, SourceClass, TitleId};
+use dragonlink_trace::{
+    ComparisonKind, ObservationSource, ReplayReport, Selection, SheetSummary, Trace, compare,
+    parse_sheet, record_rewrite, replay, sheet_to_trace,
+};
 
 #[derive(Parser, Debug)]
 #[command(about = "Record, validate and compare behavioural traces")]
@@ -79,6 +90,76 @@ enum Cmd {
         #[arg(long)]
         json: bool,
     },
+    /// Turn a sheet of transcribed windows into an observation trace of one
+    /// configuration, and report what was left out.
+    Transcribe {
+        /// The window sheet (JSON Lines; `dragonlink_trace::transcript`).
+        sheet: PathBuf,
+        /// The denomination to take, as displayed: 1c, 10c, $1.
+        #[arg(long)]
+        denom: String,
+        /// The line count to take.
+        #[arg(long)]
+        lines: u32,
+        /// The kind of game to take.
+        #[arg(long, default_value = "base")]
+        state: String,
+        /// SHA-256 of the recording the sheet was read from.
+        #[arg(long)]
+        capture_sha256: String,
+        /// What was recorded: cabinet-au, cabinet-us, mobile, with anything narrower.
+        #[arg(long)]
+        scope: String,
+        /// The title, when known: golden_century, happy_and_prosperous, panda_magic, autumn_moon.
+        #[arg(long, value_parser = parse_title)]
+        title: Option<TitleId>,
+        /// A note for the trace's header (who read it, from what).
+        #[arg(long, default_value = "")]
+        notes: String,
+        /// Where to write the trace. A transcription of a recording is kept
+        /// with the recording, in the private source root.
+        #[arg(long)]
+        out: Option<PathBuf>,
+        #[arg(long)]
+        json: bool,
+    },
+}
+
+fn parse_title(text: &str) -> Result<TitleId, String> {
+    serde_json::from_value(serde_json::Value::String(text.to_string()))
+        .map_err(|_| format!("{text:?} is not a title this project knows"))
+}
+
+/// What a conversion did, one finding per line.
+fn sheet_text(summary: &SheetSummary) -> String {
+    let mut out = vec![format!("{} records on the sheet:", summary.records)];
+    for (configuration, count) in &summary.configurations {
+        out.push(format!("  {count:>5}  {configuration}"));
+    }
+    out.push(format!(
+        "selected {}: {} games written, {} not a reel window",
+        summary.selected, summary.games, summary.without_window
+    ));
+    out.push(format!(
+        "reel windows: {} written, {} left out for an unread position",
+        summary.reels_written, summary.reels_unread
+    ));
+    out.push(format!(
+        "awards: {} written, {} unread",
+        summary.awards_written, summary.awards_unread
+    ));
+    out.push(format!(
+        "prize values: {} written, {} unread, {} not a whole multiple of the bet",
+        summary.prize_values_written,
+        summary.prize_values_unread,
+        summary.prize_values_not_bet_multiples
+    ));
+    let m = &summary.meters;
+    out.push(format!(
+        "meters over {} consecutive pairs: {} agree, {} agree with the win not yet credited, {} UNEXPLAINED",
+        m.pairs, m.settled, m.win_pending, m.unexplained
+    ));
+    out.join("\n")
 }
 
 /// The mathematics named by `spec`: the synthetic fixture or a configuration file.
@@ -254,6 +335,51 @@ fn main() -> Result<()> {
             }
             Ok(())
         }
+        Cmd::Transcribe {
+            sheet,
+            denom,
+            lines,
+            state,
+            capture_sha256,
+            scope,
+            title,
+            notes,
+            out,
+            json,
+        } => {
+            let text = fs::read_to_string(&sheet)
+                .with_context(|| format!("reading {}", sheet.display()))?;
+            let records =
+                parse_sheet(&text).with_context(|| format!("sheet {}", sheet.display()))?;
+            let source = ObservationSource {
+                title,
+                scope,
+                source_class: SourceClass::GameplayRecording,
+                capture_sha256,
+                notes,
+            };
+            let selection = Selection {
+                state,
+                denom,
+                lines,
+            };
+            let (trace, summary) = sheet_to_trace(&records, &source, &selection)
+                .with_context(|| format!("sheet {}", sheet.display()))?;
+            trace
+                .validate()
+                .context("the trace that would be written")?;
+            if json {
+                println!("{}", serde_json::to_string_pretty(&summary)?);
+            } else {
+                println!("{}", sheet_text(&summary));
+            }
+            if let Some(path) = out {
+                fs::write(&path, trace.to_jsonl()?)
+                    .with_context(|| format!("writing {}", path.display()))?;
+                eprintln!("wrote {} events to {}", trace.records.len(), path.display());
+            }
+            Ok(())
+        }
         Cmd::Replay {
             trace,
             model,
@@ -320,6 +446,44 @@ mod tests {
         fs::write(&path, config.to_json().unwrap()).unwrap();
         assert_eq!(load_model(path.to_str().unwrap()).unwrap(), config.model);
         assert!(load_model("no-such-file.json").is_err());
+    }
+
+    #[test]
+    fn a_sheet_is_reported_with_what_it_holds_and_what_was_left_out() {
+        // A sheet made up for the test.
+        let line = |t: u32, credit: &str, win: &str, grid: &str| {
+            format!(
+                r#"{{"t":{t},"state":"base","denom":"2c","lines":25,"credit":"{credit}","bet":"1.00","win":"{win}","grid":{grid}}}"#
+            )
+        };
+        let text = [
+            line(1, "50.00", "0.00", r#"[["A","B","C"],["B","C","D"]]"#),
+            line(2, "49.40", "0.40", r#"[["A","?","C"],["ORB:150","C","D"]]"#),
+            line(3, "40.00", "0.00", r#"[["A","B","C"],["B","C","D"]]"#),
+        ]
+        .join("\n");
+        let records = parse_sheet(&text).unwrap();
+        let source = ObservationSource {
+            title: Some(parse_title("golden_century").unwrap()),
+            scope: "synthetic".into(),
+            source_class: SourceClass::GameplayRecording,
+            capture_sha256: "0".repeat(64),
+            notes: String::new(),
+        };
+        let selection = Selection {
+            state: "base".into(),
+            denom: "2c".into(),
+            lines: 25,
+        };
+        let (trace, summary) = sheet_to_trace(&records, &source, &selection).unwrap();
+        trace.validate().unwrap();
+        let report = sheet_text(&summary);
+        assert!(report.contains("3 records on the sheet"));
+        assert!(report.contains("base, 2c, 25 lines"));
+        assert!(report.contains("reel windows: 5 written, 1 left out"));
+        assert!(report.contains("prize values: 1 written"));
+        assert!(report.contains("1 agree, 0 agree with the win not yet credited, 1 UNEXPLAINED"));
+        assert!(parse_title("lightning_cash").is_err());
     }
 
     #[test]

@@ -330,8 +330,8 @@ note = "Window shares with intervals, a test of equal stop likelihood, an estima
 [[category.item]]
 id = "footage-windows"
 name = "Reel windows transcribed from public cabinet footage"
-status = "not_started"
-note = "Rung 1b (DECISIONS D-015): frame-by-frame reading of stopped windows per title and build, as input to strip reconstruction. Footage passes for all four titles are under way to locate usable recordings."
+status = "investigating"
+note = "Rung 1b (DECISIONS D-015). One 53-minute Australian session of Golden Century has a still for each of 583 games, and the stills are being read into a window sheet. Not yet reconstructed into strips, not yet read a second time, and one session of one title."
 
 [[category.item]]
 id = "automated-collection"
@@ -931,6 +931,12 @@ name = "Source recordings of the original"
 status = "partial"
 note = "Public recordings of Australian and US machines located, scanned and partly read for all four titles; held privately with hashes. No recording is tied to a regulatory build (every one reads the same 2016 notice), and none has been transcribed into a trace."
 
+[[category.item]]
+id = "capture-tooling"
+name = "Recording to observation trace"
+status = "implemented"
+evidence = "tools/dragonlink-capture (tests); crates/dragonlink-trace/src/transcript.rs (tests); docs/PARITY.md"
+note = "Rest moments are found in a recording and a still cut for each; a sheet of transcribed windows becomes an observation trace of one configuration, with nothing filled in and the meters checked against each other. The detector was run on one hand-held recording of a cabinet (583 games in 53 minutes). Reading the stills is not automated."
 [[category.item]]
 id = "event-comparison"
 name = "Event comparison"

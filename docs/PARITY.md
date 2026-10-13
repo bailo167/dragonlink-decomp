@@ -102,6 +102,46 @@ And it states which of these it was:
 
 It has been exercised only on our own traces relabelled as observations.
 
+## From a recording to an observation trace
+
+Three steps, each of which can be repeated by anyone holding the same recording:
+
+```sh
+# 1. Find the moment each game came to rest, and cut one still per game.
+cargo run -p dragonlink-capture -- rest-frames session.mp4 --reels 200:450:1440:430 --out moments.json
+cargo run -p dragonlink-capture -- stills session.mp4 --moments moments.json --crop 90:400:1720:660 --out-dir <folder outside Git>
+
+# 2. Read each still into a window sheet (by eye, or by a reader that is then checked).
+
+# 3. Turn one configuration of the sheet into an observation trace.
+cargo run -p dragonlink-trace-cli -- transcribe sheet.jsonl --denom 1c --lines 50 \
+    --capture-sha256 <hash of session.mp4> --scope "cabinet-au, Queensland club" --title golden_century --out trace.jsonl
+```
+
+1. **Rest frames.** A game's reels start together and stop one after another, so the change in the
+   reel area falls away and the picture is then still until the next game starts. `rest-frames`
+   measures that change on a small grey copy of the reel area and takes, for every sharp start out
+   of rest, the frame just before it: the window of the game that ended. It reads no symbols and
+   knows nothing about any game. Its thresholds are options, and it prints the spread of its
+   measurements so they can be chosen deliberately. `stills` refuses to write into a Git work tree.
+2. **The window sheet** is JSON Lines, one game per line: the time, the kind of game, the
+   denomination, the line count, the three meters as displayed, and the window as five reels of
+   three symbol codes, with `?` for anything not read (`crates/dragonlink-trace/src/transcript.rs`).
+   A sheet is a transcription of a recording and is kept with it.
+3. **`transcribe`** takes one configuration at a time, because reels and tables are not assumed to
+   be shared between denominations or line counts. It **fills nothing in**: a reel with an unread
+   position is left out, an unread award is left out, and a prize value that is not a whole
+   multiple of the bet is counted and left out. It reports all of that, and it checks the meters
+   against each other: each game's credit meter should equal the one before, less the bet, plus
+   the win. Pairs that do not fit point at a misread digit or a missed game, which makes this the
+   cheapest test of a transcription.
+
+The trace is then input to reel reconstruction (`dragonlink-analyze reconstruct-reels`) and to
+replay. An observation made this way contains only what a still shows: windows, prize values and
+the game's total award. It has no line-by-line wins, so a replay against it will differ at the
+first event the observer could not record; comparing only the kinds of event an observation holds
+is tracked as the next step.
+
 ## Recordings
 
 Recordings of the original are source material: they live under `captures/` in the private source

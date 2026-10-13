@@ -87,16 +87,16 @@ evidence about the original. Compiling, passing our own tests or looking right n
 |---|---:|---:|---:|---:|---:|---:|
 | Foundation | 10 | 9 | 0 | 1 | 90% | 0% |
 | Reverse engineering | 13 | 3 | 0 | 5 | 23% | 0% |
-| Mathematics and analysis | 30 | 11 | 0 | 11 | 36% | 0% |
+| Mathematics and analysis | 30 | 11 | 0 | 12 | 36% | 0% |
 | Shared game runtime | 19 | 1 | 0 | 14 | 5% | 0% |
 | Golden Century | 15 | 1 | 0 | 7 | 6% | 0% |
 | Happy & Prosperous | 15 | 1 | 0 | 7 | 6% | 0% |
 | Panda Magic | 15 | 1 | 0 | 7 | 6% | 0% |
 | Autumn Moon | 15 | 1 | 0 | 7 | 6% | 0% |
-| Parity | 9 | 4 | 0 | 2 | 44% | 0% |
+| Parity | 10 | 5 | 0 | 2 | 50% | 0% |
 | Platforms | 4 | 0 | 0 | 4 | 0% | 0% |
 | Packaging | 5 | 1 | 0 | 3 | 20% | 0% |
-| **Overall** | **150** | **33** | **0** | **68** | **22%** | **0%** |
+| **Overall** | **151** | **34** | **0** | **69** | **22%** | **0%** |
 
 <!-- progress-table:end -->
 
@@ -147,7 +147,8 @@ See [docs/SOURCES.md](docs/SOURCES.md).
 | `crates/dragonlink-formats` | Identify files by content, measure entropy, list ZIP-family packages. |
 | `tools/dragonlink-inventory`, `tools/dragonlink-inspect` | Create and check the private source root; hash and classify source material; measure one unknown file. |
 | `apps/dragonlink` | The Bevy application. Placeholder mode only so far. |
-| `crates/dragonlink-trace`, `tools/dragonlink-trace` | The behavioural trace format, recording, comparison, and replay of observed outcomes through the simulation. |
+| `crates/dragonlink-trace`, `tools/dragonlink-trace` | The behavioural trace format, recording, comparison, replay of observed outcomes through the simulation, and conversion of transcribed windows into observation traces. |
+| `tools/dragonlink-capture` | Finds the moment each game in a recording came to rest and cuts a still of it, for transcription. |
 | `crates/dragonlink-assets` | The asset manifest: ids, provenance, hashes, verification, discovery. |
 | `tools/dragonlink-import`, `tools/dragonlink-pack` | Import your own source material into a local asset set; verify it; assemble a local package. |
 | `tools/progress-gen` | Validates the tracker and renders the progress matrix and table above. |

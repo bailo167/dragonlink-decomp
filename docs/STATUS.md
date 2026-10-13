@@ -205,6 +205,16 @@ and merged through the gate.
   [reverse-engineering/OPEN_QUESTIONS.md](reverse-engineering/OPEN_QUESTIONS.md) now says which
   conflicts are settled and by what.
 
+### From a recording to a trace (2026-10-13)
+
+- `dragonlink-capture`: finds the moment each game in a recording came to rest and cuts one still
+  per game. On the held 53-minute Golden Century session it found 583 games.
+- `dragonlink-trace transcribe`: a sheet of transcribed windows becomes an observation trace of one
+  configuration. Nothing is filled in, and the meters are checked against each other
+  ([PARITY.md](PARITY.md), "From a recording to an observation trace").
+- The 583 stills are being read into a window sheet. Stills and sheet are kept privately with the
+  recording.
+
 ## Known limits of what exists
 
 - Every rule in the simulation is a generic slot-game rule, written down so it can be checked. None

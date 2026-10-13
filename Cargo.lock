@@ -2585,6 +2585,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "dragonlink-capture"
+version = "0.0.1"
+dependencies = [
+ "anyhow",
+ "clap",
+ "dragonlink-assets",
+ "serde",
+ "serde_json",
+ "tempfile",
+]
+
+[[package]]
 name = "dragonlink-core"
 version = "0.0.1"
 dependencies = [
