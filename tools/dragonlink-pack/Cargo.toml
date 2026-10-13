@@ -1,0 +1,21 @@
+[package]
+name = "dragonlink-pack"
+description = "Verify a local asset set against its manifest and assemble a local full package"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[dependencies]
+dragonlink-assets.workspace = true
+anyhow.workspace = true
+clap.workspace = true
+
+[dev-dependencies]
+dragonlink-model.workspace = true
+tempfile.workspace = true
+
+[lints]
+workspace = true

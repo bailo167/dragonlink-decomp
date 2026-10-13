@@ -88,12 +88,26 @@ shell runs the simulation on screen.
   comparison between observations. The command-line tool records, validates and compares.
 - Only determinism checks are possible so far: there is no observation of the original.
 
+### Manifest, importer, packer (2026-10-13)
+
+- `dragonlink-assets`: the manifest of a normalised asset set, its validation, verification of
+  files against it, and discovery at run time with a plain-words reason when there is no asset set.
+- `dragonlink-import`, stage 1: loose standard media copied into the asset set with provenance and
+  hashes; idempotent; the source is never modified.
+- `dragonlink-pack`: `verify`, and `assemble` for a local full package with a do-not-distribute
+  notice, refused inside a Git work tree.
+- The application reports at start-up why it is in placeholder mode.
+- The whole chain was run on the Windows host's source root with synthetic files: import, verify,
+  discovery by the application, package assembly, tamper detection.
+
 ## Known limits of what exists
 
 - Every rule in the simulation is a generic slot-game rule, written down so it can be checked. None
   has been checked on an Australian machine.
 - The synthetic fixture is not Dragon Link: five lines, 24-stop strips, symbols `A` to `H`.
 - No free games, no progressive meters, no weighted stops, no attract or idle states.
+- The importer handles loose standard media only and identifies nothing. The application cannot
+  display imported assets.
 - The application shows nothing of Golden Century. Its timing constants are ours, not measured.
   It has not been run in a browser.
 - The mathematics tooling has never seen a real configuration. Its model will need extending when
@@ -104,8 +118,8 @@ shell runs the simulation on screen.
 
 1. Replay an observation's outcomes through the simulation (scripted outcome source), so rules can
    be compared on the same outcomes once a recording is transcribed.
-2. `dragonlink-assets`, `dragonlink-import`, `dragonlink-pack`: manifest, first importer stage,
-   local package validation.
+2. Unpack ZIP-family packages safely (decompression budget, safe output tree), so that a real
+   package can be imported once one is held.
 3. Bundle and run the web build in a browser.
 4. Check existing third-party footage for rules, pay-table and information screens.
 5. Re-read the once-read sources so their claims can be labelled VERIFIED.

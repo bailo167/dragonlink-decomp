@@ -35,8 +35,8 @@ note = "Stage B: regulatory and official sources catalogued, official mobile sof
 [[milestone]]
 id = "M2"
 name = "Import"
-status = "not_started"
-note = "Stage C: source scanner, manifest, extraction, normalised local asset layout, repeatable importer."
+status = "partial"
+note = "Stage C. Scanner, manifest, normalised layout and a repeatable first importer stage exist and are tested on synthetic files. No extraction from containers, and no real source material has been imported."
 
 [[milestone]]
 id = "M3"
@@ -955,17 +955,20 @@ name = "Packaging"
 id = "source-importer"
 name = "Source importer"
 status = "partial"
-note = "The inventory stage exists (hash, classify, list). Extraction and conversion are not started."
+note = "Stage 1: loose files that already are standard media are copied into the asset set with their provenance and hashes. No container unpacking, no conversion, and no identification of what an asset is."
 
 [[category.item]]
 id = "asset-manifest"
 name = "Asset manifest"
-status = "not_started"
+status = "implemented"
+evidence = "crates/dragonlink-assets (tests); docs/SOURCES.md"
+note = "Logical id, source package and path, both hashes, media type, title, category, provenance class, confidence, method. Verified against files; exercised with synthetic files only."
 
 [[category.item]]
 id = "local-package"
 name = "Local full-package workflow"
-status = "not_started"
+status = "partial"
+note = "dragonlink-pack verifies an asset set and assembles executable, assets and a do-not-distribute notice outside any Git tree. Exercised end to end with synthetic files; the application cannot display imported assets yet."
 
 [[category.item]]
 id = "asset-free-build"

@@ -534,6 +534,16 @@ fn main() -> AppExit {
             return AppExit::error();
         }
     };
+    // Say plainly why there are no original assets on screen.
+    match dragonlink_assets::discover() {
+        dragonlink_assets::AssetMode::Placeholder { reason } => {
+            eprintln!("placeholder mode: {reason}");
+        }
+        dragonlink_assets::AssetMode::Imported { manifest, .. } => eprintln!(
+            "placeholder mode: an asset set with {} assets was found, but the application cannot display imported assets yet",
+            manifest.entries.len()
+        ),
+    }
     let game = match Game::new(synthetic_dev_fixture(), cli.credits) {
         Ok(game) => game,
         Err(e) => {
