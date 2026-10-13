@@ -218,7 +218,7 @@ and merged through the gate.
 ### The first transcribed session (2026-10-13)
 
 - A 53-minute Australian session of Golden Century was read game by game: 583 games, every one
-  read, 1,760 reel windows read twice by different readers with no disagreement
+  read, 1,808 reel windows read twice by different readers with no disagreement
   ([reverse-engineering/GOLDEN_CENTURY_SESSION.md](reverse-engineering/GOLDEN_CENTURY_SESSION.md)).
 - **Golden Century has pay-table entries at last**: sixteen, read from the machine's own win
   messages, with the shapes of lines 1 to 5.

@@ -28,9 +28,9 @@ finding about how the game differs between denominations. Read 2026-10-13.
 |---|---|
 | Games with a reading | 583 of 583 |
 | Kinds of screen | 543 base games, 23 free games, 11 Hold & Spin, 6 not a reel window |
-| Reel windows read twice, by different readers from different frames | 1,760, and **none disagree** |
-| Reel windows read once | 1,116 (the first set was moving, or one reading left a position unread) |
-| Positions left unread in the final sheet | 9, in three games, all blanked by a win animation at the moment of the still |
+| Reel windows read twice, by different readers from different frames | 1,808, and **none disagree** |
+| Reel windows read once | 1,070 (the first set was moving, or one reading left a position unread) |
+| Positions left unread in the final sheet | 7, in two games, all blanked by a win animation at the moment of the still |
 | Prize-symbol values read | 664; every one is a whole multiple of the game's total bet |
 
 What a single reader saw, and nobody has re-read: the win messages, and the meters. They were read by different readers from different frames, and the two are checked against each other below.
