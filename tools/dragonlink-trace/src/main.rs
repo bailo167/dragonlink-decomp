@@ -173,6 +173,16 @@ fn load_model(spec: &str) -> Result<MathModel> {
     Ok(config.model)
 }
 
+/// The kinds of event a comparison left out, with their counts.
+fn not_compared(comparison: &dragonlink_trace::Comparison) -> String {
+    comparison
+        .not_compared
+        .iter()
+        .map(|(kind, count)| format!("{count} {kind}"))
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
 fn event_json(event: Option<&dragonlink_core::Event>) -> String {
     event.map_or("(ends)".into(), |e| {
         serde_json::to_string(e).unwrap_or_default()
@@ -225,6 +235,12 @@ fn replay_text(report: &ReplayReport) -> String {
         "events: {} observed, {} replayed; {} leading events match",
         comparison.len_a, comparison.len_b, comparison.matched
     ));
+    if !comparison.not_compared.is_empty() {
+        out.push(format!(
+            "NOT COMPARED, because the trace holds none: {}",
+            not_compared(comparison)
+        ));
+    }
     match &comparison.first_divergence {
         None => out.push("the simulation emitted the events of the trace".to_string()),
         Some(d) => {
@@ -308,9 +324,15 @@ fn main() -> Result<()> {
             } else {
                 println!("{}", describe(comparison.kind));
                 println!(
-                    "events: {} and {}; {} leading events match",
+                    "events compared: {} and {}; {} leading events match",
                     comparison.len_a, comparison.len_b, comparison.matched
                 );
+                if !comparison.not_compared.is_empty() {
+                    println!(
+                        "NOT COMPARED, because the observation holds none: {}",
+                        not_compared(&comparison)
+                    );
+                }
                 match &comparison.first_divergence {
                     None => println!("the two traces contain the same events in the same order"),
                     Some(d) => {

@@ -32,6 +32,8 @@ pub use transcript::{
     sheet_to_trace,
 };
 
+use std::collections::{BTreeMap, BTreeSet};
+
 use dragonlink_core::{DevRng, Event, Game, GameError};
 use dragonlink_model::{MathModel, MathProvenance, SourceClass, TitleId};
 use serde::{Deserialize, Serialize};
@@ -329,12 +331,19 @@ pub struct TimingStats {
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct Comparison {
     pub kind: ComparisonKind,
+    /// Events of each trace that were compared.
     pub len_a: usize,
     pub len_b: usize,
     /// Leading events that match.
     pub matched: usize,
+    /// Position among the compared events, with the two events.
     pub first_divergence: Option<Divergence>,
     pub timing: Option<TimingStats>,
+    /// Kinds of event left out of the comparison because the observation
+    /// holds none of them, with how many events that was. Empty unless
+    /// exactly one trace is an observation. What is listed here was **not
+    /// checked**: agreement says nothing about it.
+    pub not_compared: Vec<(String, usize)>,
 }
 
 impl Comparison {
@@ -372,29 +381,60 @@ fn kind_of(a: &Trace, b: &Trace) -> ComparisonKind {
     }
 }
 
-/// Compare two traces event by event. When either is an observation, only
-/// what an observer can see is compared. `timing_tolerance_ms` is the
+/// Compare two traces event by event. `timing_tolerance_ms` is the
 /// difference in event time that counts as a mismatch; it should come from
 /// the recording's frame interval, not be chosen to make a comparison pass.
+///
+/// When either trace is an observation, only what an observer can see is
+/// compared ([`observable`]). When exactly one is, the other is also compared
+/// only on the kinds of event the observation holds: a transcription made
+/// from stills has windows and awards and no line-by-line wins, and lining it
+/// up against every event of a rewrite would differ at the first event nobody
+/// could have written down. The kinds left out are listed in
+/// [`Comparison::not_compared`]; they were not checked.
 pub fn compare(a: &Trace, b: &Trace, timing_tolerance_ms: u64) -> Comparison {
-    let observed = a.is_about_the_original() || b.is_about_the_original();
+    let (a_observed, b_observed) = (a.is_about_the_original(), b.is_about_the_original());
+    let observed = a_observed || b_observed;
     let view = |e: &Event| if observed { observable(e) } else { e.clone() };
-    let matched = a
-        .records
+    // The kinds the one observation holds, when there is exactly one.
+    let kinds_of = |t: &Trace| -> BTreeSet<&'static str> {
+        t.records.iter().map(|r| r.event.kind()).collect()
+    };
+    let held = match (a_observed, b_observed) {
+        (true, false) => Some(kinds_of(a)),
+        (false, true) => Some(kinds_of(b)),
+        _ => None,
+    };
+    let mut left_out: BTreeMap<&'static str, usize> = BTreeMap::new();
+    let mut compared = |trace: &'_ Trace, is_observation: bool| -> Vec<TraceRecord> {
+        trace
+            .records
+            .iter()
+            .filter(|record| {
+                let kind = record.event.kind();
+                let keep = is_observation || held.as_ref().is_none_or(|held| held.contains(kind));
+                if !keep {
+                    *left_out.entry(kind).or_insert(0) += 1;
+                }
+                keep
+            })
+            .cloned()
+            .collect()
+    };
+    let (ra, rb) = (compared(a, a_observed), compared(b, b_observed));
+    let matched = ra
         .iter()
-        .zip(&b.records)
+        .zip(&rb)
         .take_while(|(x, y)| view(&x.event) == view(&y.event))
         .count();
-    let first_divergence =
-        (matched < a.records.len() || matched < b.records.len()).then(|| Divergence {
-            seq: matched as u64,
-            a: a.records.get(matched).map(|r| r.event.clone()),
-            b: b.records.get(matched).map(|r| r.event.clone()),
-        });
-    let diffs: Vec<u64> = a
-        .records
+    let first_divergence = (matched < ra.len() || matched < rb.len()).then(|| Divergence {
+        seq: matched as u64,
+        a: ra.get(matched).map(|r| r.event.clone()),
+        b: rb.get(matched).map(|r| r.event.clone()),
+    });
+    let diffs: Vec<u64> = ra
         .iter()
-        .zip(&b.records)
+        .zip(&rb)
         .take(matched)
         .filter_map(|(x, y)| Some(x.t_ms?.abs_diff(y.t_ms?)))
         .collect();
@@ -407,11 +447,15 @@ pub fn compare(a: &Trace, b: &Trace, timing_tolerance_ms: u64) -> Comparison {
     });
     Comparison {
         kind: kind_of(a, b),
-        len_a: a.records.len(),
-        len_b: b.records.len(),
+        len_a: ra.len(),
+        len_b: rb.len(),
         matched,
         first_divergence,
         timing,
+        not_compared: left_out
+            .into_iter()
+            .map(|(kind, count)| (kind.to_string(), count))
+            .collect(),
     }
 }
 
@@ -513,6 +557,66 @@ mod tests {
         recovered.header.math_provenance = Some(MathProvenance::Cabinet);
         recovered.header.source_class = SourceClass::Cabinet;
         assert_eq!(compare(&seen, &recovered, 0).kind, ComparisonKind::Parity);
+        // The observation holds every kind of event, so nothing was left out.
+        assert!(c.not_compared.is_empty());
+    }
+
+    #[test]
+    fn against_a_sparse_observation_only_the_kinds_it_holds_are_compared() {
+        let ours = rewrite(4, 300);
+        // What a transcription from stills holds: windows and each game's award.
+        let mut seen = as_observation(&ours, 100);
+        seen.records.retain(|r| {
+            matches!(
+                r.event,
+                Event::SpinStarted { .. } | Event::ReelStopped { .. } | Event::SpinCompleted { .. }
+            )
+        });
+        for (seq, record) in seen.records.iter_mut().enumerate() {
+            record.seq = seq as u64;
+        }
+        seen.validate().unwrap();
+
+        for c in [compare(&seen, &ours, 0), compare(&ours, &seen, 0)] {
+            assert!(c.same_events(), "{:?}", c.first_divergence);
+            assert_eq!(c.len_a, seen.records.len());
+            assert_eq!(c.len_b, seen.records.len());
+            // What was not checked is said, with how much of it there was.
+            let left_out: usize = c.not_compared.iter().map(|(_, n)| n).sum();
+            assert_eq!(left_out, ours.records.len() - seen.records.len());
+            assert!(
+                c.not_compared
+                    .iter()
+                    .any(|(kind, _)| kind == "credits_changed")
+            );
+            assert!(
+                !c.not_compared
+                    .iter()
+                    .any(|(kind, _)| kind == "reel_stopped")
+            );
+        }
+
+        // A wrong award is still found.
+        let mut wrong = seen.clone();
+        let at = wrong
+            .records
+            .iter()
+            .position(|r| matches!(r.event, Event::SpinCompleted { .. }))
+            .unwrap();
+        if let Event::SpinCompleted { total_award, .. } = &mut wrong.records[at].event {
+            *total_award += 1;
+        }
+        let c = compare(&wrong, &ours, 0);
+        assert_eq!(c.matched, at);
+        assert!(matches!(
+            c.first_divergence.unwrap().a,
+            Some(Event::SpinCompleted { .. })
+        ));
+
+        // Two rewrites, or two observations, are compared whole.
+        assert!(compare(&ours, &ours, 0).not_compared.is_empty());
+        assert!(compare(&seen, &seen, 0).not_compared.is_empty());
+        assert!(!compare(&seen, &as_observation(&ours, 100), 0).same_events());
     }
 
     #[test]

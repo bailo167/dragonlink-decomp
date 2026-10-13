@@ -143,9 +143,9 @@ cargo run -p dragonlink-trace-cli -- transcribe sheet.jsonl --denom 1c --lines 5
 
 The trace is then input to reel reconstruction (`dragonlink-analyze reconstruct-reels`) and to
 replay. An observation made this way contains only what a still shows: windows, prize values and
-the game's total award. It has no line-by-line wins, so a replay against it will differ at the
-first event the observer could not record; comparing only the kinds of event an observation holds
-is tracked as the next step.
+the game's total award. It has no line-by-line wins and no credit movements. A comparison against
+it therefore covers only the kinds of event it holds, and says which kinds it left out and how
+many events that was: those were **not checked**, and agreement says nothing about them.
 
 ## Recordings
 
