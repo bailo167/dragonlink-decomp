@@ -3,17 +3,20 @@
 The current state of the project, what was last done, and what is next. Updated with every
 meaningful increment. Item-level state is in `progress/progress.toml`; this page is the narrative.
 
-**Last updated: 2026-10-13.**
+**Last updated: 2026-10-14.**
 
 ## In one paragraph
 
 The repository has its foundation, a headless game model, a first evidence base and a mathematics
-analysis subsystem. Nothing about the original Dragon Link games is reproduced yet: the simulation and analysis run
-only on a synthetic fixture. The first original material is held, the official mobile app with
-Golden Century's content, and is being analysed. Public research has established the titles' Australian approval identities and
-platform generations and the player-visible feature rules, and has established that the mathematics
-is not public. Work is pushed to GitHub and CI is green on Linux, Windows, macOS and wasm32. A placeholder application
-shell runs the simulation on screen.
+analysis subsystem. **All four titles in scope now play end to end** in the application on synthetic,
+clearly-labelled maths — Golden Century, Autumn Moon, Happy & Prosperous and Panda Magic — chosen
+from a four-title launcher, and a cross-title soak test keeps them robust. No original Dragon Link
+mathematics is reproduced: the configurations are invented behind the math interface and never
+presented as authentic (DECISIONS D-017). The first original material is held, the official mobile
+app with Golden Century's content, and is being analysed. Public research has established the titles'
+Australian approval identities and platform generations and the player-visible feature rules, and has
+established that the mathematics is not public. Work is pushed to GitHub and CI is green on Linux,
+Windows, macOS and wasm32.
 
 ## Done
 
@@ -243,16 +246,40 @@ and merged through the gate.
   still unknown, and B-005 narrows to exactly that.
 - Details bearing on the security of the live app are not published or built on (DECISIONS D-016).
 
+### All four titles playable, a launcher and hardening (2026-10-14)
+
+- **Autumn Moon, Happy & Prosperous and Panda Magic now play end to end** on the Golden Century
+  engine, each as its own synthetic configuration with the title's evidenced structure (its symbols,
+  the US family pay table, its free-games rule) and invented strips, weights, land chance and jackpot
+  amounts. Autumn Moon has the free-games mystery reveal; Happy & Prosperous and Panda Magic remove
+  the royals inside the feature. Selected with `--game autumn-moon|happy-prosperous|panda-magic`.
+  Synthetic returns about 94%, 89% and 89%; never to be quoted as Dragon Link's.
+- **A four-title launcher**: an ordinary start lists the four titles and the player picks one; a
+  `--game` flag or a smoke run boots straight into a game (so the gate and tests never wait on a
+  menu). Implemented as a Bevy state split (`Screen::Menu` / `Screen::Playing`).
+- **Hardening**: a cross-title soak test plays every title for 25,000 spins across two seeds, varying
+  the stake, and checks a spin never fails, the game always returns to the base game, both features
+  are reached, and each title is deterministic and replays event for event.
+- **Feature and jackpot banners**: a large centered banner announces FREE GAMES, HOLD & SPIN,
+  RETRIGGER, FULL GRID and the jackpot tiers, across all four titles.
+- **Known fidelity gaps** (documented in the fixtures and the tracker): Panda Magic's Hold & Spin can
+  start inside its free games on the real machine; Autumn Moon's free-games wild has its own line pay.
+  Neither is modelled yet. No themed artwork or audio (assets are blocked, B-005). No authentic math.
+
 ## Known limits of what exists
 
 - Every rule in the simulation is a generic slot-game rule, written down so it can be checked. None
   has been checked on an Australian machine.
-- The synthetic fixture is not Dragon Link: five lines, 24-stop strips, symbols `A` to `H`.
-- No free games, no progressive meters, no weighted stops, no attract or idle states.
+- The synthetic development fixture is not Dragon Link: five lines, 24-stop strips, symbols `A` to
+  `H`. The four title configurations are also synthetic: their structure is evidenced but every
+  strip, weight, chance and jackpot amount is invented and labelled so.
 - The importer handles standard media that is loose or inside ZIP-family archives, and identifies
   nothing. No proprietary container is unpacked. The application cannot display imported assets.
-- The application shows nothing of Golden Century. Its timing constants are ours, not measured.
-  In a browser it has been checked on one host and one browser only.
+- The application draws every title with generated coloured tiles and generic symbol names, no
+  themed artwork and no audio. Its timing constants are ours, not measured. In a browser it has been
+  checked on one host and one browser only, and the headless screenshot capture is unreliable on the
+  current host (black frames), so recent presentation changes are verified by tests and code, not by
+  eye.
 - Replay has never been given an observation of an original game: none has been transcribed.
 - The mathematics tooling has never seen a real configuration. Its model will need extending when
   one arrives ([reverse-engineering/math/CONFIGURATION.md](reverse-engineering/math/CONFIGURATION.md)).
@@ -292,17 +319,23 @@ flow with no debug or manual steps:
   labelled, replaceable with authentic values without the architecture
   changing (DECISIONS D-017). Long automated sessions run without panics.
 
-## Next (P1 fidelity, then P2 Autumn Moon)
+## Next
 
-1. **Fidelity for Golden Century**: themed placeholder symbol artwork (shapes
-   we draw, no proprietary asset), audio, win and feature transitions, a
-   jackpot-win flourish, and layout polish. Integrate official visible
-   values/rules where known.
-2. **Autumn Moon** (P2): the next complete playable title, reusing the Dragon
-   Link shell, reel renderer, pay/line evaluation, free-games framework,
-   reveal, Hold & Spin, jackpots and the synthetic config system; a
-   title-specific configuration and evidence.
-3. Then Happy & Prosperous, Panda Magic, and a four-title launcher.
+The four titles, the launcher and the first hardening and polish are done
+(see 2026-10-14 above). What remains, in rough order of value:
+
+1. **Fidelity and polish across all four titles**: themed placeholder symbol
+   artwork (shapes we draw, no proprietary asset), audio, win and feature
+   transitions beyond the banner, a jackpot-win flourish, and layout polish.
+   Visual work is held back by the unreliable screenshot capture on this host;
+   it wants an eyeball pass.
+2. **Close the documented fidelity gaps**: Panda Magic's Hold & Spin inside the
+   free games (a nested-feature change to the core state machine, verifiable by
+   deterministic tests), and Autumn Moon's free-games wild line pay.
+3. **Integrate authentic values** when recovered, by replacing a config.
+4. **The further titles** (Genghis Khan, Golden Gong, Peace & Long Life,
+   Spring Festival), once their player-visible structure is evidenced; today
+   the evidence for them is thin.
 
 ## Not now (owner's direction, 2026-10-14)
 
