@@ -6,6 +6,7 @@
 //! dragonlink-analyze compare-games <A> <B> [--json]
 //! dragonlink-analyze progressive-ev <CONFIG> [--bet-index N] [--meter grand=250000]... [--json]
 //! dragonlink-analyze simulate      <CONFIG> --spins N [--seed N]
+//! dragonlink-analyze reconstruct-reels <TRACE> [--json]
 //! ```
 //!
 //! `<CONFIG>` is a configuration file (`docs/reverse-engineering/math/CONFIGURATION.md`)
@@ -27,6 +28,7 @@ use dragonlink_math::GameConfiguration;
 use dragonlink_math::compare::compare;
 use dragonlink_math::exact::{DEFAULT_ENUMERATION_LIMIT, analyze};
 use dragonlink_math::progressive::progressive_ev;
+use dragonlink_math::reconstruct::{Strip, reconstruct_from_events};
 use dragonlink_math::report::{comparison_report, game_report, progressive_report};
 use dragonlink_math::sim::simulate;
 use dragonlink_model::JackpotTier;
@@ -80,6 +82,13 @@ enum Cmd {
         /// A displayed meter value in credits, e.g. `--meter grand=250000`. Repeatable.
         #[arg(long = "meter", value_parser = parse_meter)]
         meters: Vec<(JackpotTier, f64)>,
+        #[arg(long)]
+        json: bool,
+    },
+    /// Rebuild each reel from the windows a trace shows it stopping on.
+    ReconstructReels {
+        /// A trace file (`dragonlink-trace/1`), rewrite or observation.
+        trace: PathBuf,
         #[arg(long)]
         json: bool,
     },
@@ -229,6 +238,53 @@ fn main() -> Result<()> {
                 progressive_report(&config, &ev)
             };
             emit(&text, None)
+        }
+        Cmd::ReconstructReels { trace, json } => {
+            let text = fs::read_to_string(&trace)
+                .with_context(|| format!("reading trace {}", trace.display()))?;
+            let trace = dragonlink_trace::Trace::from_jsonl(&text).context("the trace")?;
+            let reels = reconstruct_from_events(trace.records.iter().map(|r| &r.event));
+            if json {
+                return emit(&(serde_json::to_string_pretty(&reels)? + "\n"), None);
+            }
+            let mut out = String::new();
+            out.push_str(&format!(
+                "Reels reconstructed from a {:?} trace (source {:?}). They describe what was observed, nothing else.\n\n",
+                trace.header.origin, trace.header.source_class
+            ));
+            for (reel, r) in reels.iter().enumerate() {
+                out.push_str(&format!(
+                    "reel {}: {} stops observed, {} distinct windows, about {:.2}% of spins would show a window not seen yet\n",
+                    reel + 1,
+                    r.observations,
+                    r.windows.len(),
+                    r.unseen_share * 100.0
+                ));
+                if let Some(u) = &r.uniformity {
+                    out.push_str(&format!(
+                        "  equal shares: {} (chi-square {:.1} on {} degrees of freedom, z = {:+.2})\n",
+                        if u.consistent { "consistent" } else { "REJECTED" },
+                        u.chi_square,
+                        u.degrees_of_freedom,
+                        u.z
+                    ));
+                }
+                match &r.strip {
+                    Strip::Unique { symbols } => {
+                        out.push_str(&format!("  strip ({} stops, unique): {}\n", symbols.len(), symbols.join(" ")));
+                    }
+                    Strip::Ambiguous { candidates, example } => out.push_str(&format!(
+                        "  strip ({} stops): {} orders have exactly these windows and are mathematically identical; one of them: {}\n",
+                        example.len(),
+                        candidates,
+                        example.join(" ")
+                    )),
+                    Strip::NotAssembled { reason } => {
+                        out.push_str(&format!("  strip not assembled: {reason}\n"));
+                    }
+                }
+            }
+            emit(&out, None)
         }
         Cmd::Simulate {
             config,

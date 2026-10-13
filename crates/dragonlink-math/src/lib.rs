@@ -13,6 +13,7 @@
 //!   cannot be enumerated;
 //! - [`progressive`]: expected value as a function of jackpot meter values;
 //! - [`compare`]: a structural and quantitative diff of two configurations;
+//! - [`reconstruct`]: a reel rebuilt from the windows it was observed to stop on;
 //! - [`report`]: the per-game technical report.
 //!
 //! **What a result means depends entirely on the configuration.** The only
@@ -29,6 +30,7 @@ pub mod compare;
 pub mod config;
 pub mod exact;
 pub mod progressive;
+pub mod reconstruct;
 pub mod report;
 pub mod sim;
 

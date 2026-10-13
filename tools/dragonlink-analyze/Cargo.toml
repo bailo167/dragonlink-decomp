@@ -11,6 +11,7 @@ publish.workspace = true
 [dependencies]
 dragonlink-math.workspace = true
 dragonlink-model.workspace = true
+dragonlink-trace.workspace = true
 anyhow.workspace = true
 clap.workspace = true
 serde_json.workspace = true

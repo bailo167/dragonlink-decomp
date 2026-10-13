@@ -2568,6 +2568,7 @@ dependencies = [
  "clap",
  "dragonlink-math",
  "dragonlink-model",
+ "dragonlink-trace",
  "serde_json",
 ]
 
