@@ -318,6 +318,22 @@ struct CellLabel {
     row: u8,
 }
 
+/// An overlay on a cell that shows the authentic symbol image when the asset
+/// pack provides one.
+#[derive(Component)]
+struct CellImage {
+    reel: u8,
+    row: u8,
+}
+
+/// Authentic symbol artwork loaded from a local asset pack, keyed by the
+/// model's symbol key (e.g. "emperor", "warriors", "9"). Empty when no pack is
+/// configured, in which case the placeholder tiles show instead.
+#[derive(Resource, Default)]
+struct ArtPack {
+    symbols: std::collections::HashMap<String, Handle<Image>>,
+}
+
 #[derive(Component)]
 struct JackpotMeter {
     tier: JackpotTier,
@@ -514,6 +530,21 @@ fn setup(mut commands: Commands, sim: Res<Sim>) {
                                             },
                                             TextColor(Color::WHITE),
                                             TextLayout::justify(Justify::Center),
+                                        ));
+                                        // Authentic symbol art, drawn over the
+                                        // cell when the asset pack supplies it
+                                        // (see `render_symbols`); hidden until
+                                        // then, so placeholder text shows.
+                                        cell.spawn((
+                                            CellImage { reel, row },
+                                            Node {
+                                                position_type: PositionType::Absolute,
+                                                width: Val::Percent(100.0),
+                                                height: Val::Percent(100.0),
+                                                ..default()
+                                            },
+                                            ImageNode::default(),
+                                            Visibility::Hidden,
                                         ));
                                     });
                             }
@@ -1061,6 +1092,67 @@ fn spawn_camera(mut commands: Commands) {
     commands.spawn(Camera2d);
 }
 
+/// Load authentic symbol art from the asset pack, if one is configured through
+/// the `DRAGONLINK_ART` environment variable (its `symbols/<key>.png` files).
+/// Only files that exist are loaded; a symbol with no file keeps its
+/// placeholder tile. Nothing proprietary ships in the repository: the pack is
+/// a local, git-ignored set built from the owner's own source material.
+fn load_art(asset_server: Res<AssetServer>, mut commands: Commands) {
+    let mut pack = ArtPack::default();
+    if let Ok(dir) = std::env::var("DRAGONLINK_ART") {
+        let symbols = std::path::Path::new(&dir).join("symbols");
+        if let Ok(entries) = std::fs::read_dir(&symbols) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.extension().and_then(|e| e.to_str()) != Some("png") {
+                    continue;
+                }
+                if let Some(stem) = path.file_stem().and_then(|s| s.to_str()) {
+                    pack.symbols.insert(
+                        stem.to_string(),
+                        asset_server.load(format!("symbols/{stem}.png")),
+                    );
+                }
+            }
+        }
+        eprintln!(
+            "authentic art: loaded {} symbol images from {dir}",
+            pack.symbols.len()
+        );
+    }
+    commands.insert_resource(pack);
+}
+
+/// Show the authentic symbol image on each cell whose current symbol has art,
+/// over the placeholder tile (which still carries the cell background, so a
+/// winning line still lights up behind the symbol). Cells whose symbol has no
+/// art, or that are spinning on a non-symbol, keep the placeholder.
+#[allow(clippy::type_complexity)]
+fn render_symbols(
+    art: Res<ArtPack>,
+    labels: Query<(&CellLabel, &Text)>,
+    mut images: Query<(&CellImage, &mut ImageNode, &mut Visibility)>,
+) {
+    if art.symbols.is_empty() {
+        return;
+    }
+    for (cell, mut image, mut visibility) in &mut images {
+        let key = labels
+            .iter()
+            .find(|(l, _)| l.reel == cell.reel && l.row == cell.row)
+            .map(|(_, text)| text.0.as_str());
+        match key.and_then(|k| art.symbols.get(k)) {
+            Some(handle) => {
+                if image.image != *handle {
+                    image.image = handle.clone();
+                }
+                *visibility = Visibility::Visible;
+            }
+            None => *visibility = Visibility::Hidden,
+        }
+    }
+}
+
 /// The colour of a launcher row: gold when it is the selected one.
 fn menu_row_color(selected: bool) -> Color {
     if selected {
@@ -1236,10 +1328,20 @@ fn main() -> AppExit {
     };
 
     let mut app = App::new();
-    app.add_plugins(DefaultPlugins.set(WindowPlugin {
+    let plugins = DefaultPlugins.set(WindowPlugin {
         primary_window: Some(primary_window()),
         ..default()
-    }));
+    });
+    // When an authentic asset pack is configured, point the asset server at it
+    // so `symbols/<key>.png` resolves there. The pack is never in the repo.
+    let plugins = match std::env::var("DRAGONLINK_ART") {
+        Ok(dir) if !dir.is_empty() => plugins.set(bevy::asset::AssetPlugin {
+            file_path: dir,
+            ..default()
+        }),
+        _ => plugins,
+    };
+    app.add_plugins(plugins);
     #[cfg(target_arch = "wasm32")]
     app.add_systems(Startup, announce_placeholder_mode);
     app.insert_resource(ClearColor(Color::srgb(0.03, 0.03, 0.05)))
@@ -1255,7 +1357,7 @@ fn main() -> AppExit {
             frame: 0,
             hold: 0,
         })
-        .add_systems(Startup, spawn_camera)
+        .add_systems(Startup, (spawn_camera, load_art))
         .add_systems(OnEnter(Screen::Menu), menu_setup)
         .add_systems(OnExit(Screen::Menu), menu_teardown)
         .add_systems(
@@ -1273,6 +1375,7 @@ fn main() -> AppExit {
                 animate_reels,
                 hud,
                 banner,
+                render_symbols,
             )
                 .chain()
                 .run_if(in_state(Screen::Playing)),
