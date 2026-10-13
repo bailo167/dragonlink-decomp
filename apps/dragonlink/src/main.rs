@@ -48,6 +48,10 @@ const EVENT_INTERVAL: f32 = 0.12;
 const SMOKE_FRAME_SECONDS: f32 = 1.0 / 60.0;
 /// Frames between automatic key presses in smoke mode.
 const SMOKE_PRESS_EVERY: u32 = 12;
+/// Seconds a feature waits between its steps when they play by themselves.
+const FEATURE_STEP_PAUSE: f32 = 0.5;
+/// Background of a cell on a winning line, and of a feature banner.
+const WIN_COLOR: Color = Color::srgb(0.85, 0.62, 0.12);
 
 const USAGE: &str = "usage: dragonlink [--game golden-century|synthetic] [--smoke-frames N [--screenshot FILE]] [--seed N] [--credits N]";
 
@@ -79,11 +83,12 @@ const WEB_CANVAS: &str = "#dragonlink-canvas";
 
 /// The line under the meters until something has happened.
 #[cfg(not(target_arch = "wasm32"))]
-const CONTROLS_HINT: &str = "Space: spin    Up/Down: bet    Esc: quit";
+const CONTROLS_HINT: &str =
+    "Space: spin    Up/Down: bet    Left/Right: lines    Esc: quit    (features play themselves)";
 /// The line under the meters until something has happened. A page has no
 /// window to close, so there is no key for quitting.
 #[cfg(target_arch = "wasm32")]
-const CONTROLS_HINT: &str = "Space: spin    Up/Down: bet";
+const CONTROLS_HINT: &str = "Space: spin    Up/Down: bet    Left/Right: lines";
 
 /// Command-line options.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -168,6 +173,10 @@ struct Presentation {
     /// The credit meter as presented so far. It follows the credit events as
     /// they are shown, so a win does not appear before the reels that made it.
     shown_credits: u64,
+    /// The win meter: what the current spin has paid so far, features included.
+    shown_win: u64,
+    /// Seconds left before a feature plays its next step by itself.
+    step_timer: f32,
 }
 
 #[derive(Resource)]
@@ -361,13 +370,19 @@ fn input(
     let auto = smoke.frames_left.is_some()
         && smoke.hold == 0
         && smoke.frame.is_multiple_of(SMOKE_PRESS_EVERY);
-    let go = auto || keys.just_pressed(KeyCode::Space) || keys.just_pressed(KeyCode::Enter);
+    // Features play by themselves (see `drive_features`); the player spins and
+    // sets the stake.
+    let go = (auto || keys.just_pressed(KeyCode::Space) || keys.just_pressed(KeyCode::Enter))
+        && sim.game.is_idle();
     let bets = sim.game.model().bet.credits_per_line_options.len();
     let bet_index = sim.game.state().bet_index;
-    let command = if go && sim.game.is_idle() {
+    let line_counts = sim.game.model().line_counts();
+    let here = line_counts
+        .iter()
+        .position(|n| *n == sim.game.lines())
+        .unwrap_or(0);
+    let command = if go {
         Some(Command::Spin)
-    } else if go {
-        Some(Command::Advance)
     } else if keys.just_pressed(KeyCode::ArrowUp) && bet_index + 1 < bets {
         Some(Command::SetBet {
             index: bet_index + 1,
@@ -375,6 +390,14 @@ fn input(
     } else if keys.just_pressed(KeyCode::ArrowDown) && bet_index > 0 {
         Some(Command::SetBet {
             index: bet_index - 1,
+        })
+    } else if keys.just_pressed(KeyCode::ArrowRight) && here + 1 < line_counts.len() {
+        Some(Command::SetLines {
+            lines: line_counts[here + 1],
+        })
+    } else if keys.just_pressed(KeyCode::ArrowLeft) && here > 0 {
+        Some(Command::SetLines {
+            lines: line_counts[here - 1],
         })
     } else {
         None
@@ -387,6 +410,38 @@ fn input(
             presentation.wait = presentation.queue.front().map_or(0.0, |(delay, _)| *delay);
         }
         Err(refusal) => presentation.status = format!("{refusal}"),
+    }
+}
+
+/// Play a feature's steps by itself, with a pause between them, so the player
+/// does not drive Hold & Spin or the free games by hand.
+fn drive_features(
+    time: Res<Time>,
+    smoke: Res<Smoke>,
+    mut sim: ResMut<Sim>,
+    mut presentation: ResMut<Presentation>,
+) {
+    if !presentation.queue.is_empty() {
+        presentation.step_timer = FEATURE_STEP_PAUSE;
+        return;
+    }
+    if sim.game.is_idle() {
+        return;
+    }
+    let dt = if smoke.frames_left.is_some() {
+        SMOKE_FRAME_SECONDS
+    } else {
+        time.delta_secs()
+    };
+    presentation.step_timer -= dt;
+    if presentation.step_timer > 0.0 {
+        return;
+    }
+    presentation.step_timer = FEATURE_STEP_PAUSE;
+    let Sim { game, rng } = &mut *sim;
+    if let Ok(events) = game.apply(Command::Advance, rng) {
+        presentation.queue.extend(schedule(events));
+        presentation.wait = presentation.queue.front().map_or(0.0, |(delay, _)| *delay);
     }
 }
 
@@ -424,6 +479,9 @@ fn present(
         };
         let orb_color = cell_color(Some(SymbolKind::Orb), "");
         match &event {
+            Event::BetPlaced { .. } => {
+                presentation.shown_win = 0;
+            }
             Event::SpinStarted { spin } => {
                 // The window shows the reels in motion, not the previous result.
                 for reel in 0..model.grid.reels {
@@ -448,6 +506,18 @@ fn present(
                 count,
                 award,
             } => {
+                // Light up the winning run on its payline.
+                if let Some(payline) = model.paylines.get(*line as usize) {
+                    for reel in 0..(*count).min(model.grid.reels) {
+                        if let Some(row) = payline.0.get(reel as usize) {
+                            for (cell, mut background) in &mut cells {
+                                if cell.reel == reel && cell.row == *row {
+                                    background.0 = WIN_COLOR;
+                                }
+                            }
+                        }
+                    }
+                }
                 presentation.status = format!("Line {}: {symbol} x{count} pays {award}", line + 1);
             }
             Event::ScatterWin {
@@ -456,6 +526,27 @@ fn present(
                 award,
             } => {
                 presentation.status = format!("{symbol} x{count} pays {award}");
+            }
+            Event::FreeGamesStarted { games } => {
+                presentation.status = format!("FREE GAMES  -  {games} games won");
+            }
+            Event::FreeGameStarted { number, remaining } => {
+                presentation.status = format!("FREE GAME {number}  ({remaining} to come)");
+            }
+            Event::MysteryRevealed { symbol, count } => {
+                presentation.status = format!("Mystery reveals {symbol} x{count}");
+            }
+            Event::FreeGamesRetriggered { added, remaining } => {
+                presentation.status =
+                    format!("RETRIGGER  +{added} free games  ({remaining} to come)");
+            }
+            Event::FreeGameCompleted { .. } => {}
+            Event::FreeGamesCompleted {
+                games_played,
+                total_award,
+            } => {
+                presentation.status =
+                    format!("FREE GAMES complete: {games_played} games paid {total_award}");
             }
             Event::HoldAndSpinStarted { respins, locked } => {
                 // Everything that is not a held orb is cleared for the feature.
@@ -497,7 +588,12 @@ fn present(
             Event::SpinCompleted { total_award, .. } if *total_award > 0 => {
                 presentation.status = format!("Spin paid {total_award}");
             }
-            Event::CreditsChanged { to, .. } => presentation.shown_credits = *to,
+            Event::CreditsChanged { from, to, reason } => {
+                presentation.shown_credits = *to;
+                if matches!(reason, CreditReason::Win | CreditReason::FeatureAward) {
+                    presentation.shown_win += to.saturating_sub(*from);
+                }
+            }
             _ => {}
         }
         presentation.wait += presentation.queue.front().map_or(0.0, |(delay, _)| *delay);
@@ -516,11 +612,12 @@ fn hud(
 ) {
     let game = &sim.game;
     hud.0 = format!(
-        "PLAY CREDITS {}     BET {} ({} x {} lines)     {}",
+        "CREDITS {}     BET {} ({} x {} lines)     WIN {}     {}",
         presentation.shown_credits,
         game.total_bet(),
         game.credits_per_line(),
-        game.model().paylines.len(),
+        game.lines(),
+        presentation.shown_win,
         if !presentation.queue.is_empty() {
             "SPINNING"
         } else if game.is_idle() {
@@ -648,7 +745,7 @@ fn main() -> AppExit {
             hold: 0,
         })
         .add_systems(Startup, setup)
-        .add_systems(Update, (smoke, input, present, hud).chain())
+        .add_systems(Update, (smoke, input, drive_features, present, hud).chain())
         .run()
 }
 
