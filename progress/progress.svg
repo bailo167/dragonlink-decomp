@@ -1,4 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="980" height="553" viewBox="0 0 980 553" role="img" aria-label="dragonlink-decomp — preservation progress — 22% complete, 0% verified">
+<svg xmlns="http://www.w3.org/2000/svg" width="980" height="553" viewBox="0 0 980 553" role="img" aria-label="dragonlink-decomp — preservation progress — 23% complete, 0% verified">
 <style>
 :root{--bg:#ffffff;--bd:#d0d7de;--fg:#1f2328;--mu:#59636e;--ns:#8c959f;--inv:#0969da;--par:#bf8700;--imp:#4ac26b;--ver:#1a7f37;--blk:#cf222e;--mk:#ffffff}
 @media (prefers-color-scheme: dark){:root{--bg:#0d1117;--bd:#30363d;--fg:#e6edf3;--mu:#9198a1;--ns:#6e7681;--inv:#4493f8;--par:#d29922;--imp:#3fb950;--ver:#238636;--blk:#f85149;--mk:#ffffff}}
@@ -20,7 +20,7 @@ text{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,san
 </style>
 <rect class="bg" x="0.5" y="0.5" width="979" height="552" rx="8"/>
 <text class="ttl" x="24" y="38">dragonlink-decomp — preservation progress</text>
-<text class="sub" x="24" y="62">Completion 22% (34 of 151 items implemented or verified) · Verified 0% (0) · Current milestone: M1 — Evidence</text>
+<text class="sub" x="24" y="62">Completion 23% (35 of 151 items implemented or verified) · Verified 0% (0) · Current milestone: M1 — Evidence</text>
 <text class="muted" x="24" y="84">Generated from progress/progress.toml by tools/progress-gen. Completion = (implemented + verified) / total; floored.</text>
 <text class="lbl" x="24" y="117">Milestones</text>
 <rect class="c implemented" x="206" y="104" width="18" height="18" rx="2"><title>M0 — Foundation: Implemented — Stage A: workspace, hygiene, progress tooling, docs, Windows gate, CI and the source root all exist and work. RE applications are installed when first needed.</title></rect>
@@ -31,7 +31,7 @@ text{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,san
 <text class="muted" x="321" y="117">M2</text>
 <g><title>M3 — Headless game model: Partial — Stage D: state, spin, awards, feature state machine, deterministic traces. Runs on a synthetic fixture only; original mathematics unknown.</title><rect class="c partial-o" x="347.5" y="104.5" width="17" height="17" rx="2"/><path class="partial-f" d="M347 104h9v18h-9z"/></g>
 <text class="muted" x="368" y="117">M3</text>
-<g><title>M4 — Golden Century Bevy slice: Partial — Stage E. A placeholder shell runs the synthetic fixture through the real simulation: window, reels, spin, Hold &amp; Spin stepping. Nothing in it is Golden Century yet: no assets, no audio, no title data.</title><rect class="c partial-o" x="394.5" y="104.5" width="17" height="17" rx="2"/><path class="partial-f" d="M394 104h9v18h-9z"/></g>
+<g><title>M4 — Golden Century Bevy slice: Partial — Stage E, now P0. A synthetic Golden Century math config exists (golden_century_synthetic: evidenced structure, invented numbers, ~85% synthetic RTP, feature about 1 in 158) and the app runs it (dragonlink --game golden-century): window, reels, spin, Hold &amp; Spin stepping, bet and line selection. Remaining for a complete slice: free games in the simulation, and a real presentation (reel-spin, win and feature sequences, jackpot meters, controls, timing) on generated Golden Century placeholder art.</title><rect class="c partial-o" x="394.5" y="104.5" width="17" height="17" rx="2"/><path class="partial-f" d="M394 104h9v18h-9z"/></g>
 <text class="muted" x="415" y="117">M4</text>
 <rect class="c not_started" x="441.5" y="104.5" width="17" height="17" rx="2"><title>M5 — Parity: Not started — Stage F: source-vs-rewrite traces, timing, screenshots, animation and audio events, discrepancies tracked.</title></rect>
 <text class="muted" x="462" y="117">M5</text>
@@ -104,7 +104,7 @@ text{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,san
 <rect class="c implemented" x="206" y="261" width="18" height="18" rx="2"><title>Shared game runtime / Outcome source abstraction (test, record, replay) — Implemented — Test instruments of ours. Models nothing about the original generator, which is unknown.</title></rect>
 <g><title>Shared game runtime / State machine — Partial — Idle and Hold &amp; Spin phases with transactional commands; no free games, attract or idle states.</title><rect class="c partial-o" x="229.5" y="261.5" width="17" height="17" rx="2"/><path class="partial-f" d="M229 261h9v18h-9z"/></g>
 <g><title>Shared game runtime / Credits / play-credit model — Partial — A play-credit meter with chained credit events; denominations and cash handling are not modelled.</title><rect class="c partial-o" x="252.5" y="261.5" width="17" height="17" rx="2"/><path class="partial-f" d="M252 261h9v18h-9z"/></g>
-<g><title>Shared game runtime / Bet selection — Partial — Credits per line over all lines; the original's bet structure is unknown.</title><rect class="c partial-o" x="275.5" y="261.5" width="17" height="17" rx="2"/><path class="partial-f" d="M275 261h9v18h-9z"/></g>
+<rect class="c implemented" x="275" y="261" width="18" height="18" rx="2"><title>Shared game runtime / Bet selection — Implemented — Credits per line and player-selected line counts (SetBet, SetLines, SetStake). The synthetic Golden Century config offers 5, 25 and 50 lines and six credits-per-line options; the exact ladder per denomination is unknown.</title></rect>
 <g><title>Shared game runtime / Spin lifecycle — Partial — Bet, reel stops, awards, feature entry, completion as events; ordering is ours, not evidenced.</title><rect class="c partial-o" x="298.5" y="261.5" width="17" height="17" rx="2"/><path class="partial-f" d="M298 261h9v18h-9z"/></g>
 <g><title>Shared game runtime / Reel model — Partial — Strips with a wrapping window; how the original maps outcomes to stops is unknown.</title><rect class="c partial-o" x="321.5" y="261.5" width="17" height="17" rx="2"/><path class="partial-f" d="M321 261h9v18h-9z"/></g>
 <g><title>Shared game runtime / Symbol model — Partial — Regular, wild, scatter and orb kinds; title symbol sets are unknown.</title><rect class="c partial-o" x="344.5" y="261.5" width="17" height="17" rx="2"/><path class="partial-f" d="M344 261h9v18h-9z"/></g>
@@ -120,7 +120,7 @@ text{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,san
 <g><title>Shared game runtime / UI — Partial — Placeholder HUD: banner, credit meter, bet, status line, generated cells. Nothing reproduces the original UI.</title><rect class="c partial-o" x="574.5" y="261.5" width="17" height="17" rx="2"/><path class="partial-f" d="M574 261h9v18h-9z"/></g>
 <g><title>Shared game runtime / Input — Partial — Keyboard only: spin and feature step, bet up and down, quit.</title><rect class="c partial-o" x="597.5" y="261.5" width="17" height="17" rx="2"/><path class="partial-f" d="M597 261h9v18h-9z"/></g>
 <g><title>Shared game runtime / Save and settings handling — Partial — Game state serialises and resumes mid-feature; no settings, no persistence in an app.</title><rect class="c partial-o" x="620.5" y="261.5" width="17" height="17" rx="2"/><path class="partial-f" d="M620 261h9v18h-9z"/></g>
-<text class="pct" x="830" y="274">5%</text><text class="muted" x="876" y="274">1/19 · ✓0</text>
+<text class="pct" x="830" y="274">10%</text><text class="muted" x="876" y="274">2/19 · ✓0</text>
 <text class="lbl" x="24" y="305">Golden Century</text>
 <rect class="c implemented" x="206" y="292" width="18" height="18" rx="2"><title>Golden Century / Title identity, versions and regulatory identifiers — Implemented — ACT specifications across generations, Victorian builds, US personality identifiers and the 2016 Australian launch are recorded. NSW and Queensland approvals are not public; what changed between generations is unknown.</title></rect>
 <g><title>Golden Century / Reel layout and lines — Partial — Australia (Queensland clubs): five by three; lines chosen by the player up to 50 at 1c and 2c, 25 at 5c and 10c, 5 at $1; the shapes of lines 1 to 5 established from win messages. Lines 6 to 50 not found.</title><rect class="c partial-o" x="229.5" y="292.5" width="17" height="17" rx="2"/><path class="partial-f" d="M229 292h9v18h-9z"/></g>
@@ -217,9 +217,9 @@ text{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,san
 <g><title>Verified</title><rect class="c verified" x="24" y="516" width="18" height="18" rx="2"/><path class="mark" d="M27 525l4 4l7 -8"/></g>
 <text class="muted" x="48" y="527">Verified (0)</text>
 <rect class="c implemented" x="154" y="516" width="18" height="18" rx="2"><title>Implemented</title></rect>
-<text class="muted" x="178" y="527">Implemented (34)</text>
+<text class="muted" x="178" y="527">Implemented (35)</text>
 <g><title>Partial</title><rect class="c partial-o" x="312.5" y="516.5" width="17" height="17" rx="2"/><path class="partial-f" d="M312 516h9v18h-9z"/></g>
-<text class="muted" x="336" y="527">Partial (50)</text>
+<text class="muted" x="336" y="527">Partial (49)</text>
 <rect class="c investigating" x="442" y="516" width="18" height="18" rx="2"><title>Investigating</title></rect>
 <text class="muted" x="466" y="527">Investigating (20)</text>
 <g><title>Blocked</title><rect class="c blocked" x="614" y="516" width="18" height="18" rx="2"/><path class="mark" d="M619 521l8 8M627 521l-8 8"/></g>

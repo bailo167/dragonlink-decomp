@@ -33,7 +33,8 @@ use bevy::prelude::*;
 #[cfg(not(target_arch = "wasm32"))]
 use bevy::render::view::screenshot::{Screenshot, save_to_disk};
 use dragonlink_core::{Command, CreditReason, DevRng, Event, Game};
-use dragonlink_model::fixtures::synthetic_dev_fixture;
+use dragonlink_model::MathModel;
+use dragonlink_model::fixtures::{golden_century_synthetic, synthetic_dev_fixture};
 use dragonlink_model::{OrbValue, SymbolKind};
 
 /// Seconds between one reel stopping and the next. Presentation only; ours.
@@ -48,8 +49,25 @@ const SMOKE_FRAME_SECONDS: f32 = 1.0 / 60.0;
 /// Frames between automatic key presses in smoke mode.
 const SMOKE_PRESS_EVERY: u32 = 12;
 
-const USAGE: &str =
-    "usage: dragonlink [--smoke-frames N [--screenshot FILE]] [--seed N] [--credits N]";
+const USAGE: &str = "usage: dragonlink [--game golden-century|synthetic] [--smoke-frames N [--screenshot FILE]] [--seed N] [--credits N]";
+
+/// Which math configuration the application runs. Both are synthetic: Golden
+/// Century has the game's evidenced structure with invented numbers, the dev
+/// fixture is deliberately unlike any title (`dragonlink_model::fixtures`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum GameChoice {
+    GoldenCentury,
+    Synthetic,
+}
+
+impl GameChoice {
+    fn model(self) -> MathModel {
+        match self {
+            GameChoice::GoldenCentury => golden_century_synthetic(),
+            GameChoice::Synthetic => synthetic_dev_fixture(),
+        }
+    }
+}
 /// Frames before the end of a smoke run at which the screenshot is taken.
 const SCREENSHOT_FRAMES_BEFORE_END: u32 = 20;
 /// How long before that the run starts looking for a settled frame to picture.
@@ -70,6 +88,7 @@ const CONTROLS_HINT: &str = "Space: spin    Up/Down: bet";
 /// Command-line options.
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct Cli {
+    game: GameChoice,
     smoke_frames: Option<u32>,
     /// Save a picture of the window near the end of a smoke run.
     screenshot: Option<String>,
@@ -80,6 +99,7 @@ struct Cli {
 impl Default for Cli {
     fn default() -> Self {
         Cli {
+            game: GameChoice::GoldenCentury,
             smoke_frames: None,
             screenshot: None,
             seed: 1,
@@ -104,6 +124,13 @@ fn parse_args(args: &[String]) -> Result<Cli, String> {
                     u32::try_from(value("--smoke-frames")?)
                         .map_err(|_| "--smoke-frames is too large".to_string())?,
                 );
+            }
+            "--game" => {
+                cli.game = match it.next().map(String::as_str) {
+                    Some("golden-century") => GameChoice::GoldenCentury,
+                    Some("synthetic") => GameChoice::Synthetic,
+                    _ => return Err("--game is golden-century or synthetic".to_string()),
+                };
             }
             "--seed" => cli.seed = value("--seed")?,
             "--credits" => cli.credits = value("--credits")?,
@@ -591,7 +618,7 @@ fn main() -> AppExit {
             manifest.entries.len()
         ),
     }
-    let game = match Game::new(synthetic_dev_fixture(), cli.credits) {
+    let game = match Game::new(cli.game.model(), cli.credits) {
         Ok(game) => game,
         Err(e) => {
             eprintln!("cannot start the game: {e}");
@@ -646,12 +673,22 @@ mod tests {
                 "500"
             ])),
             Ok(Cli {
+                game: GameChoice::GoldenCentury,
                 smoke_frames: Some(180),
                 seed: 7,
                 credits: 500,
                 screenshot: None,
             })
         );
+        assert_eq!(
+            parse_args(&args(&["--game", "synthetic"])).unwrap().game,
+            GameChoice::Synthetic
+        );
+        assert_eq!(
+            parse_args(&args(&[])).unwrap().game,
+            GameChoice::GoldenCentury
+        );
+        assert!(parse_args(&args(&["--game", "nope"])).is_err());
         assert!(parse_args(&args(&["--smoke-frames"])).is_err());
         // A screenshot is taken near the end of a smoke run, so it needs one.
         assert!(parse_args(&args(&["--screenshot", "a.png"])).is_err());

@@ -258,31 +258,32 @@ and merged through the gate.
   one arrives ([reverse-engineering/math/CONFIGURATION.md](reverse-engineering/math/CONFIGURATION.md)).
 - Victorian approvals and most marketing-page findings were read once and are not yet re-checked.
 
-## Next
+## Priorities
 
-In order of value. The first four need nothing from anyone.
+Set by the owner on 2026-10-13. **P0 is a complete, polished, playable Golden Century.** The
+mathematics stays synthetic and configurable behind the existing interface
+(`game/features -> math config -> synthetic now, authentic later`), clearly labelled and never
+presented as authentic (DECISIONS D-017).
 
-1. **More sessions, read the same way.** More $1 play of Golden Century to finish its reels
-   (windows are still missing, and stacked symbols need counts a few hundred games cannot give);
-   a long cent-denomination session; then the other three titles. Each session: cut, read twice,
-   convert, compare, reconstruct ([PARITY.md](PARITY.md), "From a recording to an observation
-   trace").
-2. **Find the games the detector misses.** The credit meter shows fourteen places in the $1 play
-   of the first session. Until they are found a session is not a complete account, so it gives no
-   observed return, hit rate or feature frequency.
-3. **Reconstruction with a window or two missing**: recurring runs and stacks are handled; a
-   reel one window short is still refused. Where the neighbouring windows leave only one
-   possibility the missing window could be proposed, labelled as a hypothesis.
-4. **The rest of the Golden Century pay table**: lines 6 to 50 from the 27 messages that name
-   them and from the meter at the cent denominations; four and five of a kind as they turn up.
-5. **Model the game's real structure in the simulation**: denominations, selectable lines,
-   credits per line, the first five paylines, and a configuration per denomination (cabinet
-   evidence); and, as mobile configuration, the stop as the middle row, prize-symbol values over
-   the whole strip before the window, the free-games reveal, and a strip per position in Hold &
-   Spin with the full-screen-before-reset rule
-   ([reverse-engineering/MOBILE_MATH_ARCHITECTURE.md](reverse-engineering/MOBILE_MATH_ARCHITECTURE.md)).
-6. **Read the features**: Hold & Spin and free-games stills are transcribed and not yet analysed.
-7. Re-read the once-read sources so their claims can be labelled VERIFIED.
+1. **Complete the playable Golden Century reimplementation.** The synthetic config exists and the
+   app runs it; what remains is free games in the simulation, and turning the placeholder shell
+   into a real game (reel-spin, win presentation, feature sequences, jackpot meters, bet/line/
+   denomination controls, machine-like timing) on generated placeholder art.
+2. **Fidelity and polish** until it behaves and feels like the original.
+3. **Integrate authentic mobile or cabinet values** when recovered, by replacing the config.
+4. **Further forensic and mathematics research** (cabinet footage, the mobile hidden-math gap):
+   now secondary evidence streams, continued only when they do not slow P0.
+5. **The other three titles**, after Golden Century is solid.
+
+## Next for P0
+
+1. Free games in `dragonlink-core`: scatter trigger, the award, the mystery-symbol reveal,
+   retrigger. With tests.
+2. The app into a real game: reel-spin animation; win lines; free-games and Hold & Spin
+   sequences; jackpot meters; bet, line and denomination controls; machine-like timing.
+3. Generated placeholder symbol art for Golden Century (shapes and colours we draw; no original
+   asset), so the game reads as Golden Century without using proprietary material.
+
 
 ## Waiting on the owner
 

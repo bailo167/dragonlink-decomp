@@ -53,6 +53,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File tools\dev\gate.ps1 -Release
 | `hygiene` | `cargo run -p repo-hygiene` | active |
 | `progress` | `cargo run -p progress-gen -- --check` | active |
 | `app` | `cargo build -p dragonlink` | active |
+| (run) | `cargo run -p dragonlink -- --game golden-century` | the playable Golden Century: synthetic math, placeholder art |
 | `smoke` | `dragonlink --smoke-frames 180`: open the window, spin unattended on a fixed time step, exit 0 | active |
 | `wasm` | `cargo build -p dragonlink --target wasm32-unknown-unknown` | active |
 | `release` | `cargo build --release -p dragonlink` (with `-Release`) | active |

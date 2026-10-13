@@ -48,7 +48,7 @@ note = "Stage D: state, spin, awards, feature state machine, deterministic trace
 id = "M4"
 name = "Golden Century Bevy slice"
 status = "partial"
-note = "Stage E. A placeholder shell runs the synthetic fixture through the real simulation: window, reels, spin, Hold & Spin stepping. Nothing in it is Golden Century yet: no assets, no audio, no title data."
+note = "Stage E, now P0. A synthetic Golden Century math config exists (golden_century_synthetic: evidenced structure, invented numbers, ~85% synthetic RTP, feature about 1 in 158) and the app runs it (dragonlink --game golden-century): window, reels, spin, Hold & Spin stepping, bet and line selection. Remaining for a complete slice: free games in the simulation, and a real presentation (reel-spin, win and feature sequences, jackpot meters, controls, timing) on generated Golden Century placeholder art."
 
 [[milestone]]
 id = "M5"
@@ -452,8 +452,9 @@ note = "A play-credit meter with chained credit events; denominations and cash h
 [[category.item]]
 id = "bet-selection"
 name = "Bet selection"
-status = "partial"
-note = "Credits per line over all lines; the original's bet structure is unknown."
+status = "implemented"
+evidence = "crates/dragonlink-core/src/game.rs (SetBet/SetLines/SetStake tests); crates/dragonlink-model/src/fixtures.rs"
+note = "Credits per line and player-selected line counts (SetBet, SetLines, SetStake). The synthetic Golden Century config offers 5, 25 and 50 lines and six credits-per-line options; the exact ladder per denomination is unknown."
 
 [[category.item]]
 id = "spin-lifecycle"

@@ -262,6 +262,33 @@ impl GameConfiguration {
         }
     }
 
+    /// A **synthetic** Golden Century configuration: the game's evidenced
+    /// structure with invented numbers (`dragonlink_model::fixtures`).
+    pub fn golden_century_synthetic() -> GameConfiguration {
+        let model = dragonlink_model::fixtures::golden_century_synthetic();
+        let constants = required_paths(&model)
+            .into_iter()
+            .map(|path| ConstantRecord {
+                path: path.to_string(),
+                provenance: ConstantProvenance::Synthetic,
+                source: String::new(),
+                note: String::new(),
+            })
+            .collect();
+        GameConfiguration {
+            schema: SCHEMA.to_string(),
+            identity: ConfigIdentity {
+                name: "Golden Century (synthetic)".to_string(),
+                notes: "Golden Century's evidenced structure with invented strips, weights, pays                         and jackpot amounts. Not recovered from any machine; its statistics are                         its own (docs/reverse-engineering/GOLDEN_CENTURY_SESSION.md)."
+                    .to_string(),
+                ..ConfigIdentity::default()
+            },
+            model,
+            constants,
+            behaviour: Behaviour::default(),
+        }
+    }
+
     /// Parse and check a configuration.
     pub fn from_json(text: &str) -> Result<GameConfiguration, ConfigError> {
         let config: GameConfiguration = serde_json::from_str(text)?;

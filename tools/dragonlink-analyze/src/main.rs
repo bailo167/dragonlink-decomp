@@ -145,6 +145,9 @@ fn load(spec: &str) -> Result<GameConfiguration> {
     if spec == "synthetic" {
         return Ok(GameConfiguration::synthetic_fixture());
     }
+    if spec == "golden-century" {
+        return Ok(GameConfiguration::golden_century_synthetic());
+    }
     let text = fs::read_to_string(spec).with_context(|| format!("reading configuration {spec}"))?;
     GameConfiguration::from_json(&text).with_context(|| format!("configuration {spec}"))
 }
