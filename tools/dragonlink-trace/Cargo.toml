@@ -1,6 +1,6 @@
 [package]
 name = "dragonlink-trace-cli"
-description = "Record, validate and compare behavioural traces"
+description = "Record, validate, compare and replay behavioural traces"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -13,8 +13,10 @@ name = "dragonlink-trace"
 path = "src/main.rs"
 
 [dependencies]
-dragonlink-trace.workspace = true
+dragonlink-core.workspace = true
+dragonlink-math.workspace = true
 dragonlink-model.workspace = true
+dragonlink-trace.workspace = true
 anyhow.workspace = true
 clap.workspace = true
 serde_json.workspace = true

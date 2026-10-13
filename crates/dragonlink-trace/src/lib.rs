@@ -12,6 +12,19 @@
 //! header says what kind of trace it is, and [`compare`] says what kind of
 //! comparison two traces amount to. Comparing two rewrite traces is a
 //! determinism check and is labelled as such; it is never parity.
+//!
+//! [`replay`] goes one step further than lining two traces up: it drives the
+//! simulation with the outcomes an observation shows, so that what still
+//! differs is a difference in rules and not in luck. See the [`replay`
+//! module](mod@replay) for what that does and does not establish.
+
+pub mod replay;
+
+pub use replay::{
+    Ambiguity, AmbiguousChoice, Inconsistency, InconsistencyReason, Reconstruction, ReplayReport,
+    ReplayStop, ScriptedCommand, StopReason, UNOBSERVED_STARTING_CREDITS, reconstruct, replay,
+    replay_kind,
+};
 
 use dragonlink_core::{DevRng, Event, Game, GameError};
 use dragonlink_model::{MathModel, MathProvenance, SourceClass, TitleId};
@@ -265,7 +278,10 @@ pub fn record_rewrite(
 pub enum ComparisonKind {
     /// Two rewrite traces: a check that our simulation is deterministic. Not parity.
     Determinism,
-    /// An observation against a rewrite run on recovered mathematics.
+    /// An observation against a rewrite run on recovered mathematics. A
+    /// replay is this only when its model is cabinet or regulatory evidence,
+    /// and then it concerns the rules and the order of events on the outcomes
+    /// observed, not how outcomes are distributed.
     Parity,
     /// An observation against a rewrite run on synthetic or mobile-derived
     /// mathematics: the order and kinds of events can be compared, the
@@ -273,6 +289,14 @@ pub enum ComparisonKind {
     StructureOnly,
     /// Two observations: agreement between recordings.
     BetweenObservations,
+    /// A replay of an observation's outcomes through a model that is neither
+    /// synthetic nor evidence of cabinet mathematics (a mobile-derived one):
+    /// a check of our rules under that model's reels and tables. Not parity
+    /// with the cabinet game.
+    RulesUnderModel,
+    /// A replay through the synthetic fixture: a test of the replay
+    /// machinery only. It says nothing about any original game.
+    MachineryOnly,
 }
 
 /// Where two traces first differ.
@@ -390,13 +414,13 @@ mod tests {
     use super::*;
     use dragonlink_model::fixtures::synthetic_dev_fixture;
 
-    fn rewrite(seed: u64, spins: u64) -> Trace {
+    pub(crate) fn rewrite(seed: u64, spins: u64) -> Trace {
         record_rewrite(&synthetic_dev_fixture(), None, seed, spins, 1_000_000).unwrap()
     }
 
     /// A rewrite trace relabelled as a transcription, with stop indices removed
     /// and times added, as an observer would produce it.
-    fn as_observation(trace: &Trace, ms_per_event: u64) -> Trace {
+    pub(crate) fn as_observation(trace: &Trace, ms_per_event: u64) -> Trace {
         Trace {
             header: TraceHeader {
                 origin: TraceOrigin::Observation,
