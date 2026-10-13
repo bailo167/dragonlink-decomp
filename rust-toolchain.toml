@@ -1,0 +1,6 @@
+# Pinned so that new clippy lints arrive only with a deliberate bump.
+# Keep in step with `rust-version` in Cargo.toml and the toolchain in .github/workflows/ci.yml.
+[toolchain]
+channel = "1.98.0"
+components = ["rustfmt", "clippy"]
+targets = ["wasm32-unknown-unknown"]

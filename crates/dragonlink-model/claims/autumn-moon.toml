@@ -1,0 +1,49 @@
+# Claims about Dragon Link — Autumn Moon.
+# Rules and labels: see claims/family.toml and docs/EVIDENCE.md.
+
+title = "autumn_moon"
+
+[[claim]]
+id = "grid"
+statement = "How many reels and visible rows does the base game have?"
+confidence = "unknown"
+
+[[claim]]
+id = "lines"
+statement = "How many paylines (or ways) does each bet configuration play?"
+confidence = "unknown"
+
+[[claim]]
+id = "symbols"
+statement = "What is the complete symbol set, and which symbols are wild, scatter and Hold & Spin prize symbols?"
+confidence = "unknown"
+
+[[claim]]
+id = "paytable"
+statement = "What does each symbol combination pay?"
+confidence = "unknown"
+
+[[claim]]
+id = "denominations"
+statement = "Which denominations and bet options does the Australian release offer?"
+confidence = "unknown"
+
+[[claim]]
+id = "hold-and-spin.rules"
+statement = "What triggers Hold & Spin, how many respins does it start with, when does the counter reset, and what ends it?"
+confidence = "unknown"
+
+[[claim]]
+id = "jackpots"
+statement = "Which jackpot levels exist, which are progressive, and how is each won?"
+confidence = "unknown"
+
+[[claim]]
+id = "free-games.rules"
+statement = "What triggers the free games feature and what are its title-specific rules?"
+confidence = "unknown"
+
+[[claim]]
+id = "regulatory.identifiers"
+statement = "Under which game/program/specification identifiers was the title approved in Australian jurisdictions?"
+confidence = "unknown"

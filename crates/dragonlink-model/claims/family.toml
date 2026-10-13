@@ -1,0 +1,53 @@
+# Claims about the Dragon Link family as a whole.
+#
+# One [[claim]] per statement. Rules (enforced by `cargo test -p dragonlink-model`):
+#   * confidence = "unknown"  -> an open question; no `value`.
+#   * any other confidence     -> `value`, `source`, and (unless the source is our own
+#                                 "hypothesis") a `citation` with an `accessed` date.
+#   * "verified" needs a primary source class (cabinet, regulatory, official_mobile,
+#     official_media, gameplay_recording).
+#   * source = "hypothesis" is our own conjecture and stays at "hypothesis".
+# Labels are defined in docs/EVIDENCE.md. Prose and context: docs/reverse-engineering/.
+
+[[claim]]
+id = "math.reel-strips"
+statement = "What are the reel strips (symbol order and length per reel) of each title and bet configuration?"
+confidence = "unknown"
+note = "No cabinet software, par sheet or regulatory math document is held. Official mobile software, if analysed, describes the mobile implementation only."
+
+[[claim]]
+id = "math.rtp"
+statement = "What is the theoretical return to player of each title, per denomination and jurisdiction?"
+confidence = "unknown"
+
+[[claim]]
+id = "math.rng"
+statement = "Which random number generator and mapping from random numbers to reel stops does the cabinet software use?"
+confidence = "unknown"
+note = "The deterministic generators in dragonlink-core are test instruments of this project and model nothing about the original."
+
+[[claim]]
+id = "math.hold-and-spin.orb-chance"
+statement = "With what probability does a position land a prize symbol on a Hold & Spin respin, and does it depend on position, bet or feature progress?"
+confidence = "unknown"
+
+[[claim]]
+id = "math.hold-and-spin.value-distribution"
+statement = "From what distribution are prize-symbol values and jackpot labels drawn?"
+confidence = "unknown"
+
+[[claim]]
+id = "math.jackpot-odds"
+statement = "What are the odds of each jackpot level, and how do progressive levels increment and reset?"
+confidence = "unknown"
+
+[[claim]]
+id = "platform.cabinet-generation"
+statement = "On which Aristocrat cabinet and platform generations did the Australian releases of the four titles ship?"
+confidence = "unknown"
+
+[[claim]]
+id = "platform.mobile-relationship"
+statement = "Do the official social-casino implementations share assets, presentation timing or mathematics with the cabinet versions?"
+confidence = "unknown"
+note = "Policy until evidence says otherwise: mobile is valid for presentation only (docs/EVIDENCE.md)."

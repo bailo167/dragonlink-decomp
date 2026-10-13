@@ -1,0 +1,7 @@
+# Normalise line endings so generated-output checks and tests behave identically on Windows.
+* text=auto eol=lf
+*.ps1 text eol=lf
+*.svg text eol=lf
+*.png binary
+*.jpg binary
+*.gif binary

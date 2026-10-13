@@ -1,0 +1,193 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="980" height="499" viewBox="0 0 980 499" role="img" aria-label="dragonlink-decomp — preservation progress — 7% complete, 0% verified">
+<style>
+:root{--bg:#ffffff;--bd:#d0d7de;--fg:#1f2328;--mu:#59636e;--ns:#8c959f;--inv:#0969da;--par:#bf8700;--imp:#4ac26b;--ver:#1a7f37;--blk:#cf222e;--mk:#ffffff}
+@media (prefers-color-scheme: dark){:root{--bg:#0d1117;--bd:#30363d;--fg:#e6edf3;--mu:#9198a1;--ns:#6e7681;--inv:#4493f8;--par:#d29922;--imp:#3fb950;--ver:#238636;--blk:#f85149;--mk:#ffffff}}
+.bg{fill:var(--bg);stroke:var(--bd)}
+text{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif;fill:var(--fg)}
+.ttl{font-size:20px;font-weight:600}
+.sub{font-size:13px;fill:var(--mu)}
+.lbl{font-size:13px}
+.pct{font-size:13px;font-weight:600}
+.muted{font-size:12px;fill:var(--mu)}
+.not_started{fill:none;stroke:var(--ns);stroke-width:1}
+.investigating{fill:var(--inv)}
+.partial-o{fill:none;stroke:var(--par);stroke-width:1}
+.partial-f{fill:var(--par)}
+.implemented{fill:var(--imp)}
+.verified{fill:var(--ver)}
+.blocked{fill:var(--blk)}
+.mark{fill:none;stroke:var(--mk);stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+</style>
+<rect class="bg" x="0.5" y="0.5" width="979" height="498" rx="8"/>
+<text class="ttl" x="24" y="38">dragonlink-decomp — preservation progress</text>
+<text class="sub" x="24" y="62">Completion 7% (9 of 119 items implemented or verified) · Verified 0% (0) · Current milestone: M0 — Foundation</text>
+<text class="muted" x="24" y="84">Generated from progress/progress.toml by tools/progress-gen. Completion = (implemented + verified) / total; floored.</text>
+<text class="lbl" x="24" y="117">Milestones</text>
+<g><title>M0 — Foundation: Partial — Stage A: workspace, hygiene, progress tooling, docs, Windows gate, CI, source root.</title><rect class="c partial-o" x="206.5" y="104.5" width="17" height="17" rx="2"/><path class="partial-f" d="M206 104h9v18h-9z"/></g>
+<text class="muted" x="227" y="117">M0</text>
+<rect class="c investigating" x="253" y="104" width="18" height="18" rx="2"><title>M1 — Evidence: Investigating — Stage B: regulatory and official sources catalogued, official mobile software inventoried, formats identified.</title></rect>
+<text class="muted" x="274" y="117">M1</text>
+<rect class="c not_started" x="300.5" y="104.5" width="17" height="17" rx="2"><title>M2 — Import: Not started — Stage C: source scanner, manifest, extraction, normalised local asset layout, repeatable importer.</title></rect>
+<text class="muted" x="321" y="117">M2</text>
+<g><title>M3 — Headless game model: Partial — Stage D: state, spin, awards, feature state machine, deterministic traces. Runs on a synthetic fixture only; original mathematics unknown.</title><rect class="c partial-o" x="347.5" y="104.5" width="17" height="17" rx="2"/><path class="partial-f" d="M347 104h9v18h-9z"/></g>
+<text class="muted" x="368" y="117">M3</text>
+<rect class="c not_started" x="394.5" y="104.5" width="17" height="17" rx="2"><title>M4 — Golden Century Bevy slice: Not started — Stage E: title boots, UI, reels, spin, imported local assets, audio, win and feature presentation.</title></rect>
+<text class="muted" x="415" y="117">M4</text>
+<rect class="c not_started" x="441.5" y="104.5" width="17" height="17" rx="2"><title>M5 — Parity: Not started — Stage F: source-vs-rewrite traces, timing, screenshots, animation and audio events, discrepancies tracked.</title></rect>
+<text class="muted" x="462" y="117">M5</text>
+<rect class="c not_started" x="488.5" y="104.5" width="17" height="17" rx="2"><title>M6 — Portability: Not started — Stage G: Windows verified, Linux and macOS build and test, Web/WASM builds and runs.</title></rect>
+<text class="muted" x="509" y="117">M6</text>
+<rect class="c not_started" x="535.5" y="104.5" width="17" height="17" rx="2"><title>M7 — Happy &amp; Prosperous, Panda Magic, Autumn Moon: Not started — Generalise the systems proven on Golden Century to the other three titles.</title></rect>
+<text class="muted" x="556" y="117">M7</text>
+<text class="lbl" x="24" y="158">Foundation</text>
+<rect class="c implemented" x="206" y="145" width="18" height="18" rx="2"><title>Foundation / Repository bootstrap (workspace, licence, toolchain pin) — Implemented</title></rect>
+<rect class="c implemented" x="229" y="145" width="18" height="18" rx="2"><title>Foundation / Legal and project policy — Implemented</title></rect>
+<rect class="c implemented" x="252" y="145" width="18" height="18" rx="2"><title>Foundation / Evidence labels and provenance rules — Implemented</title></rect>
+<rect class="c not_started" x="275.5" y="145.5" width="17" height="17" rx="2"><title>Foundation / Private source root outside Git — Not started — Layout is specified in docs/SOURCES.md; the tool that creates and checks it is not written yet.</title></rect>
+<g><title>Foundation / Windows development environment (reproducible) — Partial — Rust 1.98.0, MSVC build tools, wasm32 target, Git, Python, Java, ffmpeg present; tools/dev/setup-windows.ps1 reports and installs. RE applications not installed yet.</title><rect class="c partial-o" x="298.5" y="145.5" width="17" height="17" rx="2"/><path class="partial-f" d="M298 145h9v18h-9z"/></g>
+<rect class="c implemented" x="321" y="145" width="18" height="18" rx="2"><title>Foundation / Windows pre-merge gate — Implemented — fmt, clippy, test, hygiene, progress check today; app, smoke, wasm and release steps switch on when the app exists.</title></rect>
+<g><title>Foundation / CI (Linux, Windows, macOS, wasm32 check) — Partial — Workflow is written; it has not run yet because nothing has been pushed (docs/BLOCKERS.md).</title><rect class="c partial-o" x="344.5" y="145.5" width="17" height="17" rx="2"/><path class="partial-f" d="M344 145h9v18h-9z"/></g>
+<rect class="c implemented" x="367" y="145" width="18" height="18" rx="2"><title>Foundation / Repository hygiene checker — Implemented</title></rect>
+<rect class="c implemented" x="390" y="145" width="18" height="18" rx="2"><title>Foundation / Progress tracker and generator — Implemented</title></rect>
+<rect class="c implemented" x="413" y="145" width="18" height="18" rx="2"><title>Foundation / Prior-art review (ASAMU-decomp, rea, universal-modder) — Implemented</title></rect>
+<text class="pct" x="830" y="158">70%</text><text class="muted" x="876" y="158">7/10 · ✓0</text>
+<text class="lbl" x="24" y="189">Reverse engineering</text>
+<rect class="c investigating" x="206" y="176" width="18" height="18" rx="2"><title>Reverse engineering / Dragon Link cabinet and platform research — Investigating</title></rect>
+<rect class="c investigating" x="229" y="176" width="18" height="18" rx="2"><title>Reverse engineering / Regulatory source inventory — Investigating</title></rect>
+<rect class="c not_started" x="252.5" y="176.5" width="17" height="17" rx="2"><title>Reverse engineering / Official mobile reference inventory — Not started</title></rect>
+<g><title>Reverse engineering / Source provenance database (claims) — Partial — Machine-checked claim files exist and hold open questions only; no sourced claims entered yet.</title><rect class="c partial-o" x="275.5" y="176.5" width="17" height="17" rx="2"/><path class="partial-f" d="M275 176h9v18h-9z"/></g>
+<rect class="c not_started" x="298.5" y="176.5" width="17" height="17" rx="2"><title>Reverse engineering / Package and file-format identification — Not started</title></rect>
+<rect class="c not_started" x="321.5" y="176.5" width="17" height="17" rx="2"><title>Reverse engineering / Executable analysis — Not started</title></rect>
+<rect class="c not_started" x="344.5" y="176.5" width="17" height="17" rx="2"><title>Reverse engineering / Asset-container identification — Not started</title></rect>
+<rect class="c not_started" x="367.5" y="176.5" width="17" height="17" rx="2"><title>Reverse engineering / Texture and image extraction — Not started</title></rect>
+<rect class="c not_started" x="390.5" y="176.5" width="17" height="17" rx="2"><title>Reverse engineering / Font identification — Not started</title></rect>
+<rect class="c not_started" x="413.5" y="176.5" width="17" height="17" rx="2"><title>Reverse engineering / Audio extraction — Not started</title></rect>
+<rect class="c not_started" x="436.5" y="176.5" width="17" height="17" rx="2"><title>Reverse engineering / Animation extraction — Not started</title></rect>
+<rect class="c not_started" x="459.5" y="176.5" width="17" height="17" rx="2"><title>Reverse engineering / Configuration and data extraction — Not started</title></rect>
+<rect class="c investigating" x="482" y="176" width="18" height="18" rx="2"><title>Reverse engineering / Mathematical-model investigation — Investigating — No source of cabinet mathematics is held. Every open question is listed in crates/dragonlink-model/claims/family.toml.</title></rect>
+<text class="pct" x="830" y="189">0%</text><text class="muted" x="876" y="189">0/13 · ✓0</text>
+<text class="lbl" x="24" y="220">Shared game runtime</text>
+<rect class="c implemented" x="206" y="207" width="18" height="18" rx="2"><title>Shared game runtime / Outcome source abstraction (test, record, replay) — Implemented — Test instruments of ours. Models nothing about the original generator, which is unknown.</title></rect>
+<g><title>Shared game runtime / State machine — Partial — Idle and Hold &amp; Spin phases with transactional commands; no free games, attract or idle states.</title><rect class="c partial-o" x="229.5" y="207.5" width="17" height="17" rx="2"/><path class="partial-f" d="M229 207h9v18h-9z"/></g>
+<g><title>Shared game runtime / Credits / play-credit model — Partial — A play-credit meter with chained credit events; denominations and cash handling are not modelled.</title><rect class="c partial-o" x="252.5" y="207.5" width="17" height="17" rx="2"/><path class="partial-f" d="M252 207h9v18h-9z"/></g>
+<g><title>Shared game runtime / Bet selection — Partial — Credits per line over all lines; the original's bet structure is unknown.</title><rect class="c partial-o" x="275.5" y="207.5" width="17" height="17" rx="2"/><path class="partial-f" d="M275 207h9v18h-9z"/></g>
+<g><title>Shared game runtime / Spin lifecycle — Partial — Bet, reel stops, awards, feature entry, completion as events; ordering is ours, not evidenced.</title><rect class="c partial-o" x="298.5" y="207.5" width="17" height="17" rx="2"/><path class="partial-f" d="M298 207h9v18h-9z"/></g>
+<g><title>Shared game runtime / Reel model — Partial — Strips with a wrapping window; how the original maps outcomes to stops is unknown.</title><rect class="c partial-o" x="321.5" y="207.5" width="17" height="17" rx="2"/><path class="partial-f" d="M321 207h9v18h-9z"/></g>
+<g><title>Shared game runtime / Symbol model — Partial — Regular, wild, scatter and orb kinds; title symbol sets are unknown.</title><rect class="c partial-o" x="344.5" y="207.5" width="17" height="17" rx="2"/><path class="partial-f" d="M344 207h9v18h-9z"/></g>
+<g><title>Shared game runtime / Pay evaluator — Partial — Generic left-to-right line rules and scatter pays, each stated in eval.rs; none checked against the original.</title><rect class="c partial-o" x="367.5" y="207.5" width="17" height="17" rx="2"/><path class="partial-f" d="M367 207h9v18h-9z"/></g>
+<rect class="c not_started" x="390.5" y="207.5" width="17" height="17" rx="2"><title>Shared game runtime / Win presentation — Not started</title></rect>
+<g><title>Shared game runtime / Feature triggering — Partial — Hold &amp; Spin by orb count only.</title><rect class="c partial-o" x="413.5" y="207.5" width="17" height="17" rx="2"/><path class="partial-f" d="M413 207h9v18h-9z"/></g>
+<g><title>Shared game runtime / Hold &amp; Spin framework — Partial — Parameterised respin loop with tests; trigger count, respins, chances and values are synthetic.</title><rect class="c partial-o" x="436.5" y="207.5" width="17" height="17" rx="2"/><path class="partial-f" d="M436 207h9v18h-9z"/></g>
+<g><title>Shared game runtime / Jackpot model and presentation — Partial — Four named levels with fixed amounts; progressive meters and presentation are not started.</title><rect class="c partial-o" x="459.5" y="207.5" width="17" height="17" rx="2"/><path class="partial-f" d="M459 207h9v18h-9z"/></g>
+<rect class="c not_started" x="482.5" y="207.5" width="17" height="17" rx="2"><title>Shared game runtime / Free-game framework — Not started</title></rect>
+<rect class="c not_started" x="505.5" y="207.5" width="17" height="17" rx="2"><title>Shared game runtime / Audio — Not started</title></rect>
+<rect class="c not_started" x="528.5" y="207.5" width="17" height="17" rx="2"><title>Shared game runtime / Animation — Not started</title></rect>
+<rect class="c not_started" x="551.5" y="207.5" width="17" height="17" rx="2"><title>Shared game runtime / VFX — Not started</title></rect>
+<rect class="c not_started" x="574.5" y="207.5" width="17" height="17" rx="2"><title>Shared game runtime / UI — Not started</title></rect>
+<rect class="c not_started" x="597.5" y="207.5" width="17" height="17" rx="2"><title>Shared game runtime / Input — Not started</title></rect>
+<g><title>Shared game runtime / Save and settings handling — Partial — Game state serialises and resumes mid-feature; no settings, no persistence in an app.</title><rect class="c partial-o" x="620.5" y="207.5" width="17" height="17" rx="2"/><path class="partial-f" d="M620 207h9v18h-9z"/></g>
+<text class="pct" x="830" y="220">5%</text><text class="muted" x="876" y="220">1/19 · ✓0</text>
+<text class="lbl" x="24" y="251">Golden Century</text>
+<rect class="c investigating" x="206" y="238" width="18" height="18" rx="2"><title>Golden Century / Title identity, versions and regulatory identifiers — Investigating</title></rect>
+<rect class="c investigating" x="229" y="238" width="18" height="18" rx="2"><title>Golden Century / Reel layout and lines — Investigating</title></rect>
+<rect class="c not_started" x="252.5" y="238.5" width="17" height="17" rx="2"><title>Golden Century / Symbol set — Not started</title></rect>
+<rect class="c not_started" x="275.5" y="238.5" width="17" height="17" rx="2"><title>Golden Century / Paytable — Not started</title></rect>
+<rect class="c not_started" x="298.5" y="238.5" width="17" height="17" rx="2"><title>Golden Century / Denominations and bet options — Not started</title></rect>
+<rect class="c not_started" x="321.5" y="238.5" width="17" height="17" rx="2"><title>Golden Century / Reel strips and weighting — Not started</title></rect>
+<rect class="c investigating" x="344" y="238" width="18" height="18" rx="2"><title>Golden Century / Hold &amp; Spin rules and presentation — Investigating</title></rect>
+<rect class="c not_started" x="367.5" y="238.5" width="17" height="17" rx="2"><title>Golden Century / Jackpot levels and presentation — Not started</title></rect>
+<rect class="c not_started" x="390.5" y="238.5" width="17" height="17" rx="2"><title>Golden Century / Free games feature — Not started</title></rect>
+<rect class="c not_started" x="413.5" y="238.5" width="17" height="17" rx="2"><title>Golden Century / Title artwork, UI layout and typography — Not started</title></rect>
+<rect class="c not_started" x="436.5" y="238.5" width="17" height="17" rx="2"><title>Golden Century / Sound and music — Not started</title></rect>
+<rect class="c not_started" x="459.5" y="238.5" width="17" height="17" rx="2"><title>Golden Century / Animation and sequence timing — Not started</title></rect>
+<rect class="c not_started" x="482.5" y="238.5" width="17" height="17" rx="2"><title>Golden Century / Attract and idle presentation — Not started</title></rect>
+<rect class="c not_started" x="505.5" y="238.5" width="17" height="17" rx="2"><title>Golden Century / Locally imported original assets — Not started</title></rect>
+<rect class="c not_started" x="528.5" y="238.5" width="17" height="17" rx="2"><title>Golden Century / Evidence-backed parity — Not started</title></rect>
+<text class="pct" x="830" y="251">0%</text><text class="muted" x="876" y="251">0/15 · ✓0</text>
+<text class="lbl" x="24" y="282">Happy &amp; Prosperous</text>
+<rect class="c not_started" x="206.5" y="269.5" width="17" height="17" rx="2"><title>Happy &amp; Prosperous / Title identity, versions and regulatory identifiers — Not started</title></rect>
+<rect class="c not_started" x="229.5" y="269.5" width="17" height="17" rx="2"><title>Happy &amp; Prosperous / Reel layout and lines — Not started</title></rect>
+<rect class="c not_started" x="252.5" y="269.5" width="17" height="17" rx="2"><title>Happy &amp; Prosperous / Symbol set — Not started</title></rect>
+<rect class="c not_started" x="275.5" y="269.5" width="17" height="17" rx="2"><title>Happy &amp; Prosperous / Paytable — Not started</title></rect>
+<rect class="c not_started" x="298.5" y="269.5" width="17" height="17" rx="2"><title>Happy &amp; Prosperous / Denominations and bet options — Not started</title></rect>
+<rect class="c not_started" x="321.5" y="269.5" width="17" height="17" rx="2"><title>Happy &amp; Prosperous / Reel strips and weighting — Not started</title></rect>
+<rect class="c not_started" x="344.5" y="269.5" width="17" height="17" rx="2"><title>Happy &amp; Prosperous / Hold &amp; Spin rules and presentation — Not started</title></rect>
+<rect class="c not_started" x="367.5" y="269.5" width="17" height="17" rx="2"><title>Happy &amp; Prosperous / Jackpot levels and presentation — Not started</title></rect>
+<rect class="c not_started" x="390.5" y="269.5" width="17" height="17" rx="2"><title>Happy &amp; Prosperous / Free games feature — Not started</title></rect>
+<rect class="c not_started" x="413.5" y="269.5" width="17" height="17" rx="2"><title>Happy &amp; Prosperous / Title artwork, UI layout and typography — Not started</title></rect>
+<rect class="c not_started" x="436.5" y="269.5" width="17" height="17" rx="2"><title>Happy &amp; Prosperous / Sound and music — Not started</title></rect>
+<rect class="c not_started" x="459.5" y="269.5" width="17" height="17" rx="2"><title>Happy &amp; Prosperous / Animation and sequence timing — Not started</title></rect>
+<rect class="c not_started" x="482.5" y="269.5" width="17" height="17" rx="2"><title>Happy &amp; Prosperous / Attract and idle presentation — Not started</title></rect>
+<rect class="c not_started" x="505.5" y="269.5" width="17" height="17" rx="2"><title>Happy &amp; Prosperous / Locally imported original assets — Not started</title></rect>
+<rect class="c not_started" x="528.5" y="269.5" width="17" height="17" rx="2"><title>Happy &amp; Prosperous / Evidence-backed parity — Not started</title></rect>
+<text class="pct" x="830" y="282">0%</text><text class="muted" x="876" y="282">0/15 · ✓0</text>
+<text class="lbl" x="24" y="313">Panda Magic</text>
+<rect class="c not_started" x="206.5" y="300.5" width="17" height="17" rx="2"><title>Panda Magic / Title identity, versions and regulatory identifiers — Not started</title></rect>
+<rect class="c not_started" x="229.5" y="300.5" width="17" height="17" rx="2"><title>Panda Magic / Reel layout and lines — Not started</title></rect>
+<rect class="c not_started" x="252.5" y="300.5" width="17" height="17" rx="2"><title>Panda Magic / Symbol set — Not started</title></rect>
+<rect class="c not_started" x="275.5" y="300.5" width="17" height="17" rx="2"><title>Panda Magic / Paytable — Not started</title></rect>
+<rect class="c not_started" x="298.5" y="300.5" width="17" height="17" rx="2"><title>Panda Magic / Denominations and bet options — Not started</title></rect>
+<rect class="c not_started" x="321.5" y="300.5" width="17" height="17" rx="2"><title>Panda Magic / Reel strips and weighting — Not started</title></rect>
+<rect class="c not_started" x="344.5" y="300.5" width="17" height="17" rx="2"><title>Panda Magic / Hold &amp; Spin rules and presentation — Not started</title></rect>
+<rect class="c not_started" x="367.5" y="300.5" width="17" height="17" rx="2"><title>Panda Magic / Jackpot levels and presentation — Not started</title></rect>
+<rect class="c not_started" x="390.5" y="300.5" width="17" height="17" rx="2"><title>Panda Magic / Free games feature — Not started</title></rect>
+<rect class="c not_started" x="413.5" y="300.5" width="17" height="17" rx="2"><title>Panda Magic / Title artwork, UI layout and typography — Not started</title></rect>
+<rect class="c not_started" x="436.5" y="300.5" width="17" height="17" rx="2"><title>Panda Magic / Sound and music — Not started</title></rect>
+<rect class="c not_started" x="459.5" y="300.5" width="17" height="17" rx="2"><title>Panda Magic / Animation and sequence timing — Not started</title></rect>
+<rect class="c not_started" x="482.5" y="300.5" width="17" height="17" rx="2"><title>Panda Magic / Attract and idle presentation — Not started</title></rect>
+<rect class="c not_started" x="505.5" y="300.5" width="17" height="17" rx="2"><title>Panda Magic / Locally imported original assets — Not started</title></rect>
+<rect class="c not_started" x="528.5" y="300.5" width="17" height="17" rx="2"><title>Panda Magic / Evidence-backed parity — Not started</title></rect>
+<text class="pct" x="830" y="313">0%</text><text class="muted" x="876" y="313">0/15 · ✓0</text>
+<text class="lbl" x="24" y="344">Autumn Moon</text>
+<rect class="c not_started" x="206.5" y="331.5" width="17" height="17" rx="2"><title>Autumn Moon / Title identity, versions and regulatory identifiers — Not started</title></rect>
+<rect class="c not_started" x="229.5" y="331.5" width="17" height="17" rx="2"><title>Autumn Moon / Reel layout and lines — Not started</title></rect>
+<rect class="c not_started" x="252.5" y="331.5" width="17" height="17" rx="2"><title>Autumn Moon / Symbol set — Not started</title></rect>
+<rect class="c not_started" x="275.5" y="331.5" width="17" height="17" rx="2"><title>Autumn Moon / Paytable — Not started</title></rect>
+<rect class="c not_started" x="298.5" y="331.5" width="17" height="17" rx="2"><title>Autumn Moon / Denominations and bet options — Not started</title></rect>
+<rect class="c not_started" x="321.5" y="331.5" width="17" height="17" rx="2"><title>Autumn Moon / Reel strips and weighting — Not started</title></rect>
+<rect class="c not_started" x="344.5" y="331.5" width="17" height="17" rx="2"><title>Autumn Moon / Hold &amp; Spin rules and presentation — Not started</title></rect>
+<rect class="c not_started" x="367.5" y="331.5" width="17" height="17" rx="2"><title>Autumn Moon / Jackpot levels and presentation — Not started</title></rect>
+<rect class="c not_started" x="390.5" y="331.5" width="17" height="17" rx="2"><title>Autumn Moon / Free games feature — Not started</title></rect>
+<rect class="c not_started" x="413.5" y="331.5" width="17" height="17" rx="2"><title>Autumn Moon / Title artwork, UI layout and typography — Not started</title></rect>
+<rect class="c not_started" x="436.5" y="331.5" width="17" height="17" rx="2"><title>Autumn Moon / Sound and music — Not started</title></rect>
+<rect class="c not_started" x="459.5" y="331.5" width="17" height="17" rx="2"><title>Autumn Moon / Animation and sequence timing — Not started</title></rect>
+<rect class="c not_started" x="482.5" y="331.5" width="17" height="17" rx="2"><title>Autumn Moon / Attract and idle presentation — Not started</title></rect>
+<rect class="c not_started" x="505.5" y="331.5" width="17" height="17" rx="2"><title>Autumn Moon / Locally imported original assets — Not started</title></rect>
+<rect class="c not_started" x="528.5" y="331.5" width="17" height="17" rx="2"><title>Autumn Moon / Evidence-backed parity — Not started</title></rect>
+<text class="pct" x="830" y="344">0%</text><text class="muted" x="876" y="344">0/15 · ✓0</text>
+<text class="lbl" x="24" y="375">Parity</text>
+<rect class="c not_started" x="206.5" y="362.5" width="17" height="17" rx="2"><title>Parity / Behavioural trace format — Not started</title></rect>
+<rect class="c not_started" x="229.5" y="362.5" width="17" height="17" rx="2"><title>Parity / Source recordings of the original — Not started</title></rect>
+<rect class="c not_started" x="252.5" y="362.5" width="17" height="17" rx="2"><title>Parity / Event comparison — Not started</title></rect>
+<rect class="c not_started" x="275.5" y="362.5" width="17" height="17" rx="2"><title>Parity / Timing comparison — Not started</title></rect>
+<rect class="c not_started" x="298.5" y="362.5" width="17" height="17" rx="2"><title>Parity / Visual comparison — Not started</title></rect>
+<rect class="c not_started" x="321.5" y="362.5" width="17" height="17" rx="2"><title>Parity / Audio comparison — Not started</title></rect>
+<rect class="c implemented" x="344" y="362" width="18" height="18" rx="2"><title>Parity / Deterministic replay — Implemented — A recorded game of ours replays event for event from its draw log. This is determinism of our code, not parity.</title></rect>
+<rect class="c not_started" x="367.5" y="362.5" width="17" height="17" rx="2"><title>Parity / Evidence-backed parity tests — Not started</title></rect>
+<text class="pct" x="830" y="375">12%</text><text class="muted" x="876" y="375">1/8 · ✓0</text>
+<text class="lbl" x="24" y="406">Platforms</text>
+<g><title>Platforms / Windows — Partial — Headless crates and tools build and pass the gate on the Windows host; no app yet.</title><rect class="c partial-o" x="206.5" y="393.5" width="17" height="17" rx="2"/><path class="partial-f" d="M206 393h9v18h-9z"/></g>
+<rect class="c not_started" x="229.5" y="393.5" width="17" height="17" rx="2"><title>Platforms / Linux — Not started — CI job written, not yet run.</title></rect>
+<rect class="c not_started" x="252.5" y="393.5" width="17" height="17" rx="2"><title>Platforms / macOS — Not started — CI job written, not yet run.</title></rect>
+<rect class="c not_started" x="275.5" y="393.5" width="17" height="17" rx="2"><title>Platforms / Web / WASM — Not started</title></rect>
+<text class="pct" x="830" y="406">0%</text><text class="muted" x="876" y="406">0/4 · ✓0</text>
+<text class="lbl" x="24" y="437">Packaging</text>
+<rect class="c not_started" x="206.5" y="424.5" width="17" height="17" rx="2"><title>Packaging / Source importer — Not started</title></rect>
+<rect class="c not_started" x="229.5" y="424.5" width="17" height="17" rx="2"><title>Packaging / Asset manifest — Not started</title></rect>
+<rect class="c not_started" x="252.5" y="424.5" width="17" height="17" rx="2"><title>Packaging / Local full-package workflow — Not started</title></rect>
+<rect class="c not_started" x="275.5" y="424.5" width="17" height="17" rx="2"><title>Packaging / Public asset-free build — Not started</title></rect>
+<rect class="c not_started" x="298.5" y="424.5" width="17" height="17" rx="2"><title>Packaging / Release process — Not started</title></rect>
+<text class="pct" x="830" y="437">0%</text><text class="muted" x="876" y="437">0/5 · ✓0</text>
+<g><title>Verified</title><rect class="c verified" x="24" y="462" width="18" height="18" rx="2"/><path class="mark" d="M27 471l4 4l7 -8"/></g>
+<text class="muted" x="48" y="473">Verified (0)</text>
+<rect class="c implemented" x="154" y="462" width="18" height="18" rx="2"><title>Implemented</title></rect>
+<text class="muted" x="178" y="473">Implemented (9)</text>
+<g><title>Partial</title><rect class="c partial-o" x="305.5" y="462.5" width="17" height="17" rx="2"/><path class="partial-f" d="M305 462h9v18h-9z"/></g>
+<text class="muted" x="329" y="473">Partial (15)</text>
+<rect class="c investigating" x="435" y="462" width="18" height="18" rx="2"><title>Investigating</title></rect>
+<text class="muted" x="459" y="473">Investigating (6)</text>
+<g><title>Blocked</title><rect class="c blocked" x="600" y="462" width="18" height="18" rx="2"/><path class="mark" d="M605 467l8 8M613 467l-8 8"/></g>
+<text class="muted" x="624" y="473">Blocked (0)</text>
+<rect class="c not_started" x="723.5" y="462.5" width="17" height="17" rx="2"><title>Not started</title></rect>
+<text class="muted" x="747" y="473">Not started (89)</text>
+</svg>

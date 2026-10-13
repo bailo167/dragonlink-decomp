@@ -1,0 +1,775 @@
+# dragonlink-decomp progress — the canonical source of truth.
+#
+# Statuses: not_started | investigating | partial | implemented | verified | blocked
+# Definitions are in CLAUDE.md ("Progress tracking — no fake progress").
+#   * implemented / verified items MUST carry `evidence` (doc, test or tool path).
+#   * blocked items MUST carry `blocker`.
+#   * `verified` needs external grounding: agreement with evidence about the original
+#     (or, for our own tooling, with an independent reference), reproducibly. Compiling,
+#     passing our own tests, or looking right never makes an item verified.
+#   * An item about the original games is at most `partial` while the mathematics or
+#     behaviour it implements is unevidenced, however complete our code is.
+# After editing, run `cargo run -p progress-gen` to regenerate progress.svg and
+# the README table. CI and the Windows gate run `cargo run -p progress-gen -- --check`.
+
+schema = 1
+title = "dragonlink-decomp — preservation progress"
+current_milestone = "M0"
+
+# --------------------------------------------------------------------------
+# Milestones (the Golden Century acceptance path, then the other titles)
+# --------------------------------------------------------------------------
+
+[[milestone]]
+id = "M0"
+name = "Foundation"
+status = "partial"
+note = "Stage A: workspace, hygiene, progress tooling, docs, Windows gate, CI, source root."
+
+[[milestone]]
+id = "M1"
+name = "Evidence"
+status = "investigating"
+note = "Stage B: regulatory and official sources catalogued, official mobile software inventoried, formats identified."
+
+[[milestone]]
+id = "M2"
+name = "Import"
+status = "not_started"
+note = "Stage C: source scanner, manifest, extraction, normalised local asset layout, repeatable importer."
+
+[[milestone]]
+id = "M3"
+name = "Headless game model"
+status = "partial"
+note = "Stage D: state, spin, awards, feature state machine, deterministic traces. Runs on a synthetic fixture only; original mathematics unknown."
+
+[[milestone]]
+id = "M4"
+name = "Golden Century Bevy slice"
+status = "not_started"
+note = "Stage E: title boots, UI, reels, spin, imported local assets, audio, win and feature presentation."
+
+[[milestone]]
+id = "M5"
+name = "Parity"
+status = "not_started"
+note = "Stage F: source-vs-rewrite traces, timing, screenshots, animation and audio events, discrepancies tracked."
+
+[[milestone]]
+id = "M6"
+name = "Portability"
+status = "not_started"
+note = "Stage G: Windows verified, Linux and macOS build and test, Web/WASM builds and runs."
+
+[[milestone]]
+id = "M7"
+name = "Happy & Prosperous, Panda Magic, Autumn Moon"
+status = "not_started"
+note = "Generalise the systems proven on Golden Century to the other three titles."
+
+# --------------------------------------------------------------------------
+# Foundation
+# --------------------------------------------------------------------------
+
+[[category]]
+id = "foundation"
+name = "Foundation"
+
+[[category.item]]
+id = "bootstrap"
+name = "Repository bootstrap (workspace, licence, toolchain pin)"
+status = "implemented"
+evidence = "Cargo.toml; rust-toolchain.toml; LICENSE"
+
+[[category.item]]
+id = "legal-policy"
+name = "Legal and project policy"
+status = "implemented"
+evidence = "docs/LEGAL.md; README.md"
+
+[[category.item]]
+id = "evidence-system"
+name = "Evidence labels and provenance rules"
+status = "implemented"
+evidence = "docs/EVIDENCE.md; crates/dragonlink-model/src/evidence.rs (tests)"
+
+[[category.item]]
+id = "source-root"
+name = "Private source root outside Git"
+status = "not_started"
+note = "Layout is specified in docs/SOURCES.md; the tool that creates and checks it is not written yet."
+
+[[category.item]]
+id = "windows-env"
+name = "Windows development environment (reproducible)"
+status = "partial"
+note = "Rust 1.98.0, MSVC build tools, wasm32 target, Git, Python, Java, ffmpeg present; tools/dev/setup-windows.ps1 reports and installs. RE applications not installed yet."
+
+[[category.item]]
+id = "windows-gate"
+name = "Windows pre-merge gate"
+status = "implemented"
+evidence = "tools/dev/gate.ps1; docs/BUILDING.md"
+note = "fmt, clippy, test, hygiene, progress check today; app, smoke, wasm and release steps switch on when the app exists."
+
+[[category.item]]
+id = "ci"
+name = "CI (Linux, Windows, macOS, wasm32 check)"
+status = "partial"
+note = "Workflow is written; it has not run yet because nothing has been pushed (docs/BLOCKERS.md)."
+
+[[category.item]]
+id = "hygiene"
+name = "Repository hygiene checker"
+status = "implemented"
+evidence = "tools/repo-hygiene (tests); .gitignore"
+
+[[category.item]]
+id = "progress-tooling"
+name = "Progress tracker and generator"
+status = "implemented"
+evidence = "tools/progress-gen (tests); progress/progress.svg"
+
+[[category.item]]
+id = "prior-art"
+name = "Prior-art review (ASAMU-decomp, rea, universal-modder)"
+status = "implemented"
+evidence = "docs/PRIOR_ART.md"
+
+# --------------------------------------------------------------------------
+# Reverse engineering
+# --------------------------------------------------------------------------
+
+[[category]]
+id = "re"
+name = "Reverse engineering"
+
+[[category.item]]
+id = "platform-research"
+name = "Dragon Link cabinet and platform research"
+status = "investigating"
+
+[[category.item]]
+id = "regulatory-inventory"
+name = "Regulatory source inventory"
+status = "investigating"
+
+[[category.item]]
+id = "mobile-inventory"
+name = "Official mobile reference inventory"
+status = "not_started"
+
+[[category.item]]
+id = "provenance-db"
+name = "Source provenance database (claims)"
+status = "partial"
+note = "Machine-checked claim files exist and hold open questions only; no sourced claims entered yet."
+
+[[category.item]]
+id = "format-id"
+name = "Package and file-format identification"
+status = "not_started"
+
+[[category.item]]
+id = "exe-analysis"
+name = "Executable analysis"
+status = "not_started"
+
+[[category.item]]
+id = "asset-containers"
+name = "Asset-container identification"
+status = "not_started"
+
+[[category.item]]
+id = "textures"
+name = "Texture and image extraction"
+status = "not_started"
+
+[[category.item]]
+id = "fonts"
+name = "Font identification"
+status = "not_started"
+
+[[category.item]]
+id = "audio"
+name = "Audio extraction"
+status = "not_started"
+
+[[category.item]]
+id = "animation"
+name = "Animation extraction"
+status = "not_started"
+
+[[category.item]]
+id = "config-data"
+name = "Configuration and data extraction"
+status = "not_started"
+
+[[category.item]]
+id = "math-model"
+name = "Mathematical-model investigation"
+status = "investigating"
+note = "No source of cabinet mathematics is held. Every open question is listed in crates/dragonlink-model/claims/family.toml."
+
+# --------------------------------------------------------------------------
+# Shared game runtime
+# --------------------------------------------------------------------------
+
+[[category]]
+id = "runtime"
+name = "Shared game runtime"
+
+[[category.item]]
+id = "rng"
+name = "Outcome source abstraction (test, record, replay)"
+status = "implemented"
+evidence = "crates/dragonlink-core/src/rng.rs (tests)"
+note = "Test instruments of ours. Models nothing about the original generator, which is unknown."
+
+[[category.item]]
+id = "state-machine"
+name = "State machine"
+status = "partial"
+note = "Idle and Hold & Spin phases with transactional commands; no free games, attract or idle states."
+
+[[category.item]]
+id = "credits"
+name = "Credits / play-credit model"
+status = "partial"
+note = "A play-credit meter with chained credit events; denominations and cash handling are not modelled."
+
+[[category.item]]
+id = "bet-selection"
+name = "Bet selection"
+status = "partial"
+note = "Credits per line over all lines; the original's bet structure is unknown."
+
+[[category.item]]
+id = "spin-lifecycle"
+name = "Spin lifecycle"
+status = "partial"
+note = "Bet, reel stops, awards, feature entry, completion as events; ordering is ours, not evidenced."
+
+[[category.item]]
+id = "reel-model"
+name = "Reel model"
+status = "partial"
+note = "Strips with a wrapping window; how the original maps outcomes to stops is unknown."
+
+[[category.item]]
+id = "symbol-model"
+name = "Symbol model"
+status = "partial"
+note = "Regular, wild, scatter and orb kinds; title symbol sets are unknown."
+
+[[category.item]]
+id = "pay-evaluator"
+name = "Pay evaluator"
+status = "partial"
+note = "Generic left-to-right line rules and scatter pays, each stated in eval.rs; none checked against the original."
+
+[[category.item]]
+id = "win-presentation"
+name = "Win presentation"
+status = "not_started"
+
+[[category.item]]
+id = "feature-trigger"
+name = "Feature triggering"
+status = "partial"
+note = "Hold & Spin by orb count only."
+
+[[category.item]]
+id = "hold-and-spin"
+name = "Hold & Spin framework"
+status = "partial"
+note = "Parameterised respin loop with tests; trigger count, respins, chances and values are synthetic."
+
+[[category.item]]
+id = "jackpots"
+name = "Jackpot model and presentation"
+status = "partial"
+note = "Four named levels with fixed amounts; progressive meters and presentation are not started."
+
+[[category.item]]
+id = "free-games"
+name = "Free-game framework"
+status = "not_started"
+
+[[category.item]]
+id = "audio"
+name = "Audio"
+status = "not_started"
+
+[[category.item]]
+id = "animation"
+name = "Animation"
+status = "not_started"
+
+[[category.item]]
+id = "vfx"
+name = "VFX"
+status = "not_started"
+
+[[category.item]]
+id = "ui"
+name = "UI"
+status = "not_started"
+
+[[category.item]]
+id = "input"
+name = "Input"
+status = "not_started"
+
+[[category.item]]
+id = "save-settings"
+name = "Save and settings handling"
+status = "partial"
+note = "Game state serialises and resumes mid-feature; no settings, no persistence in an app."
+
+# --------------------------------------------------------------------------
+# Golden Century (first vertical slice)
+# --------------------------------------------------------------------------
+
+[[category]]
+id = "gc"
+name = "Golden Century"
+
+[[category.item]]
+id = "identity"
+name = "Title identity, versions and regulatory identifiers"
+status = "investigating"
+
+[[category.item]]
+id = "layout"
+name = "Reel layout and lines"
+status = "investigating"
+
+[[category.item]]
+id = "symbols"
+name = "Symbol set"
+status = "not_started"
+
+[[category.item]]
+id = "paytable"
+name = "Paytable"
+status = "not_started"
+
+[[category.item]]
+id = "bets"
+name = "Denominations and bet options"
+status = "not_started"
+
+[[category.item]]
+id = "reel-strips"
+name = "Reel strips and weighting"
+status = "not_started"
+
+[[category.item]]
+id = "hold-and-spin"
+name = "Hold & Spin rules and presentation"
+status = "investigating"
+
+[[category.item]]
+id = "jackpots"
+name = "Jackpot levels and presentation"
+status = "not_started"
+
+[[category.item]]
+id = "free-games"
+name = "Free games feature"
+status = "not_started"
+
+[[category.item]]
+id = "art-ui"
+name = "Title artwork, UI layout and typography"
+status = "not_started"
+
+[[category.item]]
+id = "audio"
+name = "Sound and music"
+status = "not_started"
+
+[[category.item]]
+id = "animation-timing"
+name = "Animation and sequence timing"
+status = "not_started"
+
+[[category.item]]
+id = "attract"
+name = "Attract and idle presentation"
+status = "not_started"
+
+[[category.item]]
+id = "imported-assets"
+name = "Locally imported original assets"
+status = "not_started"
+
+[[category.item]]
+id = "parity"
+name = "Evidence-backed parity"
+status = "not_started"
+
+# --------------------------------------------------------------------------
+# Happy & Prosperous
+# --------------------------------------------------------------------------
+
+[[category]]
+id = "hp"
+name = "Happy & Prosperous"
+
+[[category.item]]
+id = "identity"
+name = "Title identity, versions and regulatory identifiers"
+status = "not_started"
+
+[[category.item]]
+id = "layout"
+name = "Reel layout and lines"
+status = "not_started"
+
+[[category.item]]
+id = "symbols"
+name = "Symbol set"
+status = "not_started"
+
+[[category.item]]
+id = "paytable"
+name = "Paytable"
+status = "not_started"
+
+[[category.item]]
+id = "bets"
+name = "Denominations and bet options"
+status = "not_started"
+
+[[category.item]]
+id = "reel-strips"
+name = "Reel strips and weighting"
+status = "not_started"
+
+[[category.item]]
+id = "hold-and-spin"
+name = "Hold & Spin rules and presentation"
+status = "not_started"
+
+[[category.item]]
+id = "jackpots"
+name = "Jackpot levels and presentation"
+status = "not_started"
+
+[[category.item]]
+id = "free-games"
+name = "Free games feature"
+status = "not_started"
+
+[[category.item]]
+id = "art-ui"
+name = "Title artwork, UI layout and typography"
+status = "not_started"
+
+[[category.item]]
+id = "audio"
+name = "Sound and music"
+status = "not_started"
+
+[[category.item]]
+id = "animation-timing"
+name = "Animation and sequence timing"
+status = "not_started"
+
+[[category.item]]
+id = "attract"
+name = "Attract and idle presentation"
+status = "not_started"
+
+[[category.item]]
+id = "imported-assets"
+name = "Locally imported original assets"
+status = "not_started"
+
+[[category.item]]
+id = "parity"
+name = "Evidence-backed parity"
+status = "not_started"
+
+# --------------------------------------------------------------------------
+# Panda Magic
+# --------------------------------------------------------------------------
+
+[[category]]
+id = "pm"
+name = "Panda Magic"
+
+[[category.item]]
+id = "identity"
+name = "Title identity, versions and regulatory identifiers"
+status = "not_started"
+
+[[category.item]]
+id = "layout"
+name = "Reel layout and lines"
+status = "not_started"
+
+[[category.item]]
+id = "symbols"
+name = "Symbol set"
+status = "not_started"
+
+[[category.item]]
+id = "paytable"
+name = "Paytable"
+status = "not_started"
+
+[[category.item]]
+id = "bets"
+name = "Denominations and bet options"
+status = "not_started"
+
+[[category.item]]
+id = "reel-strips"
+name = "Reel strips and weighting"
+status = "not_started"
+
+[[category.item]]
+id = "hold-and-spin"
+name = "Hold & Spin rules and presentation"
+status = "not_started"
+
+[[category.item]]
+id = "jackpots"
+name = "Jackpot levels and presentation"
+status = "not_started"
+
+[[category.item]]
+id = "free-games"
+name = "Free games feature"
+status = "not_started"
+
+[[category.item]]
+id = "art-ui"
+name = "Title artwork, UI layout and typography"
+status = "not_started"
+
+[[category.item]]
+id = "audio"
+name = "Sound and music"
+status = "not_started"
+
+[[category.item]]
+id = "animation-timing"
+name = "Animation and sequence timing"
+status = "not_started"
+
+[[category.item]]
+id = "attract"
+name = "Attract and idle presentation"
+status = "not_started"
+
+[[category.item]]
+id = "imported-assets"
+name = "Locally imported original assets"
+status = "not_started"
+
+[[category.item]]
+id = "parity"
+name = "Evidence-backed parity"
+status = "not_started"
+
+# --------------------------------------------------------------------------
+# Autumn Moon
+# --------------------------------------------------------------------------
+
+[[category]]
+id = "am"
+name = "Autumn Moon"
+
+[[category.item]]
+id = "identity"
+name = "Title identity, versions and regulatory identifiers"
+status = "not_started"
+
+[[category.item]]
+id = "layout"
+name = "Reel layout and lines"
+status = "not_started"
+
+[[category.item]]
+id = "symbols"
+name = "Symbol set"
+status = "not_started"
+
+[[category.item]]
+id = "paytable"
+name = "Paytable"
+status = "not_started"
+
+[[category.item]]
+id = "bets"
+name = "Denominations and bet options"
+status = "not_started"
+
+[[category.item]]
+id = "reel-strips"
+name = "Reel strips and weighting"
+status = "not_started"
+
+[[category.item]]
+id = "hold-and-spin"
+name = "Hold & Spin rules and presentation"
+status = "not_started"
+
+[[category.item]]
+id = "jackpots"
+name = "Jackpot levels and presentation"
+status = "not_started"
+
+[[category.item]]
+id = "free-games"
+name = "Free games feature"
+status = "not_started"
+
+[[category.item]]
+id = "art-ui"
+name = "Title artwork, UI layout and typography"
+status = "not_started"
+
+[[category.item]]
+id = "audio"
+name = "Sound and music"
+status = "not_started"
+
+[[category.item]]
+id = "animation-timing"
+name = "Animation and sequence timing"
+status = "not_started"
+
+[[category.item]]
+id = "attract"
+name = "Attract and idle presentation"
+status = "not_started"
+
+[[category.item]]
+id = "imported-assets"
+name = "Locally imported original assets"
+status = "not_started"
+
+[[category.item]]
+id = "parity"
+name = "Evidence-backed parity"
+status = "not_started"
+
+# --------------------------------------------------------------------------
+# Parity
+# --------------------------------------------------------------------------
+
+[[category]]
+id = "parity"
+name = "Parity"
+
+[[category.item]]
+id = "trace-format"
+name = "Behavioural trace format"
+status = "not_started"
+
+[[category.item]]
+id = "source-recordings"
+name = "Source recordings of the original"
+status = "not_started"
+
+[[category.item]]
+id = "event-comparison"
+name = "Event comparison"
+status = "not_started"
+
+[[category.item]]
+id = "timing-comparison"
+name = "Timing comparison"
+status = "not_started"
+
+[[category.item]]
+id = "visual-comparison"
+name = "Visual comparison"
+status = "not_started"
+
+[[category.item]]
+id = "audio-comparison"
+name = "Audio comparison"
+status = "not_started"
+
+[[category.item]]
+id = "deterministic-replay"
+name = "Deterministic replay"
+status = "implemented"
+evidence = "crates/dragonlink-core/src/game.rs (a_recorded_game_replays_event_for_event)"
+note = "A recorded game of ours replays event for event from its draw log. This is determinism of our code, not parity."
+
+[[category.item]]
+id = "parity-tests"
+name = "Evidence-backed parity tests"
+status = "not_started"
+
+# --------------------------------------------------------------------------
+# Platforms
+# --------------------------------------------------------------------------
+
+[[category]]
+id = "platforms"
+name = "Platforms"
+
+[[category.item]]
+id = "windows"
+name = "Windows"
+status = "partial"
+note = "Headless crates and tools build and pass the gate on the Windows host; no app yet."
+
+[[category.item]]
+id = "linux"
+name = "Linux"
+status = "not_started"
+note = "CI job written, not yet run."
+
+[[category.item]]
+id = "macos"
+name = "macOS"
+status = "not_started"
+note = "CI job written, not yet run."
+
+[[category.item]]
+id = "web"
+name = "Web / WASM"
+status = "not_started"
+
+# --------------------------------------------------------------------------
+# Packaging
+# --------------------------------------------------------------------------
+
+[[category]]
+id = "packaging"
+name = "Packaging"
+
+[[category.item]]
+id = "source-importer"
+name = "Source importer"
+status = "not_started"
+
+[[category.item]]
+id = "asset-manifest"
+name = "Asset manifest"
+status = "not_started"
+
+[[category.item]]
+id = "local-package"
+name = "Local full-package workflow"
+status = "not_started"
+
+[[category.item]]
+id = "asset-free-build"
+name = "Public asset-free build"
+status = "not_started"
+
+[[category.item]]
+id = "release-process"
+name = "Release process"
+status = "not_started"

@@ -1,0 +1,224 @@
+# ---------------------------------------------------------------------------
+# dragonlink-decomp source hygiene
+#
+# This repository is PUBLIC. It contains only our own code, tooling, tests,
+# format documentation and sanitized metadata. Proprietary source material
+# (cabinet software, official mobile packages, extracted assets, captures,
+# decompiler output) lives in the private source root OUTSIDE this work tree
+# (DRAGONLINK_SOURCE_ROOT) and must never be committed.
+# See docs/LEGAL.md, docs/SOURCES.md and CLAUDE.md ("Source material hygiene").
+#
+# These patterns are a second line of defence. The first is that the private
+# source root is not inside the repository at all; the third is
+# tools/repo-hygiene, which checks content as well as names.
+# ---------------------------------------------------------------------------
+
+# --- Rust build output -------------------------------------------------------
+/target/
+**/target/
+*.pdb
+
+# --- Web build output --------------------------------------------------------
+/dist/
+/web/dist/
+/web/pkg/
+
+# --- Private source root, if someone places it inside the work tree ----------
+/source-root/
+/dragonlink-source/
+/evidence/
+official-mobile/
+cabinet/
+captures/
+extracted/
+decompiler/
+temporary/
+
+# --- Imported runtime assets and local full packages (never commit) ----------
+/imported/
+/dragonlink-data/
+/data/
+/local-package/
+/dist-local/
+*.dlpack
+
+# --- Android / mobile packages -----------------------------------------------
+*.apk
+*.apks
+*.xapk
+*.apkm
+*.aab
+*.obb
+*.dex
+*.odex
+*.vdex
+*.oat
+*.ipa
+
+# --- Executables and native libraries ----------------------------------------
+*.exe
+*.dll
+*.so
+*.so.*
+*.dylib
+*.elf
+*.ko
+*.sys
+*.msi
+*.jar
+*.class
+
+# --- Cabinet / disk / firmware images ----------------------------------------
+*.img
+*.iso
+*.bin
+!crates/**/tests/fixtures/**/*.bin
+*.rom
+*.dd
+*.raw
+*.vhd
+*.vhdx
+*.vmdk
+*.qcow2
+*.e01
+*.dmg
+*.cfi
+*.cfast
+*.squashfs
+*.sqfs
+*.cramfs
+*.ext2
+*.ext3
+*.ext4
+*.fw
+*.hex
+*.upd
+
+# --- Archives (source material arrives in these; nothing of ours needs one) --
+*.zip
+*.7z
+*.rar
+*.tar
+*.tar.*
+*.tgz
+*.gz
+*.xz
+*.zst
+*.lz4
+*.bz2
+*.cab
+
+# --- Engine asset containers -------------------------------------------------
+*.unity3d
+*.assets
+*.resS
+*.resource
+*.bundle
+*.assetbundle
+*.pak
+*.pck
+*.bnk
+*.wem
+*.fsb
+*.fev
+*.acb
+*.awb
+*.sbk
+*.atlas
+*.skel
+*.spine
+*.swf
+*.gfx
+
+# --- Audio / video -----------------------------------------------------------
+*.wav
+*.ogg
+*.oga
+*.opus
+*.mp3
+*.m4a
+*.aac
+*.flac
+*.wma
+*.mp4
+*.m4v
+*.mov
+*.mkv
+*.webm
+*.avi
+*.bik
+*.bk2
+*.usm
+
+# --- Textures / images (showcase images of OUR runtime live in docs/images) --
+*.dds
+*.ktx
+*.ktx2
+*.astc
+*.pvr
+*.pkm
+*.tga
+*.bmp
+*.psd
+*.tif
+*.tiff
+*.exr
+
+# --- Fonts -------------------------------------------------------------------
+*.ttf
+*.otf
+*.ttc
+*.woff
+*.woff2
+*.fnt
+
+# --- Reverse-engineering databases and dumps ---------------------------------
+research/local/
+research/raw/
+research/ghidra/
+research/decompiled/
+research/extracted/
+research/strings/
+research/jadx/
+research/apktool/
+*.gpr
+*.rep
+*.ghidra
+*.gzf
+*.idb
+*.i64
+*.nam
+*.til
+*.id0
+*.id1
+*.id2
+*.bndb
+*.nm.txt
+*.symbols.txt
+*.strings.txt
+*.smali
+
+# --- Local env / secrets -----------------------------------------------------
+.env
+.env.*
+*.pem
+*.key
+*.p12
+*.pfx
+*.jks
+*.keystore
+*.token
+credentials.json
+secrets.*
+
+# --- Editors / OS ------------------------------------------------------------
+.DS_Store
+Thumbs.db
+desktop.ini
+.idea/
+.vscode/
+*.swp
+*~
+
+# --- Local tooling state (never commit) --------------------------------------
+/.claude/
