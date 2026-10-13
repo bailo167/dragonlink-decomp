@@ -175,7 +175,7 @@ note = "Mighty Fu Casino 5.6.0 obtained from the Play Store, hashed and inventor
 id = "provenance-db"
 name = "Source provenance database (claims)"
 status = "implemented"
-evidence = "crates/dragonlink-model/claims/ (128 claims); crates/dragonlink-model/src/claims.rs (tests enforce the evidence rules)"
+evidence = "crates/dragonlink-model/claims/ (136 claims); crates/dragonlink-model/src/claims.rs (tests enforce the evidence rules)"
 
 [[category.item]]
 id = "format-id"
@@ -390,25 +390,25 @@ note = "Identifiers of every Australian generation and of US builds are recorded
 id = "rng-architecture"
 name = "RNG architecture and call sites"
 status = "investigating"
-note = "Regulatory requirements by revision are documented (continuous cycling before 2021, a cryptographic generator after). The algorithm, seeding and call sites of the product are not public."
+note = "Mobile: the generator family and the unbiased bounded draw are known from static analysis of the app (MOBILE_MATH_ARCHITECTURE.md); seeding is recorded privately and not published (DECISIONS D-016). Cabinet: regulatory requirements by revision are documented; the product's algorithm, seeding and call sites are not public."
 
 [[category.item]]
 id = "outcome-selection"
 name = "Outcome selection, reel-stop relationship and input timing"
 status = "investigating"
-note = "What regulation requires is documented with clause numbers (PUBLISHED_RETURNS.md): outcome from the generator before presentation; timing cannot change the distribution. Not verified in any Dragon Link software."
+note = "Mobile: the order of a round is known from static analysis: stops, prize-symbol values over the whole strip, window, evaluation, then features (MOBILE_MATH_ARCHITECTURE.md). Cabinet: regulation requires the outcome before presentation and forbids timing from changing the distribution; not verified in any cabinet software."
 
 [[category.item]]
 id = "state-dependence"
 name = "State dependence and persistence between spins"
 status = "investigating"
-note = "Regulation requires independent outcomes and permits only declared metamorphic tokens and progressive pools as carried state (PUBLISHED_RETURNS.md). Not verified in any Dragon Link software."
+note = "Mobile: the state carried inside Hold & Spin is known (held symbols, count, one specially weighted position); no state carried between base games was found in the code examined, which is not proof of absence. Cabinet: regulation permits only declared tokens and progressive pools; not verified in software."
 
 [[category.item]]
 id = "mobile-vs-cabinet"
 name = "Mobile versus cabinet mathematics"
-status = "not_started"
-note = "Needs official mobile software (BLOCKERS B-003, in progress) and cabinet-side evidence."
+status = "investigating"
+note = "The mobile algorithms are described and their numbers unread; the cabinet has pay entries and reel windows from footage and no algorithm. They agree on what both show (Hold & Spin counts, the free-games reveal). The mobile engine can select reels by bet configuration, and a cabinet used different reels at $1: a resemblance. No table can be compared yet."
 
 [[category.item]]
 id = "progressive-thresholds"

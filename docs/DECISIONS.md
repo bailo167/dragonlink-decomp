@@ -227,3 +227,29 @@ unknown unless cabinet-side documents surface lawfully.
 **Honesty conditions.** A window is recorded only when legible in a frame. Completeness is
 estimated, and a strip is not asserted while unseen windows are still expected. A reconstruction
 says which footage it rests on and how many stops were observed.
+
+## D-016 — The mobile game's code is described; its protected tables and its security are left alone (2026-10-13)
+
+**Decision.** How the official mobile app computes a game is taken from static analysis of its
+code, done by the owner separately from this project's tooling and handed over. The project uses
+it as a description of behaviour for the mobile rung of the ladder. Three limits apply.
+
+1. **The protected tables are still not read.** The analysis did not attempt key recovery or
+   decryption, and the project does not either (D-014). Reels, weights, pays and probabilities of
+   the mobile game stay unknown until they arrive some other legitimate way.
+2. **The repository gets behaviour, in our words.** No disassembly, no addresses, no function map:
+   those belong with the binary, in the private source root. The reference routines handed over
+   are read as a specification; code in the repository is written here.
+3. **Details that bear on the security of a live product are not published and not built on.**
+   That covers how the app's generator is seeded and the means by which numbers can be supplied
+   from outside. The project records that such details exist, keeps them privately, and builds no
+   tool that predicts or steers the outcomes of a running app.
+
+**Why.** The algorithms are what the reimplementation needs and say nothing a player could misuse.
+The seeding of a generator in a product people are playing is a different kind of fact: publishing
+it serves no preservation purpose and could help someone cheat a live service, which the project's
+safety boundary rules out (CLAUDE.md, "Safety boundary").
+
+**Consequence.** `reverse-engineering/MOBILE_MATH_ARCHITECTURE.md` is the public record. The
+mobile draw order, the reveal, the per-position Hold & Spin strips and the prize codes become
+configuration of the simulation, labelled mobile. B-005 narrows to the tables.

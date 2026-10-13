@@ -370,9 +370,97 @@ confidence = "unknown"
 
 [[claim]]
 id = "platform.mobile-relationship"
-statement = "Do the official social-casino implementations share assets, presentation timing or mathematics with the cabinet versions?"
+statement = "Do the official social-casino implementations share reels, tables or timing with the cabinet versions?"
 confidence = "unknown"
-note = "Policy until evidence says otherwise: mobile is valid for presentation only (docs/EVIDENCE.md)."
+note = "Policy until evidence says otherwise: mobile is valid for presentation only (docs/EVIDENCE.md). How the mobile game computes a round is now described (mobile.* claims below); its tables are unread, so nothing can be compared with the cabinet yet. The mobile engine can select a reel set by bet configuration, and a cabinet was seen to use different reels at $1 than at the cent denominations: a resemblance, not evidence of shared data."
+
+[[claim]]
+id = "mobile.local-mathematics"
+statement = "In the mobile app the game's mathematics runs inside the app; the operator's service receives signed wager and win records and supplies progressive jackpot amounts."
+value = "local title mathematics; backend economy and jackpot settlement; no round record carries a grid, stops or a seed"
+confidence = "strong_evidence"
+source = "official_mobile"
+citation = "Static analysis of the native code of Mighty Fu Casino 5.6.0 for Android (com.productmadness.fafafagold), native library SHA-256 3bcb7b5b45847a552f6789f4fba0ee142d57b6d4009148f9710796176493e634; report held privately, restated in docs/reverse-engineering/MOBILE_MATH_ARCHITECTURE.md"
+accessed = "2026-10-13"
+scope = "mobile"
+note = "One analyst, one pass, not re-derived by this project. Mobile implementation only: nothing here is a statement about cabinet mathematics. From the code's paths, not from watching the app run: no game was instrumented and no traffic captured."
+
+[[claim]]
+id = "mobile.variations"
+statement = "The mobile Golden Century has four variations, in folders labelled 88, 90, 92 and 94, and the one a session runs is named by the operator's response when the game is loaded."
+value = "four variation folders; chosen once per session by the backend; only the configuration and the prize-symbol weight table differ between them"
+confidence = "strong_evidence"
+source = "official_mobile"
+citation = "Static analysis of the native code of Mighty Fu Casino 5.6.0 for Android (com.productmadness.fafafagold), native library SHA-256 3bcb7b5b45847a552f6789f4fba0ee142d57b6d4009148f9710796176493e634; report held privately, restated in docs/reverse-engineering/MOBILE_MATH_ARCHITECTURE.md"
+accessed = "2026-10-13"
+scope = "mobile"
+note = "One analyst, one pass, not re-derived by this project. Mobile implementation only: nothing here is a statement about cabinet mathematics. The labels are folder names and are not established to be return percentages. Which variation a session gets is unknown."
+
+[[claim]]
+id = "mobile.reels"
+statement = "Mobile reels are named cyclic strips with an optional weight per stop; the chosen stop is the middle row of the window; a definition can hold several reel sets selected by bet index and line index."
+value = "cyclic strips; optional stop weights; stop = middle row; reel sets keyed by bet index and line index"
+confidence = "strong_evidence"
+source = "official_mobile"
+citation = "Static analysis of the native code of Mighty Fu Casino 5.6.0 for Android (com.productmadness.fafafagold), native library SHA-256 3bcb7b5b45847a552f6789f4fba0ee142d57b6d4009148f9710796176493e634; report held privately, restated in docs/reverse-engineering/MOBILE_MATH_ARCHITECTURE.md"
+accessed = "2026-10-13"
+scope = "mobile"
+note = "One analyst, one pass, not re-derived by this project. Mobile implementation only: nothing here is a statement about cabinet mathematics. Whether Golden Century's strips carry weights, their contents, and which set is used when, are in protected files and unknown."
+
+[[claim]]
+id = "mobile.prize-symbol-assignment"
+statement = "In the mobile base game, prize symbols are given their values after the stops are drawn and before the window is built, for every prize-symbol position on each strip, visible or not."
+value = "order: stops, then values over the whole strip, then the window, then evaluation"
+confidence = "strong_evidence"
+source = "official_mobile"
+citation = "Static analysis of the native code of Mighty Fu Casino 5.6.0 for Android (com.productmadness.fafafagold), native library SHA-256 3bcb7b5b45847a552f6789f4fba0ee142d57b6d4009148f9710796176493e634; report held privately, restated in docs/reverse-engineering/MOBILE_MATH_ARCHITECTURE.md"
+accessed = "2026-10-13"
+scope = "mobile"
+note = "One analyst, one pass, not re-derived by this project. Mobile implementation only: nothing here is a statement about cabinet mathematics. This fixes the order in which random numbers are consumed. The project's synthetic model draws values for visible prize symbols only."
+
+[[claim]]
+id = "mobile.reveal"
+statement = "In the mobile free games one symbol is drawn for all masked positions; if it is the prize symbol, each masked position then draws its own value; a different table is used when all fifteen positions are masked."
+value = "one reveal symbol per game; per-position values when it is the prize symbol"
+confidence = "strong_evidence"
+source = "official_mobile"
+citation = "Static analysis of the native code of Mighty Fu Casino 5.6.0 for Android (com.productmadness.fafafagold), native library SHA-256 3bcb7b5b45847a552f6789f4fba0ee142d57b6d4009148f9710796176493e634; report held privately, restated in docs/reverse-engineering/MOBILE_MATH_ARCHITECTURE.md"
+accessed = "2026-10-13"
+scope = "mobile"
+note = "One analyst, one pass, not re-derived by this project. Mobile implementation only: nothing here is a statement about cabinet mathematics. Agrees with the manufacturer's Australian description and with cabinet footage of the mystery symbol."
+
+[[claim]]
+id = "mobile.hold-and-spin"
+statement = "In mobile Hold & Spin six prize symbols start the feature with three spins; a new prize symbol returns the count to three; fifteen end it at once, before the reset, and award the Grand where it is enabled for the bet bracket; each empty position spins on a strip of its own, one randomly chosen position on a specially weighted strip until it first hits."
+value = "trigger 6; 3 spins; reset to 3; full screen 15 takes precedence; a strip per position from a separate file; prize identities are codes looked up in per-bet lists"
+confidence = "strong_evidence"
+source = "official_mobile"
+citation = "Static analysis of the native code of Mighty Fu Casino 5.6.0 for Android (com.productmadness.fafafagold), native library SHA-256 3bcb7b5b45847a552f6789f4fba0ee142d57b6d4009148f9710796176493e634; report held privately, restated in docs/reverse-engineering/MOBILE_MATH_ARCHITECTURE.md"
+accessed = "2026-10-13"
+scope = "mobile"
+note = "One analyst, one pass, not re-derived by this project. Mobile implementation only: nothing here is a statement about cabinet mathematics. The same counts as the US rules text and the Australian prompts. The engine also has paths that can award the Grand or the Major at random below six prize symbols; whether they are enabled, and how likely, is protected."
+
+[[claim]]
+id = "mobile.rng"
+statement = "The mobile app draws from a generator of the Mersenne Twister family constructed in the app, and takes a number below a bound by partitioning the range and redrawing, not by a remainder."
+value = "Mersenne Twister family; bounded draw by rejection"
+confidence = "strong_evidence"
+source = "official_mobile"
+citation = "Static analysis of the native code of Mighty Fu Casino 5.6.0 for Android (com.productmadness.fafafagold), native library SHA-256 3bcb7b5b45847a552f6789f4fba0ee142d57b6d4009148f9710796176493e634; report held privately, restated in docs/reverse-engineering/MOBILE_MATH_ARCHITECTURE.md"
+accessed = "2026-10-13"
+scope = "mobile"
+note = "One analyst, one pass, not re-derived by this project. Mobile implementation only: nothing here is a statement about cabinet mathematics. Seeding and the hooks for supplying numbers from outside are recorded privately and not published (docs/DECISIONS.md, D-016). Says nothing about a cabinet's generator."
+
+[[claim]]
+id = "mobile.shared-engine"
+statement = "Golden Century and Autumn Moon run on the same game-server class in the mobile app, and all four titles carry the same file of Hold & Spin strips."
+value = "one engine class for Golden Century and Autumn Moon; 45 of 48 protected files identical between them; Hold & Spin strip file identical in all four titles"
+confidence = "strong_evidence"
+source = "official_mobile"
+citation = "Static analysis of the native code of Mighty Fu Casino 5.6.0 for Android (com.productmadness.fafafagold), native library SHA-256 3bcb7b5b45847a552f6789f4fba0ee142d57b6d4009148f9710796176493e634; report held privately, restated in docs/reverse-engineering/MOBILE_MATH_ARCHITECTURE.md"
+accessed = "2026-10-13"
+scope = "mobile"
+note = "One analyst, one pass, not re-derived by this project. Mobile implementation only: nothing here is a statement about cabinet mathematics. Hash comparisons were made twice, by this project and by the analysis. Shared files are not proof of equal behaviour."
 
 # ---------------------------------------------------------------------------
 # Mathematics

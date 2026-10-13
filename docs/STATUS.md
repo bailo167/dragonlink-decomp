@@ -230,6 +230,19 @@ and merged through the gate.
 - The entries were checked against a separate reading of the credit meter: all 221 $1 games that
   could be checked paid exactly what the entries and line shapes give.
 
+### The mobile game's engine, described (2026-10-13)
+
+- The owner handed over a static analysis of the mobile app's code, done separately from this
+  project's tooling: a report, reference routines and a function map, kept privately.
+- It establishes how the mobile Golden Century computes a round: mathematics inside the app with
+  backend economy and jackpot settlement; weighted cyclic reels with the stop in the middle row;
+  prize-symbol values assigned over the whole strip before the window; one reveal symbol for all
+  masked positions; a strip per position in Hold & Spin; prize codes looked up in per-bet lists
+  ([reverse-engineering/MOBILE_MATH_ARCHITECTURE.md](reverse-engineering/MOBILE_MATH_ARCHITECTURE.md)).
+- No protected table was read. Every reel, weight, pay and probability of the mobile game is
+  still unknown, and B-005 narrows to exactly that.
+- Details bearing on the security of the live app are not published or built on (DECISIONS D-016).
+
 ## Known limits of what exists
 
 - Every rule in the simulation is a generic slot-game rule, written down so it can be checked. None
@@ -263,8 +276,11 @@ In order of value. The first four need nothing from anyone.
 4. **The rest of the Golden Century pay table**: lines 6 to 50 from the 27 messages that name
    them and from the meter at the cent denominations; four and five of a kind as they turn up.
 5. **Model the game's real structure in the simulation**: denominations, selectable lines,
-   credits per line, the first five paylines, and a configuration per denomination, all of which
-   are now evidenced. Free games and their mystery symbol after that.
+   credits per line, the first five paylines, and a configuration per denomination (cabinet
+   evidence); and, as mobile configuration, the stop as the middle row, prize-symbol values over
+   the whole strip before the window, the free-games reveal, and a strip per position in Hold &
+   Spin with the full-screen-before-reset rule
+   ([reverse-engineering/MOBILE_MATH_ARCHITECTURE.md](reverse-engineering/MOBILE_MATH_ARCHITECTURE.md)).
 6. **Read the features**: Hold & Spin and free-games stills are transcribed and not yet analysed.
 7. Re-read the once-read sources so their claims can be labelled VERIFIED.
 
@@ -272,8 +288,8 @@ In order of value. The first four need nothing from anyone.
 
 Three decisions, none of which stops other work:
 
-- whether and how the mobile package's protected content is read, since the project's tooling
-  does not do it (BLOCKERS B-005);
+- how the mobile game's table contents might be supplied without attacking their protection: its
+  algorithms are now described, its numbers are not (BLOCKERS B-005);
 - whether results from a recovered configuration may be published (DECISIONS D-010);
 - whether reel strips reconstructed from **public footage** may be published. They are treated
   like any recovered mathematics until decided: the method, the counts and what a player can see

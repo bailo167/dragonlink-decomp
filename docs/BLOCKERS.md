@@ -32,22 +32,26 @@ access to operating gaming systems ([LEGAL.md](LEGAL.md)).
 
 ## Open
 
-### B-005 — The mobile package's protected content is not read by the project's tooling
+### B-005 — The mobile game's protected tables are not read
 
-- **Since:** 2026-10-13
-- **Blocks:** rung 2 of the mathematics ladder (the mobile build's reel strips, weight tables and
-  variation parameters, which are on the device in protected files), and reading the mobile
-  build's rules and pay tables from its own help artwork.
+- **Since:** 2026-10-13. Narrowed the same day.
+- **Blocks:** the *numbers* of rung 2 of the mathematics ladder: the mobile build's reel strips,
+  stop weights, pays, prize lists, weight tables and variation parameters, which are on the device
+  in protected files. Also reading the mobile build's rules and pay tables from its help artwork.
 - **What happened:** decrypting the protected tables, and then exporting the help artwork from the
   game's containers, were each stopped by the safety controls of the AI tooling the project is built
-  with. The project does not work around those controls.
-- **Needs:** a decision by the owner on whether and how that content is read by other means. Not
-  something the project's tooling does.
-- **Meanwhile:** rules, pay tables and bet structure are pursued from footage, the litigation
-  record, archives and regulators. The mathematics is pursued from cabinet-side public sources.
-  What was learned from the package without reading protected content stands
-  ([reverse-engineering/MOBILE_PACKAGE.md](reverse-engineering/MOBILE_PACKAGE.md)): the engine, the
-  formats, and that the four titles are two pairs sharing their tables.
+  with. The project does not work around those controls (DECISIONS D-014).
+- **What the owner then supplied:** a static analysis of the app's code, done separately, which
+  attempted no decryption. It recovers how the mobile game computes a round, and none of the
+  numbers ([reverse-engineering/MOBILE_MATH_ARCHITECTURE.md](reverse-engineering/MOBILE_MATH_ARCHITECTURE.md),
+  DECISIONS D-016). So the *algorithms* of rung 2 are no longer blocked.
+- **Needs, for the numbers:** something that supplies the tables' contents without attacking their
+  protection. The analysis names two: the game-load response of an ordinary session (which
+  variation runs), and the definitions as a running game already holds them. Both are the owner's
+  to arrange.
+- **Meanwhile:** the cabinet side is pursued from public footage, which now gives pay entries,
+  paylines and reel windows directly
+  ([reverse-engineering/GOLDEN_CENTURY_SESSION.md](reverse-engineering/GOLDEN_CENTURY_SESSION.md)).
 
 ## Narrowed by the online evidence passes
 
