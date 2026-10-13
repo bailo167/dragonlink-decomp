@@ -533,8 +533,8 @@ status = "not_started"
 id = "ui"
 name = "UI"
 status = "implemented"
-evidence = "apps/dragonlink/src/main.rs (setup, hud)"
-note = "Title, a jackpot bar (Grand/Major/Minor/Mini with amounts), framed reels, credit/bet/win meters in credits and dollars, a denomination selector and a compact synthetic disclaimer. Placeholder art; no themed artwork or audio yet."
+evidence = "apps/dragonlink/src/main.rs (setup, hud, menu_setup)"
+note = "A four-title launcher (Golden Century, Happy & Prosperous, Panda Magic, Autumn Moon) on an ordinary start, selected by key, then the game: title, a jackpot bar (Grand/Major/Minor/Mini with amounts), framed reels, credit/bet/win meters in credits and dollars, a denomination selector and a compact synthetic disclaimer. A `--game` flag or smoke run skips the launcher. Placeholder art; no themed artwork or audio yet."
 
 [[category.item]]
 id = "input"

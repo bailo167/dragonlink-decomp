@@ -13,9 +13,13 @@
 //! timing ([`REEL_STOP_INTERVAL`] and friends) is ours, chosen so the
 //! sequence can be followed; none of it was measured on an original machine.
 //!
-//! Controls: Space or Enter spins, and steps a Hold & Spin feature; Up and
-//! Down change the bet; Escape quits (not in a browser, where there is no
-//! window to close).
+//! An ordinary start opens a launcher that lists the four titles; Up and Down
+//! choose and Enter (or a number key) plays. A `--game` flag or a smoke run
+//! skips the launcher and boots straight into a game.
+//!
+//! Controls in a game: Space or Enter spins, and steps a Hold & Spin feature;
+//! Up and Down change the bet; Left and Right change the lines; Escape quits
+//! (not in a browser, where there is no window to close).
 //!
 //! `--smoke-frames N` runs unattended: it spins by itself, and exits with
 //! success after N frames. The Windows gate uses it (`docs/BUILDING.md`).
@@ -82,6 +86,58 @@ impl GameChoice {
             GameChoice::Synthetic => synthetic_dev_fixture(),
         }
     }
+
+    /// The name shown on screen for this title.
+    fn title(self) -> &'static str {
+        match self {
+            GameChoice::GoldenCentury => "GOLDEN CENTURY",
+            GameChoice::HappyProsperous => "HAPPY & PROSPEROUS",
+            GameChoice::PandaMagic => "PANDA MAGIC",
+            GameChoice::AutumnMoon => "AUTUMN MOON",
+            GameChoice::Synthetic => "DRAGONLINK (synthetic fixture)",
+        }
+    }
+}
+
+/// The four titles in scope, in the order the launcher menu lists them. The
+/// synthetic development fixture is not a title and is offered only by flag.
+const MENU_GAMES: [GameChoice; 4] = [
+    GameChoice::GoldenCentury,
+    GameChoice::HappyProsperous,
+    GameChoice::PandaMagic,
+    GameChoice::AutumnMoon,
+];
+
+/// Which screen the application is on: the title launcher, or a game.
+#[derive(States, Default, Debug, Clone, PartialEq, Eq, Hash)]
+enum Screen {
+    /// The four-title launcher. Shown when the application starts with no
+    /// `--game` and no smoke run; the player picks a title to play.
+    #[default]
+    Menu,
+    /// A game is running.
+    Playing,
+}
+
+/// What the launcher needs to build the chosen game once the player picks one.
+/// Present only while the menu is in use (a flag or smoke run skips it).
+#[derive(Resource)]
+struct Launch {
+    seed: u64,
+    credits: u64,
+    /// The menu row the player is on, an index into [`MENU_GAMES`].
+    selected: usize,
+}
+
+/// The launcher's root node, so it can be removed when a game begins.
+#[derive(Component)]
+struct MenuRoot;
+
+/// A launcher row, carrying its index into [`MENU_GAMES`] so it can be
+/// highlighted when it is the selected one.
+#[derive(Component)]
+struct MenuItem {
+    index: usize,
 }
 
 /// The denomination, purely for display: the simulation works in credits, and
@@ -326,7 +382,6 @@ fn cell_color(kind: Option<SymbolKind>, key: &str) -> Color {
 }
 
 fn setup(mut commands: Commands, sim: Res<Sim>) {
-    commands.spawn(Camera2d);
     let model = sim.game.model();
     let title = if model.id.starts_with("golden-century") {
         "GOLDEN CENTURY"
@@ -927,6 +982,144 @@ fn announce_placeholder_mode() {
     );
 }
 
+/// One camera for both screens, spawned once at startup.
+fn spawn_camera(mut commands: Commands) {
+    commands.spawn(Camera2d);
+}
+
+/// The colour of a launcher row: gold when it is the selected one.
+fn menu_row_color(selected: bool) -> Color {
+    if selected {
+        Color::srgb(1.0, 0.80, 0.28)
+    } else {
+        Color::srgb(0.78, 0.80, 0.84)
+    }
+}
+
+/// Build the four-title launcher.
+fn menu_setup(mut commands: Commands, launch: Res<Launch>) {
+    commands
+        .spawn((
+            MenuRoot,
+            Node {
+                width: Val::Percent(100.0),
+                height: Val::Percent(100.0),
+                flex_direction: FlexDirection::Column,
+                align_items: AlignItems::Center,
+                justify_content: JustifyContent::Center,
+                row_gap: Val::Px(14.0),
+                ..default()
+            },
+        ))
+        .with_children(|root| {
+            root.spawn((
+                Text::new("DRAGON LINK"),
+                TextFont {
+                    font_size: FontSize::Px(44.0),
+                    ..default()
+                },
+                TextColor(Color::srgb(1.0, 0.80, 0.28)),
+            ));
+            root.spawn((
+                Text::new("choose a game"),
+                TextFont {
+                    font_size: FontSize::Px(18.0),
+                    ..default()
+                },
+                TextColor(Color::srgb(0.62, 0.66, 0.72)),
+            ));
+            for (index, game) in MENU_GAMES.iter().enumerate() {
+                root.spawn((
+                    MenuItem { index },
+                    Text::new(format!("{}.  {}", index + 1, game.title())),
+                    TextFont {
+                        font_size: FontSize::Px(26.0),
+                        ..default()
+                    },
+                    TextColor(menu_row_color(index == launch.selected)),
+                ));
+            }
+            root.spawn((
+                Text::new("Up / Down to choose, Enter to play, or press 1-4"),
+                TextFont {
+                    font_size: FontSize::Px(15.0),
+                    ..default()
+                },
+                TextColor(Color::srgb(0.55, 0.58, 0.64)),
+            ));
+            root.spawn((
+                Text::new(
+                    "Synthetic placeholder build: invented maths and generic symbols, not Dragon Link",
+                ),
+                TextFont {
+                    font_size: FontSize::Px(12.0),
+                    ..default()
+                },
+                TextColor(Color::srgb(0.45, 0.47, 0.52)),
+            ));
+        });
+}
+
+/// Keep the launcher's highlight on the selected row.
+fn menu_highlight(launch: Res<Launch>, mut items: Query<(&MenuItem, &mut TextColor)>) {
+    for (item, mut color) in &mut items {
+        color.0 = menu_row_color(item.index == launch.selected);
+    }
+}
+
+/// Move through the launcher and start the chosen game.
+fn menu_input(
+    keys: Res<ButtonInput<KeyCode>>,
+    mut launch: ResMut<Launch>,
+    mut commands: Commands,
+    mut presentation: ResMut<Presentation>,
+    mut next: ResMut<NextState<Screen>>,
+) {
+    let count = MENU_GAMES.len();
+    if keys.just_pressed(KeyCode::ArrowDown) {
+        launch.selected = (launch.selected + 1) % count;
+    }
+    if keys.just_pressed(KeyCode::ArrowUp) {
+        launch.selected = (launch.selected + count - 1) % count;
+    }
+    let digit = [
+        KeyCode::Digit1,
+        KeyCode::Digit2,
+        KeyCode::Digit3,
+        KeyCode::Digit4,
+    ]
+    .iter()
+    .position(|k| keys.just_pressed(*k))
+    .filter(|i| *i < count);
+    if let Some(i) = digit {
+        launch.selected = i;
+    }
+    let go =
+        digit.is_some() || keys.just_pressed(KeyCode::Enter) || keys.just_pressed(KeyCode::Space);
+    if !go {
+        return;
+    }
+    let game = MENU_GAMES[launch.selected];
+    match Game::new(game.model(), launch.credits) {
+        Ok(g) => {
+            commands.insert_resource(Sim {
+                game: g,
+                rng: DevRng::new(launch.seed),
+            });
+            presentation.shown_credits = launch.credits;
+            next.set(Screen::Playing);
+        }
+        Err(e) => eprintln!("cannot start {}: {e}", game.title()),
+    }
+}
+
+/// Remove the launcher once a game has begun.
+fn menu_teardown(mut commands: Commands, roots: Query<Entity, With<MenuRoot>>) {
+    for entity in &roots {
+        commands.entity(entity).despawn();
+    }
+}
+
 fn main() -> AppExit {
     let args: Vec<String> = std::env::args().skip(1).collect();
     let cli = match parse_args(&args) {
@@ -947,13 +1140,27 @@ fn main() -> AppExit {
             manifest.entries.len()
         ),
     }
-    let game = match Game::new(cli.game.model(), cli.credits) {
-        Ok(game) => game,
-        Err(e) => {
-            eprintln!("cannot start the game: {e}");
-            return AppExit::error();
+    // The launcher is shown only for an ordinary interactive start. A `--game`
+    // flag or a smoke run boots straight into the game, so every automated
+    // path (the gate, the tests) stays on the direct path and never waits on a
+    // menu.
+    let explicit_game = args.iter().any(|a| a == "--game");
+    let direct_boot = explicit_game || cli.smoke_frames.is_some();
+    let direct_sim = if direct_boot {
+        match Game::new(cli.game.model(), cli.credits) {
+            Ok(game) => Some(Sim {
+                game,
+                rng: DevRng::new(cli.seed),
+            }),
+            Err(e) => {
+                eprintln!("cannot start the game: {e}");
+                return AppExit::error();
+            }
         }
+    } else {
+        None
     };
+
     let mut app = App::new();
     app.add_plugins(DefaultPlugins.set(WindowPlugin {
         primary_window: Some(primary_window()),
@@ -962,10 +1169,6 @@ fn main() -> AppExit {
     #[cfg(target_arch = "wasm32")]
     app.add_systems(Startup, announce_placeholder_mode);
     app.insert_resource(ClearColor(Color::srgb(0.03, 0.03, 0.05)))
-        .insert_resource(Sim {
-            game,
-            rng: DevRng::new(cli.seed),
-        })
         .insert_resource(Presentation {
             shown_credits: cli.credits,
             ..default()
@@ -978,12 +1181,36 @@ fn main() -> AppExit {
             frame: 0,
             hold: 0,
         })
-        .add_systems(Startup, setup)
+        .add_systems(Startup, spawn_camera)
+        .add_systems(OnEnter(Screen::Menu), menu_setup)
+        .add_systems(OnExit(Screen::Menu), menu_teardown)
         .add_systems(
             Update,
-            (smoke, input, drive_features, present, animate_reels, hud).chain(),
+            (menu_input, menu_highlight).run_if(in_state(Screen::Menu)),
         )
-        .run()
+        .add_systems(OnEnter(Screen::Playing), setup)
+        .add_systems(
+            Update,
+            (smoke, input, drive_features, present, animate_reels, hud)
+                .chain()
+                .run_if(in_state(Screen::Playing)),
+        );
+
+    match direct_sim {
+        Some(sim) => {
+            app.insert_resource(sim);
+            app.insert_state(Screen::Playing);
+        }
+        None => {
+            app.insert_resource(Launch {
+                seed: cli.seed,
+                credits: cli.credits,
+                selected: 0,
+            });
+            app.init_state::<Screen>();
+        }
+    }
+    app.run()
 }
 
 #[cfg(test)]
@@ -1073,6 +1300,27 @@ mod tests {
                 _ => {}
             }
         }
+    }
+
+    #[test]
+    fn every_launcher_game_builds_and_has_a_distinct_title() {
+        use std::collections::HashSet;
+        assert_eq!(MENU_GAMES.len(), 4, "the launcher offers the four titles");
+        let mut titles = HashSet::new();
+        for game in MENU_GAMES {
+            assert!(
+                Game::new(game.model(), 1_000).is_ok(),
+                "{} does not build",
+                game.title()
+            );
+            assert!(
+                titles.insert(game.title()),
+                "two launcher rows share the title {}",
+                game.title()
+            );
+        }
+        // The selected row is highlighted differently from the rest.
+        assert_ne!(menu_row_color(true), menu_row_color(false));
     }
 
     #[test]
