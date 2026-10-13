@@ -88,3 +88,50 @@ fn the_free_games_feature_triggers_plays_and_returns_cleanly() {
     assert!(free_rounds > 0, "free games never triggered");
     assert!(reveals > 0, "the reveal never happened");
 }
+
+#[test]
+fn the_synthetic_autumn_moon_is_playable() {
+    use dragonlink_core::{DevRng, Event, Game};
+    use dragonlink_model::fixtures::autumn_moon_synthetic;
+    let model = autumn_moon_synthetic();
+    model.validate().expect("the synthetic model is runnable");
+    assert_eq!(model.paylines.len(), 50);
+    assert_eq!(model.symbols.len(), 13);
+
+    let report = simulate(&model, 1, 400_000).expect("simulate");
+    eprintln!(
+        "synthetic Autumn Moon: RTP {:.1}% (line {:.1}, scatter {:.1}, feature {:.1}); hit {:.1}%; feature about 1 in {:.0}",
+        report.rtp.estimate * 100.0,
+        report.line_rtp * 100.0,
+        report.scatter_rtp * 100.0,
+        report.feature_rtp * 100.0,
+        report.hit_frequency.estimate * 100.0,
+        1.0 / report.feature_frequency.estimate.max(1e-9),
+    );
+    assert!(
+        (0.5..1.5).contains(&report.rtp.estimate),
+        "RTP {:.3}",
+        report.rtp.estimate
+    );
+    assert!(report.line_rtp > 0.0 && report.scatter_rtp > 0.0);
+    assert!(report.feature_frequency.estimate > 0.0);
+
+    // The feature set plays and returns cleanly.
+    let mut game = Game::new(model, 1_000_000_000).unwrap();
+    let mut rng = DevRng::new(4);
+    let (mut free, mut reveal) = (0, 0);
+    for _ in 0..60_000 {
+        for e in &game.play_spin(&mut rng).unwrap() {
+            match e {
+                Event::FreeGamesStarted { .. } => free += 1,
+                Event::MysteryRevealed { .. } => reveal += 1,
+                _ => {}
+            }
+        }
+        assert!(game.is_idle());
+    }
+    assert!(
+        free > 0 && reveal > 0,
+        "free games {free}, reveals {reveal}"
+    );
+}

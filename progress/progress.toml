@@ -71,8 +71,8 @@ note = "Parallel lane. Analysis tooling exists and is tested on the synthetic fi
 [[milestone]]
 id = "M7"
 name = "Happy & Prosperous, Panda Magic, Autumn Moon"
-status = "not_started"
-note = "Generalise the systems proven on Golden Century to the other three titles."
+status = "partial"
+note = "Generalise the systems proven on Golden Century to the other three titles. Autumn Moon now plays end to end on the shared engine (synthetic maths, the US family pay table, its own symbols and free-games reveal): `dragonlink --game autumn-moon`. Happy & Prosperous and Panda Magic not started."
 
 # --------------------------------------------------------------------------
 # Foundation

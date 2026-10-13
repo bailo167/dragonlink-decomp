@@ -148,6 +148,9 @@ fn load(spec: &str) -> Result<GameConfiguration> {
     if spec == "golden-century" {
         return Ok(GameConfiguration::golden_century_synthetic());
     }
+    if spec == "autumn-moon" {
+        return Ok(GameConfiguration::autumn_moon_synthetic());
+    }
     let text = fs::read_to_string(spec).with_context(|| format!("reading configuration {spec}"))?;
     GameConfiguration::from_json(&text).with_context(|| format!("configuration {spec}"))
 }
