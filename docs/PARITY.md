@@ -44,7 +44,31 @@ A comparison lines the two up event by event and reports the first divergence an
 differences. Comparing two rewrite traces is a determinism check and is labelled as such, never as
 parity.
 
-The trace format and the comparison tool are tracked under "Parity" in `progress/progress.toml`.
+The format is `dragonlink-trace/1`: JSON Lines, a header then one record per line
+(`crates/dragonlink-trace`). The header names the origin and, for a rewrite, the math model's
+provenance and the outcome source; for an observation, the source class and the SHA-256 of the
+recording. A header that would mislead is refused: a rewrite that hides its model, synthetic
+mathematics labelled as a cabinet source, an observation with no recording behind it or one that
+claims to know the original's model.
+
+```sh
+cargo run -p dragonlink-trace-cli -- record --seed 7 --spins 200 --out a.jsonl
+cargo run -p dragonlink-trace-cli -- validate a.jsonl
+cargo run -p dragonlink-trace-cli -- compare a.jsonl b.jsonl --timing-tolerance-ms 33
+```
+
+`compare` states which of four things it did:
+
+| Kind | When | What it shows |
+|---|---|---|
+| Determinism | two rewrite traces | our simulation repeats itself. **Not parity.** |
+| Structure only | an observation against a rewrite on synthetic or mobile-derived mathematics | the order and kinds of events; outcomes are not expected to match |
+| Parity | an observation against a rewrite on recovered mathematics | agreement with the original |
+| Between observations | two observations | agreement between recordings |
+
+Only the first can be produced today. The next step towards the others is replaying an
+observation's outcomes through the simulation with a scripted outcome source, so that rules are
+compared on the same outcomes; that is tracked under "Parity".
 
 ## Recordings
 

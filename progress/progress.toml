@@ -866,7 +866,9 @@ name = "Parity"
 [[category.item]]
 id = "trace-format"
 name = "Behavioural trace format"
-status = "not_started"
+status = "implemented"
+evidence = "crates/dragonlink-trace (tests); docs/PARITY.md"
+note = "One JSON Lines format for rewrite traces and transcribed observations; headers that would mislead are refused. No observation trace exists yet."
 
 [[category.item]]
 id = "source-recordings"
@@ -876,12 +878,15 @@ status = "not_started"
 [[category.item]]
 id = "event-comparison"
 name = "Event comparison"
-status = "not_started"
+status = "implemented"
+evidence = "crates/dragonlink-trace (compare; tests); tools/dragonlink-trace"
+note = "Event-by-event comparison that states what kind of comparison it is. Exercised on rewrite traces and on a rewrite relabelled as an observation; never on a real observation."
 
 [[category.item]]
 id = "timing-comparison"
 name = "Timing comparison"
-status = "not_started"
+status = "partial"
+note = "Differences in event times are measured against a stated tolerance when both traces carry times. Headless rewrite traces carry none, and there is no recording to take times from."
 
 [[category.item]]
 id = "visual-comparison"
