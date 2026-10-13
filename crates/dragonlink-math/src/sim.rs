@@ -33,7 +33,7 @@ impl Interval {
 const Z95: f64 = 1.959_963_984_540_054;
 
 /// Wilson score interval for a proportion.
-fn wilson(successes: u64, n: u64) -> Interval {
+pub(crate) fn wilson(successes: u64, n: u64) -> Interval {
     if n == 0 {
         return Interval {
             estimate: 0.0,

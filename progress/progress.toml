@@ -318,8 +318,9 @@ note = "Every stop is equally likely in the current model."
 [[category.item]]
 id = "strip-reconstruction"
 name = "Reel-strip reconstruction from observed windows"
-status = "not_started"
-note = "Assemble strips exactly from overlapping stopped windows; estimate stop weighting with intervals. Rung 3 of the ladder (DECISIONS D-013)."
+status = "implemented"
+evidence = "crates/dragonlink-math/src/reconstruct.rs (tests: fixture reels rebuilt from 20,000 simulated spins; rebuilt strips leave the exact analysis unchanged); dragonlink-analyze reconstruct-reels"
+note = "Window shares with intervals, a test of equal stop likelihood, an estimate of unseen windows, and exact strip assembly with the number of equivalent orders. Exercised on our own simulation only; no observed game yet. Feature probabilities are not reconstructed."
 
 [[category.item]]
 id = "automated-collection"

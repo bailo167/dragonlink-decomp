@@ -82,6 +82,34 @@ of the final orb count `N` for each `k`; the award is a sum of `N` independent o
 `E[F²|k] = E[N]v + E[N²]m² + 2G·cells·m·P(full) + G²·P(full)`.
 Needs the enumeration, so it is available when the stop combinations are few enough.
 
+## Reconstructing a reel from observation
+
+For a game whose outcomes cannot be read from its software, each reel is rebuilt from the windows
+it was seen to stop on (`dragonlink-math::reconstruct`, `dragonlink-analyze reconstruct-reels`).
+
+- **What the mathematics needs is the windows and their shares.** Every pay and trigger is a
+  function of the windows, so two strips with the same windows in the same proportions are the same
+  reel for every return and probability. The shares are estimated from counts, with intervals.
+- **The strip is assembled, not estimated**, when each window occurs at one stop: each window's
+  last `rows − 1` symbols are the next window's first, so the windows chain. A run of `rows − 1`
+  symbols that occurs twice does not by itself make the order ambiguous (the other chaining splits
+  into separate loops); three occurrences can. Where several orders have exactly the observed
+  windows, their number is reported, and they are mathematically identical: they differ only in what
+  scrolls past.
+- **Equal likelihood of stops is tested**, not assumed: a chi-square test of the window counts
+  against equal shares. If it fails, stops are weighted or a window occurs at more than one stop;
+  the shares stand and no strip is asserted.
+- **Completeness is estimated**: the share of spins expected to show a window not seen yet
+  (Good–Turing: windows seen once ÷ spins). A reconstruction is not relied on while that is not
+  small.
+
+Checked by rebuilding every reel of the synthetic fixture from 20,000 simulated spins, and by
+showing that substituting the rebuilt strips leaves the exact analysis unchanged.
+
+What this cannot do: recover anything that is not a function of the visible windows. Feature
+probabilities (how often a position lands a prize symbol on a respin, the value distribution) need
+their own estimates from observed features, and rare events keep wide intervals.
+
 ## Simulation
 
 `dragonlink-math::sim` plays the real state machine from a seed. It reports the mean award with a
