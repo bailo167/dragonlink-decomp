@@ -2598,6 +2598,7 @@ dependencies = [
 name = "dragonlink-formats"
 version = "0.0.1"
 dependencies = [
+ "miniz_oxide 0.9.1",
  "serde",
  "thiserror 2.0.21",
 ]
@@ -2611,6 +2612,8 @@ dependencies = [
  "dragonlink-assets",
  "dragonlink-formats",
  "dragonlink-model",
+ "miniz_oxide 0.9.1",
+ "sha2",
  "tempfile",
  "walkdir",
 ]

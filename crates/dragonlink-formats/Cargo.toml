@@ -1,6 +1,6 @@
 [package]
 name = "dragonlink-formats"
-description = "Identify files by content, measure entropy, and list ZIP-family archives safely"
+description = "Identify files by content, measure entropy, and list and read ZIP-family archives safely"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -9,6 +9,7 @@ repository.workspace = true
 publish.workspace = true
 
 [dependencies]
+miniz_oxide.workspace = true
 serde.workspace = true
 thiserror.workspace = true
 
