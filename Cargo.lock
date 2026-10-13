@@ -2566,6 +2566,7 @@ version = "0.0.1"
 dependencies = [
  "anyhow",
  "clap",
+ "dragonlink-core",
  "dragonlink-math",
  "dragonlink-model",
  "dragonlink-trace",

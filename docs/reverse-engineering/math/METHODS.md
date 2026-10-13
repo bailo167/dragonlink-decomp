@@ -110,6 +110,30 @@ What this cannot do: recover anything that is not a function of the visible wind
 probabilities (how often a position lands a prize symbol on a respin, the value distribution) need
 their own estimates from observed features, and rare events keep wide intervals.
 
+## Do two configurations share a reel?
+
+Before a strip can be assembled there is a question that needs far fewer games: whether two sets
+of observed games (two denominations, two line counts, two machines) show the same reel at all.
+Pooling games from different reels would build a reel that does not exist.
+
+- **Measure.** For one reel, the share of one set's stops whose window was also seen in the other
+  set. On one reel it climbs towards 100% as games accumulate; between two different reels it
+  stays low however many games there are.
+- **Test.** The share is not judged against a threshold. The two sets are pooled and dealt at
+  random into sets of the original sizes, many times, and the share measured each time. The
+  p-value is the proportion of deals with a share as low as the observed one or lower, counting
+  the observed arrangement, so it is never below one over the number of deals plus one.
+- **Reading it.** A small p-value says the sets differ by more than chance arranges. A large one
+  says only that this sample shows no difference; it does not prove one reel.
+- **Limits.** It compares what was seen, not strips. A difference of a few stops needs many games
+  to show. Each reel is tested separately, so five small p-values are five looks at one question,
+  not five independent discoveries.
+
+`dragonlink-analyze compare-windows <trace A> <trace B> [--shuffles N] [--seed S]`. The shuffles
+come from a seeded source, so a result is reproduced exactly. Implemented in
+`crates/dragonlink-math/src/overlap.rs`, tested on made-up strips: two samples of one strip are not
+told apart, samples of two strips are, and so is a strip with six stops changed.
+
 ## Simulation
 
 `dragonlink-math::sim` plays the real state machine from a seed. It reports the mean award with a

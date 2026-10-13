@@ -285,7 +285,7 @@ source = "gameplay_recording"
 citation = "Public recording, YouTube id y8c8lEdPW8Y, read game by game; times and counts in docs/reverse-engineering/GOLDEN_CENTURY_SESSION.md"
 accessed = "2026-10-13"
 scope = "cabinet-au, Queensland club, one session on one machine"
-note = "Inferred statistically from windows read twice: 266 base games at $1 and 276 at the cent denominations. A comparison of what was seen, not of strips, and not yet put through a formal test. With paytable.varies-by-denomination it shows the $1 game to be a different configuration from the cent games on this machine. No reel strip has been assembled."
+note = "Inferred statistically from windows read twice: 266 base games at $1 and 276 at the cent denominations. A comparison of what was seen, not of strips. A permutation test (4,000 random relabellings, dragonlink-analyze compare-windows) gives p = 0.0002 on every reel for $1 against 10c, the smallest it can report, and p between 0.43 and 0.97 for 10c against 2c. With paytable.varies-by-denomination it shows the $1 game to be a different configuration from the cent games on this machine. No reel strip has been assembled."
 
 [[claim]]
 id = "math.published-return-us"

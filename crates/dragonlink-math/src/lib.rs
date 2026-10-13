@@ -29,6 +29,7 @@
 pub mod compare;
 pub mod config;
 pub mod exact;
+pub mod overlap;
 pub mod progressive;
 pub mod reconstruct;
 pub mod report;

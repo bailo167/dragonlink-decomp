@@ -137,9 +137,17 @@ configuration's own second half repeats its first half.
 - **$1 is not that set.** The shortfall is far beyond the yardstick, and largest on the fourth
   reel, where the mix of symbols also differs visibly (the chest is about twice as common at the
   cent denominations as at $1).
+- **Tested.** The games of two configurations were pooled and dealt at random into two sets of the
+  original sizes, 4,000 times, and the share measured each time
+  ([math/METHODS.md](math/METHODS.md), "Do two configurations share a reel?"). For $1 against 10c
+  not one deal in 4,000 gives a share as low as the observed one, on any of the five reels
+  (p = 0.0002, the smallest the test can report). For 10c against 2c the observed shares are
+  unremarkable (p between 0.43 and 0.97).
 - Label: STRONG EVIDENCE that the reels differ, class *inferred statistically*, from 266 games at
   $1 and 276 at the cent denominations. It is a comparison of what was seen, not a comparison of
-  strips, and it has not been put through a formal test yet.
+  strips. "Consistent with one set" for the cent denominations means only that this sample shows
+  no difference.
+- To repeat it from the same recording: `dragonlink-analyze compare-windows <trace A> <trace B>`.
 
 Together with the pay-table entry above, this is what the mathematics lane asked for under
 "configuration differences": on this machine the $1 game is a different mathematical configuration

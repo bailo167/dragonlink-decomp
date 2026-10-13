@@ -24,11 +24,13 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result, bail};
 use clap::{Parser, Subcommand};
+use dragonlink_core::DevRng;
 use dragonlink_math::GameConfiguration;
 use dragonlink_math::compare::compare;
 use dragonlink_math::exact::{DEFAULT_ENUMERATION_LIMIT, analyze};
+use dragonlink_math::overlap::window_overlap;
 use dragonlink_math::progressive::progressive_ev;
-use dragonlink_math::reconstruct::{Strip, reconstruct_from_events};
+use dragonlink_math::reconstruct::{Strip, reconstruct_from_events, windows_by_reel};
 use dragonlink_math::report::{comparison_report, game_report, progressive_report};
 use dragonlink_math::sim::simulate;
 use dragonlink_model::JackpotTier;
@@ -89,6 +91,22 @@ enum Cmd {
     ReconstructReels {
         /// A trace file (`dragonlink-trace/1`), rewrite or observation.
         trace: PathBuf,
+        #[arg(long)]
+        json: bool,
+    },
+    /// Whether two traces show the same reels: for each reel, the share of
+    /// the second trace's stops whose window was also seen in the first, with
+    /// a permutation test of that share.
+    CompareWindows {
+        /// Two trace files (`dragonlink-trace/1`), each of one configuration.
+        a: PathBuf,
+        b: PathBuf,
+        /// Random relabellings per reel. The smallest p-value that can be
+        /// reported is one over this number plus one.
+        #[arg(long, default_value_t = 4000)]
+        shuffles: u32,
+        #[arg(long, default_value_t = 1)]
+        seed: u64,
         #[arg(long)]
         json: bool,
     },
@@ -283,6 +301,64 @@ fn main() -> Result<()> {
                         out.push_str(&format!("  strip not assembled: {reason}\n"));
                     }
                 }
+            }
+            emit(&out, None)
+        }
+        Cmd::CompareWindows {
+            a,
+            b,
+            shuffles,
+            seed,
+            json,
+        } => {
+            let load_trace = |path: &Path| -> Result<dragonlink_trace::Trace> {
+                let text = fs::read_to_string(path)
+                    .with_context(|| format!("reading trace {}", path.display()))?;
+                dragonlink_trace::Trace::from_jsonl(&text)
+                    .with_context(|| format!("trace {}", path.display()))
+            };
+            let (ta, tb) = (load_trace(&a)?, load_trace(&b)?);
+            let wa = windows_by_reel(ta.records.iter().map(|r| &r.event));
+            let wb = windows_by_reel(tb.records.iter().map(|r| &r.event));
+            let mut rng = DevRng::new(seed);
+            let mut reels = Vec::new();
+            for (reel, windows) in &wa {
+                let other = wb.get(reel).map(Vec::as_slice).unwrap_or(&[]);
+                if let Some(found) =
+                    window_overlap(windows, other, shuffles, &mut rng).context("shuffling")?
+                {
+                    reels.push((*reel, found));
+                }
+            }
+            if json {
+                return emit(&(serde_json::to_string_pretty(&reels)? + "\n"), None);
+            }
+            let scope = |t: &dragonlink_trace::Trace| {
+                t.header
+                    .scope
+                    .clone()
+                    .unwrap_or_else(|| "no scope stated".to_string())
+            };
+            let mut out = format!(
+                "A: {}\nB: {}\nShare of B's stops whose window was also seen in A, with the proportion of {shuffles} random relabellings (seed {seed}) giving a share as low. A small p says the two differ by more than chance arranges; a large one says only that this sample shows no difference.\n\n",
+                scope(&ta),
+                scope(&tb)
+            );
+            for (reel, f) in &reels {
+                out.push_str(&format!(
+                    "reel {}: {:5.1}% of {} stops (A has {} stops; windows: {} in A, {} in B, {} in both)   p = {:.4}\n",
+                    reel + 1,
+                    f.share * 100.0,
+                    f.b_observations,
+                    f.a_observations,
+                    f.a_windows,
+                    f.b_windows,
+                    f.shared_windows,
+                    f.p_value
+                ));
+            }
+            if reels.is_empty() {
+                out.push_str("no reel has stops in both traces\n");
             }
             emit(&out, None)
         }

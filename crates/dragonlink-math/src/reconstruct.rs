@@ -268,13 +268,24 @@ pub fn reconstruct_reel(observed: &[Vec<String>]) -> ReelReconstruction {
 pub fn reconstruct_from_events<'a>(
     events: impl IntoIterator<Item = &'a Event>,
 ) -> Vec<ReelReconstruction> {
+    windows_by_reel(events)
+        .values()
+        .map(|w| reconstruct_reel(w))
+        .collect()
+}
+
+/// The windows each reel was seen to stop on, in the order observed
+/// (`ReelStopped` events).
+pub fn windows_by_reel<'a>(
+    events: impl IntoIterator<Item = &'a Event>,
+) -> BTreeMap<u8, Vec<Vec<String>>> {
     let mut per_reel: BTreeMap<u8, Vec<Vec<String>>> = BTreeMap::new();
     for event in events {
         if let Event::ReelStopped { reel, symbols, .. } = event {
             per_reel.entry(*reel).or_default().push(symbols.clone());
         }
     }
-    per_reel.values().map(|w| reconstruct_reel(w)).collect()
+    per_reel
 }
 
 /// The windows of a cyclic strip, one per stop.
