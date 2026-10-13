@@ -1,12 +1,96 @@
 # Claims about Dragon Link — Golden Century.
-# Rules and labels: see claims/family.toml and docs/EVIDENCE.md.
+# Rules, labels, conventions and citation keys: see claims/family.toml and docs/EVIDENCE.md.
+# Context and conflicts: docs/reverse-engineering/.
 
 title = "golden_century"
 
+# --- Identity and approvals ---------------------------------------------------
+
+[[claim]]
+id = "regulatory.act.hdg11"
+statement = "The ACT register lists specification 1.HDG11: Golden Century - Dragon Link (1 Link + 1 iSAP), new game, LPJS 1.YA002, application 01-A1719/S01, Gaming Machine Approval 2018 (No 8), 29 Mar 2018."
+value = "1.HDG11"
+confidence = "verified"
+source = "regulatory"
+citation = "ACT NI 2018-199"
+accessed = "2026-10-13"
+scope = "cabinet-au"
+
+[[claim]]
+id = "regulatory.act.hdg96"
+statement = "The ACT register lists specification 1.HDG96: Golden Century - Dragon Link, new game, LPJS 1.YA018 (N-Abler) or 1.YA003 (Rev 8), application 01-A2512/S01, Gaming Machine Approval 2024 (No 30), 29 Nov 2024."
+value = "1.HDG96"
+confidence = "verified"
+source = "regulatory"
+citation = "ACT NI 2024-704"
+accessed = "2026-10-13"
+scope = "cabinet-au"
+
+[[claim]]
+id = "regulatory.act.hd129"
+statement = "The ACT register lists specification 1.HD129: Golden Century - Dragon Link, new game, LPJS 1.YA018 or 1.YA003, Gaming Machine Approval 2026 (No 21), 4 May 2026."
+value = "1.HD129"
+confidence = "verified"
+source = "regulatory"
+citation = "ACT NI 2026-226"
+accessed = "2026-10-13"
+scope = "cabinet-au"
+
+[[claim]]
+id = "regulatory.act.hd157"
+statement = "The ACT register lists specification 1.HD157: Golden Century - Dragon Link - Grand, LPJS 1.YA038, application 01-A2814/S01, Gaming Machine Approval 2026 (No 32), 31 Jul 2026."
+value = "1.HD157"
+confidence = "verified"
+source = "regulatory"
+citation = "ACT NI 2026-389"
+accessed = "2026-10-13"
+scope = "cabinet-au"
+
+[[claim]]
+id = "regulatory.act.dragon-cash-sibling"
+statement = "A standalone sibling, Golden Century - Dragon Cash, exists as ACT specification 1.DG032."
+value = "1.DG032"
+confidence = "verified"
+source = "regulatory"
+citation = "ACT NI 2018-199"
+accessed = "2026-10-13"
+scope = "cabinet-au"
+note = "Dragon Cash is a separate product family. It is not assumed to share mathematics with the linked game."
+
+[[claim]]
+id = "regulatory.vic"
+statement = "Victorian approvals of the title."
+value = "GOLDEN CENTURY DRAGON LINK 2024: approval 28563, 2024-12-10, identifier 10169609; Golden Century - Dragon Link 2026: 2026-08-20, identifier 10170972"
+confidence = "strong_evidence"
+source = "regulatory"
+citation = "https://www.vgccc.vic.gov.au/egm-approval-data-report"
+accessed = "2026-10-13"
+scope = "cabinet-au"
+note = "Read once from the regulator's embedded report by querying its data. The identifier column is headed 'Chipset Version' or 'Game Software Version' depending on the page. No pre-2020 rows were found, so the dataset is incomplete for history."
+
+[[claim]]
+id = "regulatory.other-jurisdictions"
+statement = "Under which identifiers was the title approved in New South Wales, Queensland, South Australia, Tasmania, the Northern Territory and Western Australia, and when was it first approved anywhere in Australia?"
+confidence = "unknown"
+note = "No public title-level register was found for these jurisdictions."
+
+[[claim]]
+id = "regulatory.generation-mapping"
+statement = "How do the ACT specification numbers map to the Victorian identifiers, and what changed between generations?"
+confidence = "unknown"
+
+# --- Structure ----------------------------------------------------------------
+
 [[claim]]
 id = "grid"
-statement = "How many reels and visible rows does the base game have?"
-confidence = "unknown"
+statement = "The base game has five reels with three visible rows."
+value = "5 reels x 3 rows"
+confidence = "partial"
+source = "court_record"
+citation = "Complaint para 97"
+accessed = "2026-10-13"
+scope = "cabinet-us, family-level"
+note = "Stated for the US Dragon Link family, not for this title's Australian build specifically. Consistent with the fifteen-orb Grand rule. To be confirmed from Australian footage or a rules screen."
 
 [[claim]]
 id = "lines"
@@ -15,35 +99,72 @@ confidence = "unknown"
 
 [[claim]]
 id = "symbols"
-statement = "What is the complete symbol set, and which symbols are wild, scatter and Hold & Spin prize symbols?"
+statement = "What is the complete symbol set by name, and which symbols are wild, scatter and Hold & Spin prize symbols?"
 confidence = "unknown"
+note = "The family-level class counts are in claims/family.toml (structure.symbol-classes). Symbol names for this title appear only on third-party pages so far."
 
 [[claim]]
 id = "paytable"
-statement = "What does each symbol combination pay?"
+statement = "What does each symbol combination pay, per denomination?"
 confidence = "unknown"
+note = "Pay tables are player-visible, so a recording of the rules screens would establish them."
 
 [[claim]]
 id = "denominations"
 statement = "Which denominations and bet options does the Australian release offer?"
 confidence = "unknown"
+note = "Aristocrat's archived 2019 ANZ page says the range is player-selectable multi-denomination, without values."
+
+# --- Features -----------------------------------------------------------------
 
 [[claim]]
 id = "hold-and-spin.rules"
-statement = "What triggers Hold & Spin, how many respins does it start with, when does the counter reset, and what ends it?"
-confidence = "unknown"
-
-[[claim]]
-id = "jackpots"
-statement = "Which jackpot levels exist, which are progressive, and how is each won?"
-confidence = "unknown"
+statement = "Hold & Spin follows the family rules: six or more orbs trigger it, three respins that reset on each new orb, orbs held, fifteen orbs win the Grand Jackpot."
+value = "family rules (see claims/family.toml, hold-and-spin.*)"
+confidence = "partial"
+source = "court_record"
+citation = "Complaint paras 29 and 103; Order p. 2"
+accessed = "2026-10-13"
+scope = "cabinet-us, family-level"
+note = "Stated for the family. Not yet confirmed on this title's Australian build."
 
 [[claim]]
 id = "free-games.rules"
-statement = "What triggers the free games feature and what are its title-specific rules?"
-confidence = "unknown"
+statement = "During the free games all special (mystery) symbols reveal the same symbol, including the chance for the jackpot."
+value = "free games with mystery symbols that all reveal the same symbol"
+confidence = "strong_evidence"
+source = "official_media"
+citation = "https://www.aristocratgaming.com/asia/games/asia-dragon-link-golden-century ; https://www.aristocratgaming.com/us/games/us-dragon-link"
+accessed = "2026-10-13"
+scope = "regional product pages (Asia, US), not Australia-specific"
+note = "Marketing text, read once. The number of free games awarded and the retrigger rules are not stated."
 
 [[claim]]
-id = "regulatory.identifiers"
-statement = "Under which game/program/specification identifiers was the title approved in Australian jurisdictions?"
+id = "scatter.top-pay"
+statement = "A scatter win pays up to 250 times the bet."
+value = "up to 250x bet"
+confidence = "strong_evidence"
+source = "official_media"
+citation = "https://www.aristocratgaming.com/asia/games/asia-dragon-link-golden-century ; https://www.aristocratgaming.com/us/games/us-dragon-link"
+accessed = "2026-10-13"
+scope = "regional product pages (Asia, US), not Australia-specific"
+note = "Marketing text, read once. It differs on its face from the 100 quoted for five scatters in the complaint's pay-table figures, whose title and unit are not stated."
+
+[[claim]]
+id = "jackpots"
+statement = "Which jackpot levels are progressive in the Australian configuration, and what are their start values and contribution rates?"
 confidence = "unknown"
+note = "Level names are in claims/family.toml (jackpots.tiers)."
+
+# --- Mobile reference ---------------------------------------------------------
+
+[[claim]]
+id = "mobile.availability"
+statement = "The official app Mighty Fu Casino (Product Madness, package com.productmadness.fafafagold) lists Golden Century among its Dragon Link games."
+value = "listed in Mighty Fu Casino"
+confidence = "strong_evidence"
+source = "official_mobile"
+citation = "https://play.google.com/store/apps/details?id=com.productmadness.fafafagold"
+accessed = "2026-10-13"
+scope = "mobile"
+note = "From the store listing, read once; not checked in the app. Lightning Link Casino's App Store listing also names Golden Century."

@@ -48,6 +48,19 @@ implementation from evidence. It is a simulator for study.
 - Recordings or screenshots of the original games.
 - A packaged, playable copy containing original assets.
 
+## Game mathematics
+
+The manufacturer treats these games' mathematics (reel strips, weights, probabilities, return models)
+as trade secrets, and has said so in court. The project therefore distinguishes:
+
+- **player-visible facts** (rules, pay tables, denominations, displayed return ranges, meter values),
+  which are researched from public sources and recordings and published with their sources;
+- **recovered mathematics**, which, if ever obtained from lawfully held software, is kept in the
+  private source root like any other proprietary material and is not committed here by default.
+
+The analysis tools in this repository operate on a configuration file supplied locally. The only
+configuration distributed is a synthetic fixture invented by the project.
+
 ## How source material is obtained
 
 Only lawfully and legitimately: official software from its official distribution channel, material

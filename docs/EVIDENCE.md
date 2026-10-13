@@ -30,6 +30,7 @@ Recorded separately from confidence, because the two answer different questions.
 | **Regulatory** | A regulator's document or register. | yes | yes |
 | **Official mobile** | An official social-casino implementation. | yes, *about the mobile implementation* | **no** |
 | **Official media** | The manufacturer's own pages, brochures, videos, patents. | yes | no |
+| **Court record** | A filing or order in a court's public record. | yes, for what the document says; a party's allegation stays that party's statement | no |
 | **Gameplay recording** | A recording of the original being played. | yes, for what is visible | no (a sample is not a distribution) |
 | **Third party** | Somebody else's observation or write-up. | no | no |
 | **Hypothesis** | Our own conjecture. | no | no |
@@ -59,7 +60,11 @@ Recorded separately from confidence, because the two answer different questions.
 8. **Samples are not distributions.** Probabilities, RTP and frequencies are not inferred from a
    gameplay sample and called verified. A statistical observation is recorded with its sample size
    and stays PARTIAL at most.
-9. **Versions matter.** A finding is scoped to the market, platform and version it came from
+9. **VERIFIED means read twice.** A statement taken from a document is VERIFIED only when the
+   passage has been read in the primary document in two independent passes, or is reproduced by a
+   committed tool. A single reading of a primary source is STRONG EVIDENCE until it is re-checked.
+   A search-result summary is not a reading at all.
+10. **Versions matter.** A finding is scoped to the market, platform and version it came from
    (`cabinet-au`, `cabinet-us`, `mobile`, …). Machine generations are not assumed to share software.
 
 ## Where evidence lives

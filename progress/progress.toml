@@ -148,23 +148,26 @@ name = "Reverse engineering"
 [[category.item]]
 id = "platform-research"
 name = "Dragon Link cabinet and platform research"
-status = "investigating"
+status = "partial"
+note = "Three Australian generations and their platforms established from ACT instruments (docs/reverse-engineering/PLATFORMS.md); launch cabinet and what changed between generations unknown."
 
 [[category.item]]
 id = "regulatory-inventory"
 name = "Regulatory source inventory"
-status = "investigating"
+status = "partial"
+note = "ACT and Victorian approvals catalogued with identifiers (docs/reverse-engineering/REGULATORY.md); no register found for NSW, Qld, SA, Tas, NT, WA; no RTP in any source."
 
 [[category.item]]
 id = "mobile-inventory"
 name = "Official mobile reference inventory"
-status = "not_started"
+status = "investigating"
+note = "Four official apps identified from store listings (docs/reverse-engineering/MOBILE_REFERENCE.md). Nothing downloaded or inspected; acquisition needs the owner (BLOCKERS B-003)."
 
 [[category.item]]
 id = "provenance-db"
 name = "Source provenance database (claims)"
-status = "partial"
-note = "Machine-checked claim files exist and hold open questions only; no sourced claims entered yet."
+status = "implemented"
+evidence = "crates/dragonlink-model/claims/ (99 claims); crates/dragonlink-model/src/claims.rs (tests enforce the evidence rules)"
 
 [[category.item]]
 id = "format-id"
@@ -210,7 +213,7 @@ status = "not_started"
 id = "math-model"
 name = "Mathematical-model investigation"
 status = "investigating"
-note = "No source of cabinet mathematics is held. Every open question is listed in crates/dragonlink-model/claims/family.toml."
+note = "The mathematics is not public and is asserted as trade secrets (docs/reverse-engineering/math/EVIDENCE_STATE.md)."
 
 # --------------------------------------------------------------------------
 # Shared game runtime
@@ -339,12 +342,14 @@ name = "Golden Century"
 [[category.item]]
 id = "identity"
 name = "Title identity, versions and regulatory identifiers"
-status = "investigating"
+status = "partial"
+note = "Four ACT specifications and two Victorian builds recorded (docs/reverse-engineering/GOLDEN_CENTURY.md); other jurisdictions and what changed between generations unknown."
 
 [[category.item]]
 id = "layout"
 name = "Reel layout and lines"
 status = "investigating"
+note = "Five reels by three rows stated for the US family; lines and the Australian build unconfirmed."
 
 [[category.item]]
 id = "symbols"
@@ -370,6 +375,7 @@ status = "not_started"
 id = "hold-and-spin"
 name = "Hold & Spin rules and presentation"
 status = "investigating"
+note = "Family rules sourced from the manufacturer's complaint (docs/reverse-engineering/FEATURES.md); not confirmed on the Australian build; presentation not started."
 
 [[category.item]]
 id = "jackpots"
@@ -379,7 +385,8 @@ status = "not_started"
 [[category.item]]
 id = "free-games"
 name = "Free games feature"
-status = "not_started"
+status = "investigating"
+note = "Trigger and the mystery-symbol rule sourced from official pages; count and retriggers unknown; not implemented."
 
 [[category.item]]
 id = "art-ui"
@@ -422,7 +429,8 @@ name = "Happy & Prosperous"
 [[category.item]]
 id = "identity"
 name = "Title identity, versions and regulatory identifiers"
-status = "not_started"
+status = "partial"
+note = "ACT specifications and Victorian builds recorded; other jurisdictions unknown."
 
 [[category.item]]
 id = "layout"
@@ -505,7 +513,8 @@ name = "Panda Magic"
 [[category.item]]
 id = "identity"
 name = "Title identity, versions and regulatory identifiers"
-status = "not_started"
+status = "partial"
+note = "ACT specifications and Victorian builds recorded; other jurisdictions unknown."
 
 [[category.item]]
 id = "layout"
@@ -588,7 +597,8 @@ name = "Autumn Moon"
 [[category.item]]
 id = "identity"
 name = "Title identity, versions and regulatory identifiers"
-status = "not_started"
+status = "partial"
+note = "ACT specifications and Victorian builds recorded; other jurisdictions unknown."
 
 [[category.item]]
 id = "layout"
