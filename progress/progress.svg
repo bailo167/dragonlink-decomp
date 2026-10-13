@@ -25,7 +25,7 @@ text{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,san
 <text class="lbl" x="24" y="117">Milestones</text>
 <rect class="c implemented" x="206" y="104" width="18" height="18" rx="2"><title>M0 — Foundation: Implemented — Stage A: workspace, hygiene, progress tooling, docs, Windows gate, CI and the source root all exist and work. RE applications are installed when first needed.</title></rect>
 <text class="muted" x="227" y="117">M0</text>
-<rect class="c investigating" x="253" y="104" width="18" height="18" rx="2"><title>M1 — Evidence: Investigating — Stage B: regulatory and official sources catalogued, official mobile software inventoried, formats identified.</title></rect>
+<g><title>M1 — Evidence: Partial — Stage B: regulatory and official sources catalogued, official mobile software inventoried, formats identified.</title><rect class="c partial-o" x="253.5" y="104.5" width="17" height="17" rx="2"/><path class="partial-f" d="M253 104h9v18h-9z"/></g>
 <text class="muted" x="274" y="117">M1</text>
 <g><title>M2 — Import: Partial — Stage C. Scanner, manifest, normalised layout and a repeatable first importer stage exist and are tested on synthetic files. No extraction from containers, and no real source material has been imported.</title><rect class="c partial-o" x="300.5" y="104.5" width="17" height="17" rx="2"/><path class="partial-f" d="M300 104h9v18h-9z"/></g>
 <text class="muted" x="321" y="117">M2</text>
@@ -46,7 +46,7 @@ text{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,san
 <rect class="c implemented" x="229" y="145" width="18" height="18" rx="2"><title>Foundation / Legal and project policy — Implemented</title></rect>
 <rect class="c implemented" x="252" y="145" width="18" height="18" rx="2"><title>Foundation / Evidence labels and provenance rules — Implemented</title></rect>
 <rect class="c implemented" x="275" y="145" width="18" height="18" rx="2"><title>Foundation / Private source root outside Git — Implemented</title></rect>
-<g><title>Foundation / Windows development environment (reproducible) — Partial — Rust 1.98.0, MSVC build tools, wasm32 target, Git, Python, Java, ffmpeg present; tools/dev/setup-windows.ps1 reports and installs. RE applications not installed yet.</title><rect class="c partial-o" x="298.5" y="145.5" width="17" height="17" rx="2"/><path class="partial-f" d="M298 145h9v18h-9z"/></g>
+<g><title>Foundation / Windows development environment (reproducible) — Partial — Rust, MSVC, wasm32, Git, Python, Java, ffmpeg, and the Android emulator with platform tools are installed and recorded in docs/BUILDING.md. Decompiler applications are installed as the analysis needs them.</title><rect class="c partial-o" x="298.5" y="145.5" width="17" height="17" rx="2"/><path class="partial-f" d="M298 145h9v18h-9z"/></g>
 <rect class="c implemented" x="321" y="145" width="18" height="18" rx="2"><title>Foundation / Windows pre-merge gate — Implemented — All nine steps active: fmt, clippy, test, hygiene, progress, app build, smoke launch, wasm32 build, release build.</title></rect>
 <rect class="c implemented" x="344" y="145" width="18" height="18" rx="2"><title>Foundation / CI (Linux, Windows, macOS, wasm32 check) — Implemented</title></rect>
 <rect class="c implemented" x="367" y="145" width="18" height="18" rx="2"><title>Foundation / Repository hygiene checker — Implemented</title></rect>
@@ -56,17 +56,17 @@ text{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,san
 <text class="lbl" x="24" y="189">Reverse engineering</text>
 <g><title>Reverse engineering / Dragon Link cabinet and platform research — Partial — Three Australian generations and their platforms established from ACT instruments (docs/reverse-engineering/PLATFORMS.md); launch cabinet and what changed between generations unknown.</title><rect class="c partial-o" x="206.5" y="176.5" width="17" height="17" rx="2"/><path class="partial-f" d="M206 176h9v18h-9z"/></g>
 <g><title>Reverse engineering / Regulatory source inventory — Partial — ACT and Victorian approvals catalogued with identifiers (docs/reverse-engineering/REGULATORY.md); no register found for NSW, Qld, SA, Tas, NT, WA; no RTP in any source.</title><rect class="c partial-o" x="229.5" y="176.5" width="17" height="17" rx="2"/><path class="partial-f" d="M229 176h9v18h-9z"/></g>
-<rect class="c investigating" x="252" y="176" width="18" height="18" rx="2"><title>Reverse engineering / Official mobile reference inventory — Investigating — Four official apps identified from store listings (docs/reverse-engineering/MOBILE_REFERENCE.md). Nothing downloaded or inspected; acquisition needs the owner (BLOCKERS B-003).</title></rect>
+<g><title>Reverse engineering / Official mobile reference inventory — Partial — Mighty Fu Casino 5.6.0 obtained from the Play Store, hashed and inventoried, with the content it downloaded for Golden Century (docs/reverse-engineering/MOBILE_PACKAGE.md). The other three titles have not been opened, so their content is not held.</title><rect class="c partial-o" x="252.5" y="176.5" width="17" height="17" rx="2"/><path class="partial-f" d="M252 176h9v18h-9z"/></g>
 <rect class="c implemented" x="275" y="176" width="18" height="18" rx="2"><title>Reverse engineering / Source provenance database (claims) — Implemented</title></rect>
-<g><title>Reverse engineering / Package and file-format identification — Partial — dragonlink-formats identifies public formats by content, measures entropy and lists ZIP-family packages; dragonlink-inventory hashes and classifies a folder. No real package has been examined yet.</title><rect class="c partial-o" x="298.5" y="176.5" width="17" height="17" rx="2"/><path class="partial-f" d="M298 176h9v18h-9z"/></g>
-<rect class="c not_started" x="321.5" y="176.5" width="17" height="17" rx="2"><title>Reverse engineering / Executable analysis — Not started</title></rect>
-<rect class="c not_started" x="344.5" y="176.5" width="17" height="17" rx="2"><title>Reverse engineering / Asset-container identification — Not started</title></rect>
+<g><title>Reverse engineering / Package and file-format identification — Partial — Tools exist and have been run on a real package: Unity IL2CPP identified; two unfamiliar formats measured, a MERC container and an .enc family consistent with a block cipher. Neither is understood yet.</title><rect class="c partial-o" x="298.5" y="176.5" width="17" height="17" rx="2"/><path class="partial-f" d="M298 176h9v18h-9z"/></g>
+<rect class="c investigating" x="321" y="176" width="18" height="18" rx="2"><title>Reverse engineering / Executable analysis — Investigating — The app's native libraries and IL2CPP metadata are held; analysis has started. One 133 MB library is unexplained.</title></rect>
+<rect class="c investigating" x="344" y="176" width="18" height="18" rx="2"><title>Reverse engineering / Asset-container identification — Investigating — Game content is in .mercury containers (signature MERC, not encrypted) and Unity asset bundles. The Mercury format is under analysis.</title></rect>
 <rect class="c not_started" x="367.5" y="176.5" width="17" height="17" rx="2"><title>Reverse engineering / Texture and image extraction — Not started</title></rect>
 <rect class="c not_started" x="390.5" y="176.5" width="17" height="17" rx="2"><title>Reverse engineering / Font identification — Not started</title></rect>
 <rect class="c not_started" x="413.5" y="176.5" width="17" height="17" rx="2"><title>Reverse engineering / Audio extraction — Not started</title></rect>
 <rect class="c not_started" x="436.5" y="176.5" width="17" height="17" rx="2"><title>Reverse engineering / Animation extraction — Not started</title></rect>
-<rect class="c not_started" x="459.5" y="176.5" width="17" height="17" rx="2"><title>Reverse engineering / Configuration and data extraction — Not started</title></rect>
-<rect class="c investigating" x="482" y="176" width="18" height="18" rx="2"><title>Reverse engineering / Mathematical-model investigation — Investigating — The mathematics is not public and is asserted as trade secrets (docs/reverse-engineering/math/EVIDENCE_STATE.md).</title></rect>
+<rect class="c investigating" x="459" y="176" width="18" height="18" rx="2"><title>Reverse engineering / Configuration and data extraction — Investigating — The mobile build ships reel-strip, weighting and variation tables as .enc files on the device. Whether they can be read depends on that scheme, under analysis.</title></rect>
+<rect class="c investigating" x="482" y="176" width="18" height="18" rx="2"><title>Reverse engineering / Mathematical-model investigation — Investigating — No cabinet mathematics is held and none is public. The mobile implementation's tables are on the device (rung 2 of the ladder, DECISIONS D-013) and under analysis; a public-sources pass is also running.</title></rect>
 <text class="pct" x="830" y="189">7%</text><text class="muted" x="876" y="189">1/13 · ✓0</text>
 <text class="lbl" x="24" y="220">Mathematics and analysis</text>
 <rect class="c implemented" x="206" y="207" width="18" height="18" rx="2"><title>Mathematics and analysis / Per-constant provenance model — Implemented</title></rect>
@@ -127,14 +127,14 @@ text{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,san
 <rect class="c not_started" x="275.5" y="292.5" width="17" height="17" rx="2"><title>Golden Century / Paytable — Not started</title></rect>
 <rect class="c not_started" x="298.5" y="292.5" width="17" height="17" rx="2"><title>Golden Century / Denominations and bet options — Not started</title></rect>
 <rect class="c not_started" x="321.5" y="292.5" width="17" height="17" rx="2"><title>Golden Century / Reel strips and weighting — Not started</title></rect>
-<rect class="c investigating" x="344" y="292" width="18" height="18" rx="2"><title>Golden Century / Hold &amp; Spin rules and presentation — Investigating — Family rules sourced from the manufacturer's complaint (docs/reverse-engineering/FEATURES.md); not confirmed on the Australian build; presentation not started.</title></rect>
+<rect class="c investigating" x="344" y="292" width="18" height="18" rx="2"><title>Golden Century / Hold &amp; Spin rules and presentation — Investigating — Trigger of six prize symbols confirmed in the mobile build's own strings and in the US complaint; not confirmed on an Australian build; presentation not started.</title></rect>
 <rect class="c not_started" x="367.5" y="292.5" width="17" height="17" rx="2"><title>Golden Century / Jackpot levels and presentation — Not started</title></rect>
-<rect class="c investigating" x="390" y="292" width="18" height="18" rx="2"><title>Golden Century / Free games feature — Investigating — Trigger and the mystery-symbol rule sourced from official pages; count and retriggers unknown; not implemented.</title></rect>
+<rect class="c investigating" x="390" y="292" width="18" height="18" rx="2"><title>Golden Century / Free games feature — Investigating — Trigger of three scatters confirmed in the mobile build's own strings and in the US complaint; the mystery-symbol rule from official pages; count and retriggers unknown; not implemented.</title></rect>
 <rect class="c not_started" x="413.5" y="292.5" width="17" height="17" rx="2"><title>Golden Century / Title artwork, UI layout and typography — Not started</title></rect>
 <rect class="c not_started" x="436.5" y="292.5" width="17" height="17" rx="2"><title>Golden Century / Sound and music — Not started</title></rect>
 <rect class="c not_started" x="459.5" y="292.5" width="17" height="17" rx="2"><title>Golden Century / Animation and sequence timing — Not started</title></rect>
 <rect class="c not_started" x="482.5" y="292.5" width="17" height="17" rx="2"><title>Golden Century / Attract and idle presentation — Not started</title></rect>
-<rect class="c not_started" x="505.5" y="292.5" width="17" height="17" rx="2"><title>Golden Century / Locally imported original assets — Not started</title></rect>
+<rect class="c investigating" x="505" y="292" width="18" height="18" rx="2"><title>Golden Century / Locally imported original assets — Investigating — The mobile build's Golden Century content is held (unencrypted containers). Nothing is extracted or imported yet.</title></rect>
 <rect class="c not_started" x="528.5" y="292.5" width="17" height="17" rx="2"><title>Golden Century / Evidence-backed parity — Not started</title></rect>
 <text class="pct" x="830" y="305">0%</text><text class="muted" x="876" y="305">0/15 · ✓0</text>
 <text class="lbl" x="24" y="336">Happy &amp; Prosperous</text>
@@ -216,11 +216,11 @@ text{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,san
 <rect class="c implemented" x="154" y="516" width="18" height="18" rx="2"><title>Implemented</title></rect>
 <text class="muted" x="178" y="527">Implemented (26)</text>
 <g><title>Partial</title><rect class="c partial-o" x="312.5" y="516.5" width="17" height="17" rx="2"/><path class="partial-f" d="M312 516h9v18h-9z"/></g>
-<text class="muted" x="336" y="527">Partial (30)</text>
+<text class="muted" x="336" y="527">Partial (31)</text>
 <rect class="c investigating" x="442" y="516" width="18" height="18" rx="2"><title>Investigating</title></rect>
-<text class="muted" x="466" y="527">Investigating (16)</text>
+<text class="muted" x="466" y="527">Investigating (19)</text>
 <g><title>Blocked</title><rect class="c blocked" x="614" y="516" width="18" height="18" rx="2"/><path class="mark" d="M619 521l8 8M627 521l-8 8"/></g>
 <text class="muted" x="638" y="527">Blocked (0)</text>
 <rect class="c not_started" x="737.5" y="516.5" width="17" height="17" rx="2"><title>Not started</title></rect>
-<text class="muted" x="761" y="527">Not started (76)</text>
+<text class="muted" x="761" y="527">Not started (72)</text>
 </svg>

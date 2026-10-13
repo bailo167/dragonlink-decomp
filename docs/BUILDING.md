@@ -90,8 +90,17 @@ The host the gate currently runs on, recorded so the environment can be reproduc
 | ffmpeg | 8.1 | for inspecting and measuring reference media |
 | winget | 1.29 | used by the setup script |
 
-Not installed yet, to be installed when the work that needs them starts: 7-Zip, Android platform
-tools (ADB), Ghidra, JADX, Apktool. Reverse-engineering applications that have no installer are
+| Android SDK command-line tools | build 15859902 | checksum verified against Google's download page and SDK index |
+| Android Emulator | 37.2.12 | hardware accelerated through the Windows Hypervisor Platform, which was already enabled |
+| Android SDK Platform-Tools (`adb`) | 37.0.1 | |
+| Android system image | Android 16 (API 36), Google Play, x86_64, revision 7 | runs arm64 apps through translation |
+
+The Android tooling and the virtual device live in a `dragonlink\tools` folder beside the private
+source root, outside every repository. The emulator is how official mobile software is obtained:
+the owner signs in to the store and installs; the project copies the package out with `adb`.
+
+Not installed yet, to be installed when the work that needs them starts: 7-Zip, Ghidra, JADX,
+Apktool, IL2CPP tooling. Reverse-engineering applications that have no installer are
 unpacked under a tools folder next to the private source root, never inside the repository.
 
 ### Source root on the host

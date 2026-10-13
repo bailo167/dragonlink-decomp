@@ -8,7 +8,8 @@ in. Every substantive claim here carries a confidence label and a source
 **State on 2026-10-13.** A first pass over public sources is written up. It establishes the
 titles' Australian approval identities and platform generations from regulators' records, and the
 player-visible feature rules from the manufacturer's own court filing. It establishes **no
-mathematics**: none is public. No original software or media is held yet.
+mathematics**: none is public. The first original material is now held: the official mobile app
+and the content it downloads for Golden Century ([MOBILE_PACKAGE.md](MOBILE_PACKAGE.md)).
 
 ## Index
 
@@ -18,7 +19,8 @@ mathematics**: none is public. No original software or media is held yet.
 | Cabinets, platforms, version matrix | [PLATFORMS.md](PLATFORMS.md) | three Australian generations established; launch cabinet unknown |
 | Hold & Spin, jackpots, free games | [FEATURES.md](FEATURES.md) | rules sourced for the US family; Australian builds unconfirmed |
 | Mathematics and analysis (a research lane of its own) | [math/](math/README.md) | no original mathematics held; method and tooling |
-| Official mobile reference software | [MOBILE_REFERENCE.md](MOBILE_REFERENCE.md) | apps identified from listings; nothing acquired |
+| Official mobile reference software | [MOBILE_REFERENCE.md](MOBILE_REFERENCE.md) | apps identified from listings |
+| The official mobile package, first inventory | [MOBILE_PACKAGE.md](MOBILE_PACKAGE.md) | Mighty Fu Casino 5.6.0 held, hashed and measured; formats under analysis |
 | Patents | [PATENTS.md](PATENTS.md) | core family summarised |
 | Reference footage | [REFERENCE_MEDIA.md](REFERENCE_MEDIA.md) | sources listed; nothing watched |
 | Conflicts, things not found, leads | [OPEN_QUESTIONS.md](OPEN_QUESTIONS.md) | current |

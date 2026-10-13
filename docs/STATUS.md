@@ -8,9 +8,9 @@ meaningful increment. Item-level state is in `progress/progress.toml`; this page
 ## In one paragraph
 
 The repository has its foundation, a headless game model, a first evidence base and a mathematics
-analysis subsystem. Nothing about the original Dragon Link games is reproduced: no original
-mathematics, assets or behaviour measurements are held, and the simulation and analysis run only on
-a synthetic fixture. Public research has established the titles' Australian approval identities and
+analysis subsystem. Nothing about the original Dragon Link games is reproduced yet: the simulation and analysis run
+only on a synthetic fixture. The first original material is held, the official mobile app with
+Golden Century's content, and is being analysed. Public research has established the titles' Australian approval identities and
 platform generations and the player-visible feature rules, and has established that the mathematics
 is not public. Work is pushed to GitHub and CI is green on Linux, Windows, macOS and wasm32. A placeholder application
 shell runs the simulation on screen.
@@ -102,6 +102,19 @@ shell runs the simulation on screen.
 - The whole chain was run on the Windows host's source root with synthetic files: import, verify,
   discovery by the application, package assembly, tamper detection.
 
+### First original material: the official mobile package (2026-10-13)
+
+- Google's Android emulator with a Play Store image was installed on the Windows host; the owner
+  signed in and installed Mighty Fu Casino 5.6.0 and opened Golden Century.
+- The four installed APK files and the 113 files the app downloaded were copied into the private
+  source root unmodified, hashed, given a provenance record and inventoried with the project's tools.
+- Measured: a Unity IL2CPP app; each game delivered as a folder of unencrypted `.mercury`
+  containers and `.enc` tables whose names include reel strips, weightings and four variations; and
+  plain-text strings written for a gaming machine, which is strong evidence that the mobile build
+  hosts a package built on the manufacturer's own game framework
+  ([reverse-engineering/MOBILE_PACKAGE.md](reverse-engineering/MOBILE_PACKAGE.md)).
+- Nothing has been decrypted, decompiled, extracted or imported yet.
+
 ## Known limits of what exists
 
 - Every rule in the simulation is a generic slot-game rule, written down so it can be checked. None
@@ -128,10 +141,6 @@ shell runs the simulation on screen.
 
 ## Waiting on the owner
 
-See [BLOCKERS.md](BLOCKERS.md). One thing: signing in to the store on the emulator being set up
-on the Windows host, to obtain the official mobile reference (B-003). Nothing else is asked.
-
-Rules, pay tables and cabinet mathematics are **not** waiting on the owner: an online evidence
-pass over footage, the litigation record, regulatory and archival material and public research is
-under way, and only what that pass cannot recover will be listed as a blocker. One decision is
-open: whether results from a recovered configuration may be published (DECISIONS D-010).
+Nothing. Opening Happy & Prosperous, Panda Magic and Autumn Moon once each in the app on the
+emulator would let their content download, when convenient. One decision is open: whether results
+from a recovered configuration may be published (DECISIONS D-010).

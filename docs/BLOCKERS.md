@@ -32,18 +32,7 @@ access to operating gaming systems ([LEGAL.md](LEGAL.md)).
 
 ## Open
 
-### B-003 — Official mobile software needs a store login on an emulator
-
-- **Since:** 2026-10-13
-- **Blocks:** acquiring and inventorying the official mobile reference (first target: Mighty Fu
-  Casino, the only listing that names all four titles), and everything downstream of it: asset
-  formats, imported artwork and sound, presentation timing from the app.
-- **Needs:** the owner to sign in to the store on an emulator the project sets up on the Windows
-  host, and install the app, so the package can be copied out with the platform's own tools. A
-  mirror-site copy is not used: its provenance could not be shown.
-- **State:** in progress. The emulator tooling is being installed; the owner has agreed to sign in.
-- **Meanwhile:** the inventory, inspection and import tooling is built and tested on synthetic
-  packages; presentation research continues from official pages and footage.
+None. Nothing is waiting on the owner.
 
 ## Under investigation, not yet blockers
 
@@ -87,6 +76,14 @@ evidence pass. It returns here only as a narrowed entry naming exactly what coul
   that the online pass shows cannot be recovered.
 
 ## Resolved
+
+### B-003 — Official mobile software needed a store login (resolved 2026-10-13)
+
+The project installed Google's Android emulator with a Play Store image on the Windows host; the
+owner signed in and installed Mighty Fu Casino, and opened Golden Century so that its content
+downloaded. The installed package and the downloaded content were copied out with the platform's
+own tools, hashed and inventoried ([reverse-engineering/MOBILE_PACKAGE.md](reverse-engineering/MOBILE_PACKAGE.md)).
+The other three titles' content downloads when each is first opened in the app.
 
 ### B-001 — No working GitHub login on the Windows host (resolved 2026-10-13)
 

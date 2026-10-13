@@ -86,17 +86,17 @@ evidence about the original. Compiling, passing our own tests or looking right n
 | Category | Items | Implemented + verified | Verified | In progress | Completion | Verified % |
 |---|---:|---:|---:|---:|---:|---:|
 | Foundation | 10 | 9 | 0 | 1 | 90% | 0% |
-| Reverse engineering | 13 | 1 | 0 | 5 | 7% | 0% |
+| Reverse engineering | 13 | 1 | 0 | 8 | 7% | 0% |
 | Mathematics and analysis | 29 | 11 | 0 | 11 | 37% | 0% |
 | Shared game runtime | 19 | 1 | 0 | 14 | 5% | 0% |
-| Golden Century | 15 | 0 | 0 | 4 | 0% | 0% |
+| Golden Century | 15 | 0 | 0 | 5 | 0% | 0% |
 | Happy & Prosperous | 15 | 0 | 0 | 1 | 0% | 0% |
 | Panda Magic | 15 | 0 | 0 | 1 | 0% | 0% |
 | Autumn Moon | 15 | 0 | 0 | 1 | 0% | 0% |
 | Parity | 8 | 3 | 0 | 1 | 37% | 0% |
 | Platforms | 4 | 0 | 0 | 4 | 0% | 0% |
 | Packaging | 5 | 1 | 0 | 3 | 20% | 0% |
-| **Overall** | **148** | **26** | **0** | **46** | **17%** | **0%** |
+| **Overall** | **148** | **26** | **0** | **50** | **17%** | **0%** |
 
 <!-- progress-table:end -->
 
