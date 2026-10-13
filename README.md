@@ -47,6 +47,9 @@ evidence, the behaviour stays marked unknown. It is not filled in to look finish
   which every statement about the originals carries a confidence label, a source class and a citation,
   with the rules enforced by tests, and a separate, clearly labelled synthetic math fixture for engine
   development.
+- **A Bevy application shell** (`apps/dragonlink`) that drives the real simulation in an obvious
+  placeholder mode: generated cells, generic symbol names, a banner saying what it is. It builds on
+  Windows in debug and release, compiles for the web, and has an unattended smoke run.
 - **A mathematics analysis subsystem** (`dragonlink-math`, `dragonlink-analyze`): given a game
   configuration it computes the return and its composition exactly, the Hold & Spin trigger
   probability and outcome distribution, jackpot frequencies, hit frequency by full enumeration,
@@ -61,9 +64,13 @@ evidence, the behaviour stays marked unknown. It is not filled in to look finish
   a Windows pre-merge gate; CI.
 
 What does **not** exist yet: any original mathematics (none is public; the manufacturer treats it
-as a trade secret), any original asset, the importer, the Bevy application, and any parity
-measurement. See [docs/STATUS.md](docs/STATUS.md) for the current state in
+as a trade secret), any original asset, the importer, anything title-specific on screen, and any
+parity measurement. See [docs/STATUS.md](docs/STATUS.md) for the current state in
 detail and [docs/BLOCKERS.md](docs/BLOCKERS.md) for what is waiting on something external.
+
+![The application in placeholder mode: a five by three window of generated cells with generic symbol names, under a banner stating that it uses synthetic mathematics and no original assets](docs/images/placeholder-shell.png)
+
+*The application today, in placeholder mode. Generated shapes and a synthetic fixture: not Dragon Link's artwork, symbols or mathematics.*
 
 ## Progress
 
@@ -81,15 +88,15 @@ evidence about the original. Compiling, passing our own tests or looking right n
 | Foundation | 10 | 9 | 0 | 1 | 90% | 0% |
 | Reverse engineering | 13 | 1 | 0 | 5 | 7% | 0% |
 | Mathematics and analysis | 27 | 9 | 0 | 3 | 33% | 0% |
-| Shared game runtime | 19 | 1 | 0 | 11 | 5% | 0% |
+| Shared game runtime | 19 | 1 | 0 | 14 | 5% | 0% |
 | Golden Century | 15 | 0 | 0 | 4 | 0% | 0% |
 | Happy & Prosperous | 15 | 0 | 0 | 1 | 0% | 0% |
 | Panda Magic | 15 | 0 | 0 | 1 | 0% | 0% |
 | Autumn Moon | 15 | 0 | 0 | 1 | 0% | 0% |
 | Parity | 8 | 1 | 0 | 0 | 12% | 0% |
 | Platforms | 4 | 0 | 0 | 4 | 0% | 0% |
-| Packaging | 5 | 0 | 0 | 1 | 0% | 0% |
-| **Overall** | **146** | **21** | **0** | **32** | **14%** | **0%** |
+| Packaging | 5 | 0 | 0 | 2 | 0% | 0% |
+| **Overall** | **146** | **21** | **0** | **36** | **14%** | **0%** |
 
 <!-- progress-table:end -->
 
@@ -139,12 +146,13 @@ See [docs/SOURCES.md](docs/SOURCES.md).
 | `tools/dragonlink-analyze` | `analyze-game`, `compare-games`, `progressive-ev`, `simulate`. |
 | `crates/dragonlink-formats` | Identify files by content, measure entropy, list ZIP-family packages. |
 | `tools/dragonlink-inventory` | Create and check the private source root; hash and classify source material. |
+| `apps/dragonlink` | The Bevy application. Placeholder mode only so far. |
 | `tools/progress-gen` | Validates the tracker and renders the progress matrix and table above. |
 | `tools/repo-hygiene` | Refuses proprietary material, dumps, secrets and private paths. |
 
 Planned and tracked: the trace format and comparison tools, the inspection, import and packaging
-tools, the asset manifest, and the Bevy application.
-The renderer will read simulation state and events; it will never decide an outcome.
+tools, and the asset manifest.
+The application presents simulation events; it never decides an outcome or computes an award.
 Details: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ## Quick build
@@ -153,6 +161,7 @@ Requires Rust 1.98 (pinned in `rust-toolchain.toml`; `rustup` installs it automa
 
 ```sh
 cargo test --workspace                                   # everything headless
+cargo run -p dragonlink                                  # the application, placeholder mode
 cargo run -p repo-hygiene                                # nothing proprietary in the tree
 cargo run -p progress-gen -- --check                     # tracker valid, generated files fresh
 ```

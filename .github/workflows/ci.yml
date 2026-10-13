@@ -72,8 +72,10 @@ jobs:
           cache-on-failure: true
       - name: Clippy (all targets, warnings are errors)
         run: cargo clippy --workspace --all-targets --locked -- -D warnings
-      - name: Test (headless crates and tools)
+      - name: Test (headless crates, tools and the app's own tests)
         run: cargo test --workspace --locked
+      - name: Build the application
+        run: cargo build --locked -p dragonlink
       - name: Report host target
         shell: bash
         run: rustc -vV | grep host
@@ -91,5 +93,5 @@ jobs:
         with:
           key: wasm32
           cache-on-failure: true
-      - name: The simulation and its data model compile for the web target
-        run: cargo build --locked --target wasm32-unknown-unknown -p dragonlink-model -p dragonlink-core
+      - name: The application compiles for the web target
+        run: cargo build --locked --target wasm32-unknown-unknown -p dragonlink

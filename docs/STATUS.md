@@ -12,7 +12,8 @@ analysis subsystem. Nothing about the original Dragon Link games is reproduced: 
 mathematics, assets or behaviour measurements are held, and the simulation and analysis run only on
 a synthetic fixture. Public research has established the titles' Australian approval identities and
 platform generations and the player-visible feature rules, and has established that the mathematics
-is not public. Work is pushed to GitHub and CI is green on Linux, Windows, macOS and wasm32.
+is not public. Work is pushed to GitHub and CI is green on Linux, Windows, macOS and wasm32. A placeholder application
+shell runs the simulation on screen.
 
 ## Done
 
@@ -66,12 +67,27 @@ is not public. Work is pushed to GitHub and CI is green on Linux, Windows, macOS
 - The source root exists on the Windows host, outside every repository, and the boundary between
   it and Git was exercised end to end ([BUILDING.md](BUILDING.md), "Source root on the host").
 
+### Application shell (2026-10-13)
+
+- `apps/dragonlink`: a Bevy 0.20 application that sends commands to the simulation and presents
+  its events: a 5×3 window of generated cells, staggered reel stops, orb values, Hold & Spin
+  stepping, a credit meter that follows presented events, a status line, and a permanent
+  placeholder banner. Keyboard input. `--smoke-frames` for unattended runs on a fixed step, with
+  `--screenshot`.
+- The gate now runs all nine steps on the Windows host: the app builds in debug and release,
+  smoke-launches a real window, and compiles for wasm32.
+- Looking at the first screenshots found and fixed three presentation mistakes: a glyph missing
+  from the built-in font, the meter showing a win before the reels had landed, and the previous
+  spin's result lingering on reels still in motion.
+
 ## Known limits of what exists
 
 - Every rule in the simulation is a generic slot-game rule, written down so it can be checked. None
   has been checked on an Australian machine.
 - The synthetic fixture is not Dragon Link: five lines, 24-stop strips, symbols `A` to `H`.
 - No free games, no progressive meters, no weighted stops, no attract or idle states.
+- The application shows nothing of Golden Century. Its timing constants are ours, not measured.
+  It has not been run in a browser.
 - The mathematics tooling has never seen a real configuration. Its model will need extending when
   one arrives ([reverse-engineering/math/CONFIGURATION.md](reverse-engineering/math/CONFIGURATION.md)).
 - Victorian approvals and most marketing-page findings were read once and are not yet re-checked.
@@ -81,7 +97,7 @@ is not public. Work is pushed to GitHub and CI is green on Linux, Windows, macOS
 1. `dragonlink-trace`: the trace format, a rewrite-trace producer and the comparison tool.
 2. `dragonlink-assets`, `dragonlink-import`, `dragonlink-pack`: manifest, first importer stage,
    local package validation.
-3. The Bevy application shell in placeholder mode, with the smoke launch and wasm build in the gate.
+3. Bundle and run the web build in a browser.
 4. Check existing third-party footage for rules, pay-table and information screens.
 5. Re-read the once-read sources so their claims can be labelled VERIFIED.
 

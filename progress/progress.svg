@@ -20,10 +20,10 @@ text{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,san
 </style>
 <rect class="bg" x="0.5" y="0.5" width="979" height="552" rx="8"/>
 <text class="ttl" x="24" y="38">dragonlink-decomp — preservation progress</text>
-<text class="sub" x="24" y="62">Completion 14% (21 of 146 items implemented or verified) · Verified 0% (0) · Current milestone: M0 — Foundation</text>
+<text class="sub" x="24" y="62">Completion 14% (21 of 146 items implemented or verified) · Verified 0% (0) · Current milestone: M1 — Evidence</text>
 <text class="muted" x="24" y="84">Generated from progress/progress.toml by tools/progress-gen. Completion = (implemented + verified) / total; floored.</text>
 <text class="lbl" x="24" y="117">Milestones</text>
-<g><title>M0 — Foundation: Partial — Stage A: workspace, hygiene, progress tooling, docs, Windows gate, CI, source root.</title><rect class="c partial-o" x="206.5" y="104.5" width="17" height="17" rx="2"/><path class="partial-f" d="M206 104h9v18h-9z"/></g>
+<rect class="c implemented" x="206" y="104" width="18" height="18" rx="2"><title>M0 — Foundation: Implemented — Stage A: workspace, hygiene, progress tooling, docs, Windows gate, CI and the source root all exist and work. RE applications are installed when first needed.</title></rect>
 <text class="muted" x="227" y="117">M0</text>
 <rect class="c investigating" x="253" y="104" width="18" height="18" rx="2"><title>M1 — Evidence: Investigating — Stage B: regulatory and official sources catalogued, official mobile software inventoried, formats identified.</title></rect>
 <text class="muted" x="274" y="117">M1</text>
@@ -31,7 +31,7 @@ text{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,san
 <text class="muted" x="321" y="117">M2</text>
 <g><title>M3 — Headless game model: Partial — Stage D: state, spin, awards, feature state machine, deterministic traces. Runs on a synthetic fixture only; original mathematics unknown.</title><rect class="c partial-o" x="347.5" y="104.5" width="17" height="17" rx="2"/><path class="partial-f" d="M347 104h9v18h-9z"/></g>
 <text class="muted" x="368" y="117">M3</text>
-<rect class="c not_started" x="394.5" y="104.5" width="17" height="17" rx="2"><title>M4 — Golden Century Bevy slice: Not started — Stage E: title boots, UI, reels, spin, imported local assets, audio, win and feature presentation.</title></rect>
+<g><title>M4 — Golden Century Bevy slice: Partial — Stage E. A placeholder shell runs the synthetic fixture through the real simulation: window, reels, spin, Hold &amp; Spin stepping. Nothing in it is Golden Century yet: no assets, no audio, no title data.</title><rect class="c partial-o" x="394.5" y="104.5" width="17" height="17" rx="2"/><path class="partial-f" d="M394 104h9v18h-9z"/></g>
 <text class="muted" x="415" y="117">M4</text>
 <rect class="c not_started" x="441.5" y="104.5" width="17" height="17" rx="2"><title>M5 — Parity: Not started — Stage F: source-vs-rewrite traces, timing, screenshots, animation and audio events, discrepancies tracked.</title></rect>
 <text class="muted" x="462" y="117">M5</text>
@@ -47,7 +47,7 @@ text{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,san
 <rect class="c implemented" x="252" y="145" width="18" height="18" rx="2"><title>Foundation / Evidence labels and provenance rules — Implemented</title></rect>
 <rect class="c implemented" x="275" y="145" width="18" height="18" rx="2"><title>Foundation / Private source root outside Git — Implemented</title></rect>
 <g><title>Foundation / Windows development environment (reproducible) — Partial — Rust 1.98.0, MSVC build tools, wasm32 target, Git, Python, Java, ffmpeg present; tools/dev/setup-windows.ps1 reports and installs. RE applications not installed yet.</title><rect class="c partial-o" x="298.5" y="145.5" width="17" height="17" rx="2"/><path class="partial-f" d="M298 145h9v18h-9z"/></g>
-<rect class="c implemented" x="321" y="145" width="18" height="18" rx="2"><title>Foundation / Windows pre-merge gate — Implemented — fmt, clippy, test, hygiene, progress check today; app, smoke, wasm and release steps switch on when the app exists.</title></rect>
+<rect class="c implemented" x="321" y="145" width="18" height="18" rx="2"><title>Foundation / Windows pre-merge gate — Implemented — All nine steps active: fmt, clippy, test, hygiene, progress, app build, smoke launch, wasm32 build, release build.</title></rect>
 <rect class="c implemented" x="344" y="145" width="18" height="18" rx="2"><title>Foundation / CI (Linux, Windows, macOS, wasm32 check) — Implemented</title></rect>
 <rect class="c implemented" x="367" y="145" width="18" height="18" rx="2"><title>Foundation / Repository hygiene checker — Implemented</title></rect>
 <rect class="c implemented" x="390" y="145" width="18" height="18" rx="2"><title>Foundation / Progress tracker and generator — Implemented</title></rect>
@@ -106,7 +106,7 @@ text{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,san
 <g><title>Shared game runtime / Reel model — Partial — Strips with a wrapping window; how the original maps outcomes to stops is unknown.</title><rect class="c partial-o" x="321.5" y="261.5" width="17" height="17" rx="2"/><path class="partial-f" d="M321 261h9v18h-9z"/></g>
 <g><title>Shared game runtime / Symbol model — Partial — Regular, wild, scatter and orb kinds; title symbol sets are unknown.</title><rect class="c partial-o" x="344.5" y="261.5" width="17" height="17" rx="2"/><path class="partial-f" d="M344 261h9v18h-9z"/></g>
 <g><title>Shared game runtime / Pay evaluator — Partial — Generic left-to-right line rules and scatter pays, each stated in eval.rs; none checked against the original.</title><rect class="c partial-o" x="367.5" y="261.5" width="17" height="17" rx="2"/><path class="partial-f" d="M367 261h9v18h-9z"/></g>
-<rect class="c not_started" x="390.5" y="261.5" width="17" height="17" rx="2"><title>Shared game runtime / Win presentation — Not started</title></rect>
+<g><title>Shared game runtime / Win presentation — Partial — A status line per award and a meter that follows presented credit events. No count-up, no line highlighting, no animation.</title><rect class="c partial-o" x="390.5" y="261.5" width="17" height="17" rx="2"/><path class="partial-f" d="M390 261h9v18h-9z"/></g>
 <g><title>Shared game runtime / Feature triggering — Partial — Hold &amp; Spin by orb count only.</title><rect class="c partial-o" x="413.5" y="261.5" width="17" height="17" rx="2"/><path class="partial-f" d="M413 261h9v18h-9z"/></g>
 <g><title>Shared game runtime / Hold &amp; Spin framework — Partial — Parameterised respin loop with tests; trigger count, respins, chances and values are synthetic.</title><rect class="c partial-o" x="436.5" y="261.5" width="17" height="17" rx="2"/><path class="partial-f" d="M436 261h9v18h-9z"/></g>
 <g><title>Shared game runtime / Jackpot model and presentation — Partial — Four named levels with fixed amounts; progressive meters and presentation are not started.</title><rect class="c partial-o" x="459.5" y="261.5" width="17" height="17" rx="2"/><path class="partial-f" d="M459 261h9v18h-9z"/></g>
@@ -114,8 +114,8 @@ text{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,san
 <rect class="c not_started" x="505.5" y="261.5" width="17" height="17" rx="2"><title>Shared game runtime / Audio — Not started</title></rect>
 <rect class="c not_started" x="528.5" y="261.5" width="17" height="17" rx="2"><title>Shared game runtime / Animation — Not started</title></rect>
 <rect class="c not_started" x="551.5" y="261.5" width="17" height="17" rx="2"><title>Shared game runtime / VFX — Not started</title></rect>
-<rect class="c not_started" x="574.5" y="261.5" width="17" height="17" rx="2"><title>Shared game runtime / UI — Not started</title></rect>
-<rect class="c not_started" x="597.5" y="261.5" width="17" height="17" rx="2"><title>Shared game runtime / Input — Not started</title></rect>
+<g><title>Shared game runtime / UI — Partial — Placeholder HUD: banner, credit meter, bet, status line, generated cells. Nothing reproduces the original UI.</title><rect class="c partial-o" x="574.5" y="261.5" width="17" height="17" rx="2"/><path class="partial-f" d="M574 261h9v18h-9z"/></g>
+<g><title>Shared game runtime / Input — Partial — Keyboard only: spin and feature step, bet up and down, quit.</title><rect class="c partial-o" x="597.5" y="261.5" width="17" height="17" rx="2"/><path class="partial-f" d="M597 261h9v18h-9z"/></g>
 <g><title>Shared game runtime / Save and settings handling — Partial — Game state serialises and resumes mid-feature; no settings, no persistence in an app.</title><rect class="c partial-o" x="620.5" y="261.5" width="17" height="17" rx="2"/><path class="partial-f" d="M620 261h9v18h-9z"/></g>
 <text class="pct" x="830" y="274">5%</text><text class="muted" x="876" y="274">1/19 · ✓0</text>
 <text class="lbl" x="24" y="305">Golden Century</text>
@@ -191,22 +191,22 @@ text{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,san
 <rect class="c not_started" x="229.5" y="416.5" width="17" height="17" rx="2"><title>Parity / Source recordings of the original — Not started</title></rect>
 <rect class="c not_started" x="252.5" y="416.5" width="17" height="17" rx="2"><title>Parity / Event comparison — Not started</title></rect>
 <rect class="c not_started" x="275.5" y="416.5" width="17" height="17" rx="2"><title>Parity / Timing comparison — Not started</title></rect>
-<rect class="c not_started" x="298.5" y="416.5" width="17" height="17" rx="2"><title>Parity / Visual comparison — Not started</title></rect>
+<rect class="c not_started" x="298.5" y="416.5" width="17" height="17" rx="2"><title>Parity / Visual comparison — Not started — The app can save a picture of its window from a reproducible unattended run (--smoke-frames with --screenshot); there is nothing to compare it with yet.</title></rect>
 <rect class="c not_started" x="321.5" y="416.5" width="17" height="17" rx="2"><title>Parity / Audio comparison — Not started</title></rect>
 <rect class="c implemented" x="344" y="416" width="18" height="18" rx="2"><title>Parity / Deterministic replay — Implemented — A recorded game of ours replays event for event from its draw log. This is determinism of our code, not parity.</title></rect>
 <rect class="c not_started" x="367.5" y="416.5" width="17" height="17" rx="2"><title>Parity / Evidence-backed parity tests — Not started</title></rect>
 <text class="pct" x="830" y="429">12%</text><text class="muted" x="876" y="429">1/8 · ✓0</text>
 <text class="lbl" x="24" y="460">Platforms</text>
-<g><title>Platforms / Windows — Partial — Headless crates and tools build and pass the gate on the Windows host and in CI; no app yet.</title><rect class="c partial-o" x="206.5" y="447.5" width="17" height="17" rx="2"/><path class="partial-f" d="M206 447h9v18h-9z"/></g>
+<g><title>Platforms / Windows — Partial — The app builds in debug and release and smoke-launches on the Windows host; the gate passes. Placeholder mode only.</title><rect class="c partial-o" x="206.5" y="447.5" width="17" height="17" rx="2"/><path class="partial-f" d="M206 447h9v18h-9z"/></g>
 <g><title>Platforms / Linux — Partial — Headless crates and tools build and test in CI; no app yet.</title><rect class="c partial-o" x="229.5" y="447.5" width="17" height="17" rx="2"/><path class="partial-f" d="M229 447h9v18h-9z"/></g>
 <g><title>Platforms / macOS — Partial — Headless crates and tools build and test in CI; no app yet.</title><rect class="c partial-o" x="252.5" y="447.5" width="17" height="17" rx="2"/><path class="partial-f" d="M252 447h9v18h-9z"/></g>
-<g><title>Platforms / Web / WASM — Partial — The simulation and its data model compile for wasm32 in CI; no app yet.</title><rect class="c partial-o" x="275.5" y="447.5" width="17" height="17" rx="2"/><path class="partial-f" d="M275 447h9v18h-9z"/></g>
+<g><title>Platforms / Web / WASM — Partial — The app compiles for wasm32-unknown-unknown in the gate and in CI. Not yet bundled or run in a browser.</title><rect class="c partial-o" x="275.5" y="447.5" width="17" height="17" rx="2"/><path class="partial-f" d="M275 447h9v18h-9z"/></g>
 <text class="pct" x="830" y="460">0%</text><text class="muted" x="876" y="460">0/4 · ✓0</text>
 <text class="lbl" x="24" y="491">Packaging</text>
 <g><title>Packaging / Source importer — Partial — The inventory stage exists (hash, classify, list). Extraction and conversion are not started.</title><rect class="c partial-o" x="206.5" y="478.5" width="17" height="17" rx="2"/><path class="partial-f" d="M206 478h9v18h-9z"/></g>
 <rect class="c not_started" x="229.5" y="478.5" width="17" height="17" rx="2"><title>Packaging / Asset manifest — Not started</title></rect>
 <rect class="c not_started" x="252.5" y="478.5" width="17" height="17" rx="2"><title>Packaging / Local full-package workflow — Not started</title></rect>
-<rect class="c not_started" x="275.5" y="478.5" width="17" height="17" rx="2"><title>Packaging / Public asset-free build — Not started</title></rect>
+<g><title>Packaging / Public asset-free build — Partial — The app runs with no assets in a clearly labelled placeholder mode. No packaged release yet.</title><rect class="c partial-o" x="275.5" y="478.5" width="17" height="17" rx="2"/><path class="partial-f" d="M275 478h9v18h-9z"/></g>
 <rect class="c not_started" x="298.5" y="478.5" width="17" height="17" rx="2"><title>Packaging / Release process — Not started</title></rect>
 <text class="pct" x="830" y="491">0%</text><text class="muted" x="876" y="491">0/5 · ✓0</text>
 <g><title>Verified</title><rect class="c verified" x="24" y="516" width="18" height="18" rx="2"/><path class="mark" d="M27 525l4 4l7 -8"/></g>
@@ -214,11 +214,11 @@ text{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,san
 <rect class="c implemented" x="154" y="516" width="18" height="18" rx="2"><title>Implemented</title></rect>
 <text class="muted" x="178" y="527">Implemented (21)</text>
 <g><title>Partial</title><rect class="c partial-o" x="312.5" y="516.5" width="17" height="17" rx="2"/><path class="partial-f" d="M312 516h9v18h-9z"/></g>
-<text class="muted" x="336" y="527">Partial (25)</text>
+<text class="muted" x="336" y="527">Partial (29)</text>
 <rect class="c investigating" x="442" y="516" width="18" height="18" rx="2"><title>Investigating</title></rect>
 <text class="muted" x="466" y="527">Investigating (7)</text>
 <g><title>Blocked</title><rect class="c blocked" x="607" y="516" width="18" height="18" rx="2"/><path class="mark" d="M612 521l8 8M620 521l-8 8"/></g>
 <text class="muted" x="631" y="527">Blocked (9)</text>
 <rect class="c not_started" x="730.5" y="516.5" width="17" height="17" rx="2"><title>Not started</title></rect>
-<text class="muted" x="754" y="527">Not started (84)</text>
+<text class="muted" x="754" y="527">Not started (80)</text>
 </svg>

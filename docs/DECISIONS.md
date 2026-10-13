@@ -139,3 +139,20 @@ simulated spins still leave a 3-point interval.
 
 **The fixture was retuned with this tool** (`synthetic-dev-2`): the first version returned over
 600%. It was adjusted to a sane shape for development, towards no real game's figures.
+
+## D-012 — The application presents events; unattended runs use a fixed step (2026-10-13)
+
+**Decision.** The Bevy application sends commands to the simulation, receives the events of the
+whole command at once, and reveals them over time. Everything it draws follows the events it has
+revealed so far, never the simulation's current state. In an unattended run (`--smoke-frames`) the
+presentation advances a fixed sixtieth of a second per frame instead of real time.
+
+**Why.** The simulation is instantaneous by design, so the application could read the final credit
+total while the reels are still landing. The first screenshot showed it doing that. Making the
+display follow presented events fixes it structurally and keeps the application honest about being
+a presenter. The fixed step came from the same screenshot: on a high-refresh display a
+frame-counted run covered a fraction of the time expected. With a fixed step, a seed and a frame
+count define the picture, which is what a visual comparison will need.
+
+**Timing constants are ours.** Reel-stop and event intervals in the application were chosen so the
+sequence can be followed. They were not measured on an original machine and are labelled so.
