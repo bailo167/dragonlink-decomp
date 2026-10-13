@@ -245,18 +245,34 @@ and merged through the gate.
 
 ## Next
 
-1. Replay an observation's outcomes through the simulation (scripted outcome source), so rules can
-   be compared on the same outcomes once a recording is transcribed.
-2. Unpack ZIP-family packages safely (decompression budget, safe output tree), so that a real
-   package can be imported once one is held.
-3. Bundle and run the web build in a browser.
-4. Check existing third-party footage for rules, pay-table and information screens.
-5. Re-read the once-read sources so their claims can be labelled VERIFIED.
+In order of value. The first four need nothing from anyone.
+
+1. **More sessions, read the same way.** More $1 play of Golden Century to finish its reels
+   (windows are still missing, and stacked symbols need counts a few hundred games cannot give);
+   a long cent-denomination session; then the other three titles. Each session: cut, read twice,
+   convert, compare, reconstruct ([PARITY.md](PARITY.md), "From a recording to an observation
+   trace").
+2. **Find the games the detector misses.** The credit meter shows fourteen places in the $1 play
+   of the first session. Until they are found a session is not a complete account, so it gives no
+   observed return, hit rate or feature frequency.
+3. **Reconstruction that copes with stacks and near-complete coverage**: deduce a single missing
+   window where the neighbouring windows leave only one possibility, and estimate how many stops a
+   repeated window occupies, each reported as what it is (derived, or inferred statistically).
+4. **The rest of the Golden Century pay table**: lines 6 to 50 from the 27 messages that name
+   them and from the meter at the cent denominations; four and five of a kind as they turn up.
+5. **Model the game's real structure in the simulation**: denominations, selectable lines,
+   credits per line, the first five paylines, and a configuration per denomination, all of which
+   are now evidenced. Free games and their mystery symbol after that.
+6. **Read the features**: Hold & Spin and free-games stills are transcribed and not yet analysed.
+7. Re-read the once-read sources so their claims can be labelled VERIFIED.
 
 ## Waiting on the owner
 
-Two decisions, neither of which stops other work:
+Three decisions, none of which stops other work:
 
 - whether and how the mobile package's protected content is read, since the project's tooling
   does not do it (BLOCKERS B-005);
-- whether results from a recovered configuration may be published (DECISIONS D-010).
+- whether results from a recovered configuration may be published (DECISIONS D-010);
+- whether reel strips reconstructed from **public footage** may be published. They are treated
+  like any recovered mathematics until decided: the method, the counts and what a player can see
+  are public; strips and how often each prize value appears are kept privately.
