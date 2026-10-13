@@ -14,12 +14,18 @@
 //! sequence can be followed; none of it was measured on an original machine.
 //!
 //! Controls: Space or Enter spins, and steps a Hold & Spin feature; Up and
-//! Down change the bet; Escape quits.
+//! Down change the bet; Escape quits (not in a browser, where there is no
+//! window to close).
 //!
 //! `--smoke-frames N` runs unattended: it spins by itself, and exits with
 //! success after N frames. The Windows gate uses it (`docs/BUILDING.md`).
 //! `--seed N` and `--credits N` set the test outcome source's seed and the
 //! starting play credits.
+//!
+//! On the web (`wasm32-unknown-unknown`, bundled by `tools/dev/web.ps1`) there
+//! is no command line, so the defaults apply, and the application draws into
+//! the canvas that `web/index.html` provides. Everything specific to that
+//! target is behind `cfg(target_arch = "wasm32")`.
 
 use std::collections::VecDeque;
 
@@ -48,6 +54,18 @@ const USAGE: &str =
 const SCREENSHOT_FRAMES_BEFORE_END: u32 = 20;
 /// How long before that the run starts looking for a settled frame to picture.
 const SCREENSHOT_SETTLE_WINDOW: u32 = 600;
+
+/// The canvas `web/index.html` provides for the application, as a CSS selector.
+#[cfg(target_arch = "wasm32")]
+const WEB_CANVAS: &str = "#dragonlink-canvas";
+
+/// The line under the meters until something has happened.
+#[cfg(not(target_arch = "wasm32"))]
+const CONTROLS_HINT: &str = "Space: spin    Up/Down: bet    Esc: quit";
+/// The line under the meters until something has happened. A page has no
+/// window to close, so there is no key for quitting.
+#[cfg(target_arch = "wasm32")]
+const CONTROLS_HINT: &str = "Space: spin    Up/Down: bet";
 
 /// Command-line options.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -286,7 +304,7 @@ fn setup(mut commands: Commands, sim: Res<Sim>) {
             ));
             root.spawn((
                 StatusText,
-                Text::new("Space: spin    Up/Down: bet    Esc: quit"),
+                Text::new(CONTROLS_HINT),
                 TextFont {
                     font_size: FontSize::Px(15.0),
                     ..default()
@@ -305,7 +323,8 @@ fn input(
     mut presentation: ResMut<Presentation>,
     mut exit: MessageWriter<AppExit>,
 ) {
-    if keys.just_pressed(KeyCode::Escape) {
+    // In a browser, leaving the event loop would only freeze the page.
+    if cfg!(not(target_arch = "wasm32")) && keys.just_pressed(KeyCode::Escape) {
         exit.write(AppExit::Success);
         return;
     }
@@ -525,6 +544,33 @@ fn smoke(
     }
 }
 
+/// The application's window. On the web it is the page's canvas, sized by the
+/// element that contains it.
+fn primary_window() -> Window {
+    Window {
+        title: "dragonlink-decomp - PLACEHOLDER MODE (synthetic, not Dragon Link)".into(),
+        #[cfg(target_arch = "wasm32")]
+        canvas: Some(WEB_CANVAS.into()),
+        #[cfg(target_arch = "wasm32")]
+        fit_canvas_to_parent: true,
+        // The page decides which keys the browser keeps: it stops the game's
+        // own keys from scrolling and leaves Tab, F5 and F12 alone.
+        #[cfg(target_arch = "wasm32")]
+        prevent_default_event_handling: false,
+        ..default()
+    }
+}
+
+/// Say in the browser console why there are no original assets on screen.
+/// Standard error goes nowhere on this target, and a page has no environment
+/// to configure an asset set with.
+#[cfg(target_arch = "wasm32")]
+fn announce_placeholder_mode() {
+    info!(
+        "placeholder mode: the web build shows generated shapes and runs the synthetic development fixture; it cannot load an asset set"
+    );
+}
+
 fn main() -> AppExit {
     let args: Vec<String> = std::env::args().skip(1).collect();
     let cli = match parse_args(&args) {
@@ -535,6 +581,7 @@ fn main() -> AppExit {
         }
     };
     // Say plainly why there are no original assets on screen.
+    #[cfg(not(target_arch = "wasm32"))]
     match dragonlink_assets::discover() {
         dragonlink_assets::AssetMode::Placeholder { reason } => {
             eprintln!("placeholder mode: {reason}");
@@ -551,15 +598,14 @@ fn main() -> AppExit {
             return AppExit::error();
         }
     };
-    App::new()
-        .add_plugins(DefaultPlugins.set(WindowPlugin {
-            primary_window: Some(Window {
-                title: "dragonlink-decomp - PLACEHOLDER MODE (synthetic, not Dragon Link)".into(),
-                ..default()
-            }),
-            ..default()
-        }))
-        .insert_resource(ClearColor(Color::srgb(0.03, 0.03, 0.05)))
+    let mut app = App::new();
+    app.add_plugins(DefaultPlugins.set(WindowPlugin {
+        primary_window: Some(primary_window()),
+        ..default()
+    }));
+    #[cfg(target_arch = "wasm32")]
+    app.add_systems(Startup, announce_placeholder_mode);
+    app.insert_resource(ClearColor(Color::srgb(0.03, 0.03, 0.05)))
         .insert_resource(Sim {
             game,
             rng: DevRng::new(cli.seed),

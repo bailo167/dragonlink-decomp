@@ -1,0 +1,15 @@
+# Cargo profile for the web bundle. tools/dev/web.ps1 passes this file to cargo
+# with `--config`, so the workspace manifest and the native profiles stay as
+# they are:
+#
+#   cargo build -p dragonlink --target wasm32-unknown-unknown --config web/cargo-web.toml --profile web
+#
+# Output goes to target/wasm32-unknown-unknown/web/, beside (not instead of)
+# the debug build the Windows gate makes.
+
+[profile.web]
+inherits = "release"
+opt-level = "s"
+# Symbol names and debug sections are most of an unstripped module's size and
+# the page uses neither.
+strip = true
