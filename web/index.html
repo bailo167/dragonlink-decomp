@@ -1,0 +1,154 @@
+<!doctype html>
+<!--
+  The page of the web build. tools/dev/web.ps1 copies it to web/dist/ beside the
+  generated dragonlink.js and dragonlink_bg.wasm, which are never committed.
+
+  The application draws into #dragonlink-canvas (apps/dragonlink/src/main.rs,
+  WEB_CANVAS) and takes its size from #stage. tools/dev/web.mjs reads
+  data-boot on the root element to learn whether the application started.
+-->
+<html lang="en" data-boot="loading">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>dragonlink-decomp - PLACEHOLDER MODE (synthetic, not Dragon Link)</title>
+<link rel="icon" href="data:,">
+<style>
+  :root {
+    color-scheme: dark;
+    --page: #08080d;
+    --panel: #12131a;
+    --line: #2a2c38;
+    --text: #d5d8de;
+    --muted: #9aa0ab;
+    --warn: #ffc740;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    padding: 1rem;
+    background: var(--page);
+    color: var(--text);
+    font: 15px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+  }
+  #notice, main { max-width: 1280px; margin: 0 auto; }
+  #notice {
+    padding: 0.7rem 1rem;
+    border: 1px solid var(--warn);
+    border-radius: 4px;
+    background: var(--panel);
+  }
+  #notice strong { color: var(--warn); }
+  #notice p { margin: 0; }
+  #notice p + p { margin-top: 0.35rem; color: var(--muted); }
+  main { overflow-x: auto; }
+  /* The application sizes its canvas to this element, so the element's size
+     must not depend on the canvas. The application's layout is in fixed
+     pixels and needs about 720 by 480 of them. */
+  #stage {
+    position: relative;
+    width: 100%;
+    min-width: 720px;
+    height: clamp(480px, 100vh - 15rem, 720px);
+    margin-top: 1rem;
+    border: 1px solid var(--line);
+    background: var(--page);
+  }
+  #dragonlink-canvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+    outline: none;
+  }
+  /* The frame shows where the keyboard goes. */
+  #stage:focus-within { border-color: var(--warn); }
+  #boot-status, #focus-hint {
+    position: absolute;
+    left: 0;
+    right: 0;
+    margin: 0;
+    padding: 0 1rem;
+    text-align: center;
+    pointer-events: none;
+  }
+  #boot-status { top: 45%; white-space: pre-wrap; }
+  [data-boot="failed"] #boot-status { color: var(--warn); }
+  [data-boot="running"] #boot-status { display: none; }
+  #focus-hint { bottom: 0.5rem; display: none; color: var(--warn); }
+  [data-boot="running"] #dragonlink-canvas:not(:focus) ~ #focus-hint { display: block; }
+  #controls { margin: 0.7rem 0 0; color: var(--muted); }
+  kbd {
+    padding: 0 0.35em;
+    border: 1px solid var(--line);
+    border-radius: 3px;
+    background: var(--panel);
+    font: inherit;
+  }
+</style>
+</head>
+<body>
+<header id="notice" role="note">
+  <p><strong>Unofficial preservation project, in placeholder mode.</strong>
+  This page runs dragonlink-decomp with generated shapes and a synthetic mathematics
+  fixture written for development. It contains no original assets, and nothing it
+  shows is evidence of how any Dragon Link game looks, plays or pays.</p>
+  <p>Credits are simulation credits only: they cannot be bought, cashed out or
+  exchanged, and stand for no money. Not affiliated with, endorsed by, or connected
+  to Aristocrat Leisure Limited, Aristocrat Technologies or Product Madness.</p>
+</header>
+<main>
+  <div id="stage">
+    <canvas id="dragonlink-canvas" tabindex="0"
+            aria-label="dragonlink-decomp in placeholder mode: generated shapes, synthetic mathematics"></canvas>
+    <p id="boot-status" role="status">Loading the application...</p>
+    <p id="focus-hint">Click here to use the keyboard</p>
+  </div>
+  <p id="controls"><kbd>Space</kbd> or <kbd>Enter</kbd> spins, and steps a feature.
+  <kbd>Up</kbd> and <kbd>Down</kbd> change the bet.</p>
+</main>
+<noscript><p>This page needs JavaScript and WebAssembly.</p></noscript>
+<script type="module">
+  const root = document.documentElement;
+  const canvas = document.getElementById('dragonlink-canvas');
+  const status = document.getElementById('boot-status');
+
+  function failed(what, error) {
+    root.dataset.boot = 'failed';
+    const detail = error && error.message ? error.message : String(error ?? '');
+    status.textContent = `${what}\n${detail}\nThe browser console has the details.`;
+  }
+
+  // The application leaves default key handling to the page. Keep its own
+  // keys from scrolling the page, and leave Tab, F5, F12 and the rest alone.
+  const gameKeys = new Set(['Space', 'Enter', 'ArrowUp', 'ArrowDown']);
+  canvas.addEventListener('keydown', (event) => {
+    if (gameKeys.has(event.code)) event.preventDefault();
+  });
+
+  // A panic in the application surfaces as an uncaught error after it has
+  // been written to the console. A resize observer that could not deliver in
+  // one frame is reported the same way and is harmless.
+  window.addEventListener('error', (event) => {
+    if (String(event.message).startsWith('ResizeObserver loop')) return;
+    failed('The application stopped.', event.error ?? event.message);
+  });
+  window.addEventListener('unhandledrejection', (event) => failed('The application stopped.', event.reason));
+
+  if (!document.createElement('canvas').getContext('webgl2')) {
+    failed('This build needs WebGL2, which this browser does not provide here.', '');
+  } else {
+    try {
+      const { default: init } = await import('./dragonlink.js');
+      await init();
+      if (root.dataset.boot === 'loading') {
+        root.dataset.boot = 'running';
+        canvas.focus();
+      }
+    } catch (error) {
+      console.error(error);
+      failed('The application could not be started.', error);
+    }
+  }
+</script>
+</body>
+</html>
