@@ -114,3 +114,28 @@ it, not into the work tree.
 
 **Open for the owner.** Whether derived, aggregate results (an RTP figure, a feature frequency)
 from a recovered configuration may be published is undecided. Until decided, they are not.
+
+## D-011 — Mathematics analysis is its own crate, driven by configurations (2026-10-13)
+
+**Decision.** `dragonlink-math` analyses a `GameConfiguration`: a complete math model plus one
+provenance record per constant group and a set of sourced behaviour findings. It computes exactly
+where it can (frequency sums, convolution, a finite recursion for the feature, full enumeration
+when tractable) and simulates, seeded and with intervals, where it cannot. `dragonlink-analyze`
+exposes `analyze-game`, `compare-games`, `progressive-ev` and `simulate`.
+
+**Why a separate crate.** The simulation must stay minimal and deterministic; analysis needs
+floating point, big enumerations and report formatting. Keeping them apart also gives two
+independent routes to every quantity (distributions versus sampling the state machine), and the
+tests require them to agree.
+
+**Why a configuration and not the claims.** Same reason as D-002: claims are single statements with
+gaps; analysis needs a complete model. The configuration adds per-constant provenance so that a
+report can state how well each number is supported, and rejects mixtures of invented and recovered
+constants.
+
+**Why exact first.** A simulated RTP has an interval that rare jackpots make wide; the exact figure
+has none. On the synthetic fixture the exact return is a single number where three million
+simulated spins still leave a 3-point interval.
+
+**The fixture was retuned with this tool** (`synthetic-dev-2`): the first version returned over
+600%. It was adjusted to a sane shape for development, towards no real game's figures.

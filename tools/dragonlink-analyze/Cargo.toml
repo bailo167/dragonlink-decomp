@@ -1,0 +1,19 @@
+[package]
+name = "dragonlink-analyze"
+description = "Analyse, compare and price game configurations: analyze-game, compare-games, progressive-ev, simulate"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[dependencies]
+dragonlink-math.workspace = true
+dragonlink-model.workspace = true
+anyhow.workspace = true
+clap.workspace = true
+serde_json.workspace = true
+
+[lints]
+workspace = true

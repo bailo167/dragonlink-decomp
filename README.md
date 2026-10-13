@@ -17,6 +17,14 @@
 > It is not for real-money gambling and is not designed to run on, connect to or interfere with
 > any gaming machine. Credits are simulation credits and stand for no money.
 
+## Two end-states
+
+1. **Parity**: reproduce the games' observable behaviour in Rust and Bevy.
+2. **Understanding**: recover the games' mathematics well enough to explain, quantitatively and
+   from evidence, how each version behaves, and to tell myth from configuration difference from
+   genuine expected-value difference. See
+   [docs/reverse-engineering/math/](docs/reverse-engineering/math/README.md).
+
 ## The four titles
 
 | # | Title | State |
@@ -39,12 +47,22 @@ evidence, the behaviour stays marked unknown. It is not filled in to look finish
   which every statement about the originals carries a confidence label, a source class and a citation,
   with the rules enforced by tests, and a separate, clearly labelled synthetic math fixture for engine
   development.
+- **A mathematics analysis subsystem** (`dragonlink-math`, `dragonlink-analyze`): given a game
+  configuration it computes the return and its composition exactly, the Hold & Spin trigger
+  probability and outcome distribution, jackpot frequencies, hit frequency by full enumeration,
+  expected value as a function of jackpot meters, and the differences between two configurations,
+  with a seeded simulation as an independent cross-check. Every constant carries its provenance.
+  It has only the synthetic fixture to work on so far.
+- **A first evidence base**: 99 sourced, machine-checked claims and the research documents behind
+  them. Regulators' records establish the four titles' Australian approval identities and platform
+  generations; the manufacturer's own court filing gives the Hold & Spin rules.
 - **Guard rails**: a hygiene checker that refuses game packages, cabinet images, extracted assets,
   decompiler output and credentials; a progress tracker that refuses "implemented" without evidence;
   a Windows pre-merge gate; CI.
 
-What does **not** exist yet: any original mathematics, any original asset, the importer, the Bevy
-application, and any parity measurement. See [docs/STATUS.md](docs/STATUS.md) for the current state in
+What does **not** exist yet: any original mathematics (none is public; the manufacturer treats it
+as a trade secret), any original asset, the importer, the Bevy application, and any parity
+measurement. See [docs/STATUS.md](docs/STATUS.md) for the current state in
 detail and [docs/BLOCKERS.md](docs/BLOCKERS.md) for what is waiting on something external.
 
 ## Progress
@@ -60,17 +78,18 @@ evidence about the original. Compiling, passing our own tests or looking right n
 
 | Category | Items | Implemented + verified | Verified | In progress | Completion | Verified % |
 |---|---:|---:|---:|---:|---:|---:|
-| Foundation | 10 | 7 | 0 | 2 | 70% | 0% |
+| Foundation | 10 | 8 | 0 | 1 | 80% | 0% |
 | Reverse engineering | 13 | 1 | 0 | 4 | 7% | 0% |
+| Mathematics and analysis | 27 | 9 | 0 | 3 | 33% | 0% |
 | Shared game runtime | 19 | 1 | 0 | 11 | 5% | 0% |
 | Golden Century | 15 | 0 | 0 | 4 | 0% | 0% |
 | Happy & Prosperous | 15 | 0 | 0 | 1 | 0% | 0% |
 | Panda Magic | 15 | 0 | 0 | 1 | 0% | 0% |
 | Autumn Moon | 15 | 0 | 0 | 1 | 0% | 0% |
 | Parity | 8 | 1 | 0 | 0 | 12% | 0% |
-| Platforms | 4 | 0 | 0 | 1 | 0% | 0% |
+| Platforms | 4 | 0 | 0 | 4 | 0% | 0% |
 | Packaging | 5 | 0 | 0 | 0 | 0% | 0% |
-| **Overall** | **119** | **10** | **0** | **25** | **8%** | **0%** |
+| **Overall** | **146** | **20** | **0** | **30** | **13%** | **0%** |
 
 <!-- progress-table:end -->
 
@@ -116,6 +135,8 @@ See [docs/SOURCES.md](docs/SOURCES.md).
 |---|---|
 | `crates/dragonlink-model` | Evidence labels, the claims database, symbols, layouts, runnable math models, the synthetic fixture. |
 | `crates/dragonlink-core` | The deterministic simulation: state machine, pay evaluation, Hold & Spin, events, outcome sources. No rendering, no files, no clock. |
+| `crates/dragonlink-math` | Mathematics analysis of a game configuration: exact, simulated, comparative. |
+| `tools/dragonlink-analyze` | `analyze-game`, `compare-games`, `progressive-ev`, `simulate`. |
 | `tools/progress-gen` | Validates the tracker and renders the progress matrix and table above. |
 | `tools/repo-hygiene` | Refuses proprietary material, dumps, secrets and private paths. |
 
@@ -132,6 +153,13 @@ Requires Rust 1.98 (pinned in `rust-toolchain.toml`; `rustup` installs it automa
 cargo test --workspace                                   # everything headless
 cargo run -p repo-hygiene                                # nothing proprietary in the tree
 cargo run -p progress-gen -- --check                     # tracker valid, generated files fresh
+```
+
+Analyse the built-in synthetic fixture (it describes no real game):
+
+```sh
+cargo run --release -p dragonlink-analyze -- analyze-game synthetic --simulate 1000000
+cargo run --release -p dragonlink-analyze -- progressive-ev synthetic --meter grand=25000
 ```
 
 On Windows the full pre-merge gate is one command:
@@ -158,6 +186,7 @@ More in [docs/BUILDING.md](docs/BUILDING.md).
 | [docs/PRIOR_ART.md](docs/PRIOR_ART.md) | What was carried over from ASAMU-decomp and learned from other projects. |
 | [docs/LEGAL.md](docs/LEGAL.md) | Scope, what is and is not in the repository. |
 | [docs/reverse-engineering/](docs/reverse-engineering/README.md) | The research knowledge base. |
+| [docs/reverse-engineering/math/](docs/reverse-engineering/math/README.md) | The mathematics lane: method, provenance, configuration format, questions. |
 
 ## Legal
 

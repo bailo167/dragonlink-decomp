@@ -8,19 +8,6 @@ A blocker stops one lane, not the project. Each entry says what proceeds meanwhi
 
 ## Open
 
-### B-001 — No working GitHub login on the Windows host
-
-- **Since:** 2026-10-13
-- **Blocks:** pushing to `bailo167/dragonlink-decomp`; CI ever running; anything that needs the
-  remote (pull requests, releases).
-- **What was found:** the access token configured in the environment is rejected by GitHub
-  (HTTP 401); no HTTPS credential is stored for the host; the SSH key present is not readable by the
-  session. Reading works because the repository is public.
-- **Needs:** the owner to log in once (`gh auth login`, then `gh auth setup-git`) after clearing
-  the stale token variable.
-- **Meanwhile:** all work is committed locally with full history and passes the Windows gate before
-  each merge to the local `main`. It pushes as-is once a login exists.
-
 ### B-002 — No cabinet software or mathematics source
 
 - **Since:** project start
@@ -58,4 +45,8 @@ A blocker stops one lane, not the project. Each entry says what proceeds meanwhi
 
 ## Resolved
 
-None yet.
+### B-001 — No working GitHub login on the Windows host (resolved 2026-10-13)
+
+The access token in the environment was rejected and no other login was stored, so nothing could be
+pushed. The owner logged in with `gh auth login`. All commits made in the meantime were pushed
+unchanged, and CI ran green on the first push.

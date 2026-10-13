@@ -24,7 +24,7 @@ pub mod game;
 pub mod grid;
 pub mod rng;
 
-pub use eval::{Win, evaluate};
+pub use eval::{Win, evaluate, line_run};
 pub use event::{CreditReason, Event, Feature, LockedOrb};
 pub use game::{Command, Game, GameError, GameState, HoldAndSpinState, Phase};
 pub use grid::Grid;

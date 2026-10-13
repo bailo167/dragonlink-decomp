@@ -63,6 +63,12 @@ status = "not_started"
 note = "Stage G: Windows verified, Linux and macOS build and test, Web/WASM builds and runs."
 
 [[milestone]]
+id = "M8"
+name = "Game mathematics recovered and explained"
+status = "investigating"
+note = "Parallel lane. Analysis tooling exists and is tested on the synthetic fixture; no original mathematics is held, and none is public."
+
+[[milestone]]
 id = "M7"
 name = "Happy & Prosperous, Panda Magic, Autumn Moon"
 status = "not_started"
@@ -116,8 +122,8 @@ note = "fmt, clippy, test, hygiene, progress check today; app, smoke, wasm and r
 [[category.item]]
 id = "ci"
 name = "CI (Linux, Windows, macOS, wasm32 check)"
-status = "partial"
-note = "Workflow is written; it has not run yet because nothing has been pushed (docs/BLOCKERS.md)."
+status = "implemented"
+evidence = ".github/workflows/ci.yml; first run green on Linux, Windows, macOS and wasm32 (2026-10-13)"
 
 [[category.item]]
 id = "hygiene"
@@ -214,6 +220,181 @@ id = "math-model"
 name = "Mathematical-model investigation"
 status = "investigating"
 note = "The mathematics is not public and is asserted as trade secrets (docs/reverse-engineering/math/EVIDENCE_STATE.md)."
+
+# --------------------------------------------------------------------------
+# Mathematics and analysis
+#
+# An end-state of its own: explain quantitatively, from evidence, how the real
+# games behave. The first items are our tooling (tested on the synthetic
+# fixture). The rest are knowledge about the originals, and stay blocked or
+# open until a mathematics source exists. See docs/reverse-engineering/math/.
+# --------------------------------------------------------------------------
+
+[[category]]
+id = "math"
+name = "Mathematics and analysis"
+
+[[category.item]]
+id = "provenance"
+name = "Per-constant provenance model"
+status = "implemented"
+evidence = "crates/dragonlink-math/src/config.rs (tests); docs/reverse-engineering/math/PROVENANCE.md"
+
+[[category.item]]
+id = "config-format"
+name = "Machine-readable game configuration"
+status = "implemented"
+evidence = "crates/dragonlink-math/src/config.rs (tests); docs/reverse-engineering/math/CONFIGURATION.md"
+note = "Exercised only on the synthetic fixture. Cannot yet express free games, feature reels, weighted stops or progressive meters."
+
+[[category.item]]
+id = "exact-base"
+name = "Exact base-game analysis (line and scatter return, composition)"
+status = "implemented"
+evidence = "crates/dragonlink-math/src/exact.rs (tests: hand arithmetic; frequency method equals full enumeration)"
+
+[[category.item]]
+id = "exact-feature"
+name = "Exact Hold & Spin analysis (trigger, outcome distribution, value, jackpot frequency)"
+status = "implemented"
+evidence = "crates/dragonlink-math/src/exact.rs (tests: recursion against hand-computed cases)"
+note = "For the generic one-chance-per-position feature model; the original feature mechanics are unknown."
+
+[[category.item]]
+id = "enumeration"
+name = "Hit frequency and base-game variance by enumeration"
+status = "implemented"
+evidence = "crates/dragonlink-math/src/exact.rs (tests)"
+
+[[category.item]]
+id = "monte-carlo"
+name = "Seeded Monte Carlo with confidence intervals"
+status = "implemented"
+evidence = "crates/dragonlink-math/src/sim.rs (tests: agrees with exact analysis over 400,000 spins)"
+
+[[category.item]]
+id = "progressive-ev"
+name = "Progressive jackpot expected-value calculator"
+status = "implemented"
+evidence = "crates/dragonlink-math/src/progressive.rs (tests: return is exactly 1 at the break-even meter)"
+note = "Assumes probabilities independent of the meters. No meter model yet."
+
+[[category.item]]
+id = "compare"
+name = "Configuration and version comparison"
+status = "implemented"
+evidence = "crates/dragonlink-math/src/compare.rs (tests); dragonlink-analyze compare-games"
+
+[[category.item]]
+id = "report"
+name = "Per-game technical report generator"
+status = "implemented"
+evidence = "crates/dragonlink-math/src/report.rs (tests); dragonlink-analyze analyze-game"
+
+[[category.item]]
+id = "volatility"
+name = "Whole-spin volatility"
+status = "partial"
+note = "Base-game variance is exact; the spread of a whole spin including the feature is simulated only."
+
+[[category.item]]
+id = "free-games-math"
+name = "Free-games mathematics"
+status = "not_started"
+
+[[category.item]]
+id = "progressive-meters"
+name = "Progressive meter model (contribution, increments, resets)"
+status = "not_started"
+
+[[category.item]]
+id = "weighted-reels"
+name = "Virtual-reel and weighted-stop representation"
+status = "not_started"
+note = "Every stop is equally likely in the current model."
+
+[[category.item]]
+id = "capture-validation"
+name = "Statistical validation against captured gameplay"
+status = "not_started"
+
+[[category.item]]
+id = "gc-config"
+name = "Recovered configuration: Golden Century"
+status = "blocked"
+blocker = "No cabinet or regulatory mathematics source is held (docs/BLOCKERS.md B-002)."
+
+[[category.item]]
+id = "hp-config"
+name = "Recovered configuration: Happy & Prosperous"
+status = "blocked"
+blocker = "No cabinet or regulatory mathematics source is held (docs/BLOCKERS.md B-002)."
+
+[[category.item]]
+id = "pm-config"
+name = "Recovered configuration: Panda Magic"
+status = "blocked"
+blocker = "No cabinet or regulatory mathematics source is held (docs/BLOCKERS.md B-002)."
+
+[[category.item]]
+id = "am-config"
+name = "Recovered configuration: Autumn Moon"
+status = "blocked"
+blocker = "No cabinet or regulatory mathematics source is held (docs/BLOCKERS.md B-002)."
+
+[[category.item]]
+id = "visible-paytables"
+name = "Player-visible pay tables, lines and bet structures"
+status = "investigating"
+note = "Published nowhere found. Unverified US figures quoted in the manufacturer's complaint; needs recordings of the rules screens (BLOCKERS B-004)."
+
+[[category.item]]
+id = "denomination-bet-effects"
+name = "Denomination and bet effects"
+status = "investigating"
+note = "Lead: the complaint quotes different pay-table figures for two denominations. Nothing established for Australia."
+
+[[category.item]]
+id = "version-differences"
+name = "Mathematical differences between program versions"
+status = "blocked"
+blocker = "Version identities are established (docs/reverse-engineering/PLATFORMS.md) but no version's mathematics is held (docs/BLOCKERS.md B-002)."
+
+[[category.item]]
+id = "rng-architecture"
+name = "RNG architecture and call sites"
+status = "blocked"
+blocker = "No cabinet or regulatory mathematics source is held (docs/BLOCKERS.md B-002)."
+
+[[category.item]]
+id = "outcome-selection"
+name = "Outcome selection, reel-stop relationship and input timing"
+status = "blocked"
+blocker = "No cabinet or regulatory mathematics source is held (docs/BLOCKERS.md B-002)."
+
+[[category.item]]
+id = "state-dependence"
+name = "State dependence and persistence between spins"
+status = "blocked"
+blocker = "No cabinet or regulatory mathematics source is held (docs/BLOCKERS.md B-002)."
+
+[[category.item]]
+id = "mobile-vs-cabinet"
+name = "Mobile versus cabinet mathematics"
+status = "not_started"
+note = "Needs official mobile software (BLOCKERS B-003) and a cabinet source (B-002)."
+
+[[category.item]]
+id = "progressive-thresholds"
+name = "Progressive break-even thresholds of the originals"
+status = "blocked"
+blocker = "No cabinet or regulatory mathematics source is held (docs/BLOCKERS.md B-002)."
+
+[[category.item]]
+id = "beliefs"
+name = "Classification of player beliefs against evidence"
+status = "not_started"
+note = "Classes defined in docs/reverse-engineering/math/QUESTIONS.md; none can be judged without a recovered configuration."
 
 # --------------------------------------------------------------------------
 # Shared game runtime
@@ -732,24 +913,25 @@ name = "Platforms"
 id = "windows"
 name = "Windows"
 status = "partial"
-note = "Headless crates and tools build and pass the gate on the Windows host; no app yet."
+note = "Headless crates and tools build and pass the gate on the Windows host and in CI; no app yet."
 
 [[category.item]]
 id = "linux"
 name = "Linux"
-status = "not_started"
-note = "CI job written, not yet run."
+status = "partial"
+note = "Headless crates and tools build and test in CI; no app yet."
 
 [[category.item]]
 id = "macos"
 name = "macOS"
-status = "not_started"
-note = "CI job written, not yet run."
+status = "partial"
+note = "Headless crates and tools build and test in CI; no app yet."
 
 [[category.item]]
 id = "web"
 name = "Web / WASM"
-status = "not_started"
+status = "partial"
+note = "The simulation and its data model compile for wasm32 in CI; no app yet."
 
 # --------------------------------------------------------------------------
 # Packaging
