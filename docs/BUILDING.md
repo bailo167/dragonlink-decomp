@@ -86,7 +86,9 @@ The host the gate currently runs on, recorded so the environment can be reproduc
 | GitHub CLI | 2.81.0 | |
 | Python | 3.13.7 | |
 | Java | 21.0.12 LTS | required by Ghidra and JADX when they are installed |
-| Node.js | 22.17.0 | not used by the build |
+| Node.js | 22.17.0 | not used by the native build; serves and checks the web bundle |
+| wasm-bindgen CLI | 0.2.129 | `cargo install wasm-bindgen-cli --version 0.2.129 --locked`; must equal the `wasm-bindgen` version in `Cargo.lock` |
+| Microsoft Edge | 155 | the headless browser the web check drives; any Chromium-family browser works |
 | ffmpeg | 8.1 | for inspecting and measuring reference media |
 | winget | 1.29 | used by the setup script |
 
@@ -103,6 +105,27 @@ the owner signs in to the store and installs; the project copies the package out
 Not installed yet, to be installed when the work that needs them starts: 7-Zip, Ghidra, JADX,
 Apktool, IL2CPP tooling. Reverse-engineering applications that have no installer are
 unpacked under a tools folder next to the private source root, never inside the repository.
+
+### The web bundle
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File tools\dev\web.ps1 -Check
+powershell -NoProfile -ExecutionPolicy Bypass -File tools\dev\web.ps1 -NoBuild -Serve
+```
+
+`web.ps1` builds the application for `wasm32-unknown-unknown` with the profile in
+`web/cargo-web.toml`, generates the JavaScript glue with `wasm-bindgen` (it refuses a version that
+differs from `Cargo.lock`'s), and assembles `web/dist/`, which is build output and is never
+committed. `-Check` loads the bundle in a headless Chromium-family browser, driven by
+`tools/dev/web.mjs` with Node alone, and passes only if the page loads without an error, the
+application starts, the canvas shows the placeholder banner, and a press of Space changes the
+picture without scrolling the page. Results, with two pictures of placeholder mode, are in
+`target\web\`. `-Serve` serves the bundle on localhost.
+
+The check uses software rendering by default, so it gives the same answer without a GPU. It is not
+part of the gate: the gate's `wasm` step proves the target compiles, and this check is run when the
+application or the page changes. Checked on this host with Edge 155: the application starts in
+about a second. The bundle is 41 MB of WebAssembly, not yet reduced with an optimiser.
 
 ### Source root on the host
 

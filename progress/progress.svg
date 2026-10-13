@@ -1,4 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="980" height="553" viewBox="0 0 980 553" role="img" aria-label="dragonlink-decomp — preservation progress — 21% complete, 0% verified">
+<svg xmlns="http://www.w3.org/2000/svg" width="980" height="553" viewBox="0 0 980 553" role="img" aria-label="dragonlink-decomp — preservation progress — 22% complete, 0% verified">
 <style>
 :root{--bg:#ffffff;--bd:#d0d7de;--fg:#1f2328;--mu:#59636e;--ns:#8c959f;--inv:#0969da;--par:#bf8700;--imp:#4ac26b;--ver:#1a7f37;--blk:#cf222e;--mk:#ffffff}
 @media (prefers-color-scheme: dark){:root{--bg:#0d1117;--bd:#30363d;--fg:#e6edf3;--mu:#9198a1;--ns:#6e7681;--inv:#4493f8;--par:#d29922;--imp:#3fb950;--ver:#238636;--blk:#f85149;--mk:#ffffff}}
@@ -20,14 +20,14 @@ text{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,san
 </style>
 <rect class="bg" x="0.5" y="0.5" width="979" height="552" rx="8"/>
 <text class="ttl" x="24" y="38">dragonlink-decomp — preservation progress</text>
-<text class="sub" x="24" y="62">Completion 21% (32 of 149 items implemented or verified) · Verified 0% (0) · Current milestone: M1 — Evidence</text>
+<text class="sub" x="24" y="62">Completion 22% (33 of 150 items implemented or verified) · Verified 0% (0) · Current milestone: M1 — Evidence</text>
 <text class="muted" x="24" y="84">Generated from progress/progress.toml by tools/progress-gen. Completion = (implemented + verified) / total; floored.</text>
 <text class="lbl" x="24" y="117">Milestones</text>
 <rect class="c implemented" x="206" y="104" width="18" height="18" rx="2"><title>M0 — Foundation: Implemented — Stage A: workspace, hygiene, progress tooling, docs, Windows gate, CI and the source root all exist and work. RE applications are installed when first needed.</title></rect>
 <text class="muted" x="227" y="117">M0</text>
 <g><title>M1 — Evidence: Partial — Stage B: regulatory and official sources catalogued, official mobile software inventoried, formats identified.</title><rect class="c partial-o" x="253.5" y="104.5" width="17" height="17" rx="2"/><path class="partial-f" d="M253 104h9v18h-9z"/></g>
 <text class="muted" x="274" y="117">M1</text>
-<g><title>M2 — Import: Partial — Stage C. Scanner, manifest, normalised layout and a repeatable first importer stage exist and are tested on synthetic files. No extraction from containers, and no real source material has been imported.</title><rect class="c partial-o" x="300.5" y="104.5" width="17" height="17" rx="2"/><path class="partial-f" d="M300 104h9v18h-9z"/></g>
+<g><title>M2 — Import: Partial — Stage C. Scanner, manifest, normalised layout and two importer stages (loose media, and media inside ZIP-family archives read within a budget) exist and are tested on synthetic files. No proprietary container is unpacked, and no real source material has been imported into an asset set.</title><rect class="c partial-o" x="300.5" y="104.5" width="17" height="17" rx="2"/><path class="partial-f" d="M300 104h9v18h-9z"/></g>
 <text class="muted" x="321" y="117">M2</text>
 <g><title>M3 — Headless game model: Partial — Stage D: state, spin, awards, feature state machine, deterministic traces. Runs on a synthetic fixture only; original mathematics unknown.</title><rect class="c partial-o" x="347.5" y="104.5" width="17" height="17" rx="2"/><path class="partial-f" d="M347 104h9v18h-9z"/></g>
 <text class="muted" x="368" y="117">M3</text>
@@ -193,20 +193,21 @@ text{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,san
 <rect class="c implemented" x="206" y="416" width="18" height="18" rx="2"><title>Parity / Behavioural trace format — Implemented — One JSON Lines format for rewrite traces and transcribed observations; headers that would mislead are refused. No observation trace exists yet.</title></rect>
 <g><title>Parity / Source recordings of the original — Partial — Public recordings of Australian and US machines located, scanned and partly read for all four titles; held privately with hashes. No recording is tied to a regulatory build (every one reads the same 2016 notice), and none has been transcribed into a trace.</title><rect class="c partial-o" x="229.5" y="416.5" width="17" height="17" rx="2"/><path class="partial-f" d="M229 416h9v18h-9z"/></g>
 <rect class="c implemented" x="252" y="416" width="18" height="18" rx="2"><title>Parity / Event comparison — Implemented — Event-by-event comparison that states what kind of comparison it is. Exercised on rewrite traces and on a rewrite relabelled as an observation; never on a real observation.</title></rect>
-<g><title>Parity / Timing comparison — Partial — Differences in event times are measured against a stated tolerance when both traces carry times. Headless rewrite traces carry none, and there is no recording to take times from.</title><rect class="c partial-o" x="275.5" y="416.5" width="17" height="17" rx="2"/><path class="partial-f" d="M275 416h9v18h-9z"/></g>
-<rect class="c not_started" x="298.5" y="416.5" width="17" height="17" rx="2"><title>Parity / Visual comparison — Not started — The app can save a picture of its window from a reproducible unattended run (--smoke-frames with --screenshot); there is nothing to compare it with yet.</title></rect>
-<rect class="c not_started" x="321.5" y="416.5" width="17" height="17" rx="2"><title>Parity / Audio comparison — Not started</title></rect>
-<rect class="c implemented" x="344" y="416" width="18" height="18" rx="2"><title>Parity / Deterministic replay — Implemented — A recorded game of ours replays event for event from its draw log. This is determinism of our code, not parity.</title></rect>
-<rect class="c not_started" x="367.5" y="416.5" width="17" height="17" rx="2"><title>Parity / Evidence-backed parity tests — Not started</title></rect>
-<text class="pct" x="830" y="429">37%</text><text class="muted" x="876" y="429">3/8 · ✓0</text>
+<rect class="c implemented" x="275" y="416" width="18" height="18" rx="2"><title>Parity / Replay of observed outcomes — Implemented — The outcomes a trace shows are scripted through the simulation, so that what still differs is a difference in rules and not in luck; hidden choices and impossible observations are reported. Tested on rewrite traces relabelled as observations only: no observation of an original exists, and through the synthetic fixture a replay tests this machinery and nothing else.</title></rect>
+<g><title>Parity / Timing comparison — Partial — Differences in event times are measured against a stated tolerance when both traces carry times. Headless rewrite traces carry none, and there is no recording to take times from.</title><rect class="c partial-o" x="298.5" y="416.5" width="17" height="17" rx="2"/><path class="partial-f" d="M298 416h9v18h-9z"/></g>
+<rect class="c not_started" x="321.5" y="416.5" width="17" height="17" rx="2"><title>Parity / Visual comparison — Not started — The app can save a picture of its window from a reproducible unattended run (--smoke-frames with --screenshot); there is nothing to compare it with yet.</title></rect>
+<rect class="c not_started" x="344.5" y="416.5" width="17" height="17" rx="2"><title>Parity / Audio comparison — Not started</title></rect>
+<rect class="c implemented" x="367" y="416" width="18" height="18" rx="2"><title>Parity / Deterministic replay — Implemented — A recorded game of ours replays event for event from its draw log. This is determinism of our code, not parity.</title></rect>
+<rect class="c not_started" x="390.5" y="416.5" width="17" height="17" rx="2"><title>Parity / Evidence-backed parity tests — Not started</title></rect>
+<text class="pct" x="830" y="429">44%</text><text class="muted" x="876" y="429">4/9 · ✓0</text>
 <text class="lbl" x="24" y="460">Platforms</text>
 <g><title>Platforms / Windows — Partial — The app builds in debug and release and smoke-launches on the Windows host; the gate passes. Placeholder mode only.</title><rect class="c partial-o" x="206.5" y="447.5" width="17" height="17" rx="2"/><path class="partial-f" d="M206 447h9v18h-9z"/></g>
 <g><title>Platforms / Linux — Partial — Headless crates and tools build and test in CI; no app yet.</title><rect class="c partial-o" x="229.5" y="447.5" width="17" height="17" rx="2"/><path class="partial-f" d="M229 447h9v18h-9z"/></g>
 <g><title>Platforms / macOS — Partial — Headless crates and tools build and test in CI; no app yet.</title><rect class="c partial-o" x="252.5" y="447.5" width="17" height="17" rx="2"/><path class="partial-f" d="M252 447h9v18h-9z"/></g>
-<g><title>Platforms / Web / WASM — Partial — The app compiles for wasm32-unknown-unknown in the gate and in CI. Not yet bundled or run in a browser.</title><rect class="c partial-o" x="275.5" y="447.5" width="17" height="17" rx="2"/><path class="partial-f" d="M275 447h9v18h-9z"/></g>
+<g><title>Platforms / Web / WASM — Partial — The app is bundled for the browser by tools/dev/web.ps1 and checked in headless Edge: it starts, draws the placeholder banner, and a key press spins. Checked on the Windows host only; the bundle is 41 MB and is not optimised or hosted. Placeholder mode only.</title><rect class="c partial-o" x="275.5" y="447.5" width="17" height="17" rx="2"/><path class="partial-f" d="M275 447h9v18h-9z"/></g>
 <text class="pct" x="830" y="460">0%</text><text class="muted" x="876" y="460">0/4 · ✓0</text>
 <text class="lbl" x="24" y="491">Packaging</text>
-<g><title>Packaging / Source importer — Partial — Stage 1: loose files that already are standard media are copied into the asset set with their provenance and hashes. No container unpacking, no conversion, and no identification of what an asset is.</title><rect class="c partial-o" x="206.5" y="478.5" width="17" height="17" rx="2"/><path class="partial-f" d="M206 478h9v18h-9z"/></g>
+<g><title>Packaging / Source importer — Partial — Stages 1 and 2: standard media found loose, or as entries of ZIP-family archives, is taken into the asset set unchanged with its provenance and hashes; archive entries only when their size and CRC-32 verify, within a decompression budget. Dry-run on a held package read fourteen archives with no entry failing. No proprietary container is unpacked, nothing is converted, and nothing is identified as a particular asset.</title><rect class="c partial-o" x="206.5" y="478.5" width="17" height="17" rx="2"/><path class="partial-f" d="M206 478h9v18h-9z"/></g>
 <rect class="c implemented" x="229" y="478" width="18" height="18" rx="2"><title>Packaging / Asset manifest — Implemented — Logical id, source package and path, both hashes, media type, title, category, provenance class, confidence, method. Verified against files; exercised with synthetic files only.</title></rect>
 <g><title>Packaging / Local full-package workflow — Partial — dragonlink-pack verifies an asset set and assembles executable, assets and a do-not-distribute notice outside any Git tree. Exercised end to end with synthetic files; the application cannot display imported assets yet.</title><rect class="c partial-o" x="252.5" y="478.5" width="17" height="17" rx="2"/><path class="partial-f" d="M252 478h9v18h-9z"/></g>
 <g><title>Packaging / Public asset-free build — Partial — The app runs with no assets in a clearly labelled placeholder mode. No packaged release yet.</title><rect class="c partial-o" x="275.5" y="478.5" width="17" height="17" rx="2"/><path class="partial-f" d="M275 478h9v18h-9z"/></g>
@@ -215,7 +216,7 @@ text{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,san
 <g><title>Verified</title><rect class="c verified" x="24" y="516" width="18" height="18" rx="2"/><path class="mark" d="M27 525l4 4l7 -8"/></g>
 <text class="muted" x="48" y="527">Verified (0)</text>
 <rect class="c implemented" x="154" y="516" width="18" height="18" rx="2"><title>Implemented</title></rect>
-<text class="muted" x="178" y="527">Implemented (32)</text>
+<text class="muted" x="178" y="527">Implemented (33)</text>
 <g><title>Partial</title><rect class="c partial-o" x="312.5" y="516.5" width="17" height="17" rx="2"/><path class="partial-f" d="M312 516h9v18h-9z"/></g>
 <text class="muted" x="336" y="527">Partial (48)</text>
 <rect class="c investigating" x="442" y="516" width="18" height="18" rx="2"><title>Investigating</title></rect>

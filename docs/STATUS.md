@@ -170,16 +170,36 @@ shell runs the simulation on screen.
   build generation.
 - Next for this gap: read pays from the machine's line-win messages; a denser scan.
 
+### Three code lanes finished (2026-10-13)
+
+Each was started by a delegated agent that stopped part-way; each was reviewed, completed, tested
+and merged through the gate.
+
+- **Reading archives safely.** `dragonlink-formats` reads an entry of a ZIP-family archive, stored
+  or deflated, and returns only bytes whose size and CRC-32 verify and whose local header agrees
+  with the directory, within a per-archive decompression budget. `dragonlink-import` uses it for a
+  second stage: standard media inside archives. Tested on synthetic archives written byte by byte,
+  including bombs, lying sizes and every single-byte corruption of a small archive. A dry run on
+  the held mobile package read fourteen archives with no entry failing; nothing was imported.
+- **Replay of observed outcomes.** `dragonlink-trace` scripts the outcomes a trace shows through
+  the simulation and reports what the simulation then did differently
+  ([PARITY.md](PARITY.md), "Replay"). It is the tool an observation transcribed from footage will
+  be run through. It has only ever been given our own traces.
+- **The browser.** `tools/dev/web.ps1` bundles the placeholder shell for the web and checks it in a
+  headless browser: it starts, shows its placeholder banner, and spins on a key press
+  ([BUILDING.md](BUILDING.md), "The web bundle").
+
 ## Known limits of what exists
 
 - Every rule in the simulation is a generic slot-game rule, written down so it can be checked. None
   has been checked on an Australian machine.
 - The synthetic fixture is not Dragon Link: five lines, 24-stop strips, symbols `A` to `H`.
 - No free games, no progressive meters, no weighted stops, no attract or idle states.
-- The importer handles loose standard media only and identifies nothing. The application cannot
-  display imported assets.
+- The importer handles standard media that is loose or inside ZIP-family archives, and identifies
+  nothing. No proprietary container is unpacked. The application cannot display imported assets.
 - The application shows nothing of Golden Century. Its timing constants are ours, not measured.
-  It has not been run in a browser.
+  In a browser it has been checked on one host and one browser only.
+- Replay has never been given an observation of an original game: none has been transcribed.
 - The mathematics tooling has never seen a real configuration. Its model will need extending when
   one arrives ([reverse-engineering/math/CONFIGURATION.md](reverse-engineering/math/CONFIGURATION.md)).
 - Victorian approvals and most marketing-page findings were read once and are not yet re-checked.

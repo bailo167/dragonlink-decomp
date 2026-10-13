@@ -36,7 +36,7 @@ note = "Stage B: regulatory and official sources catalogued, official mobile sof
 id = "M2"
 name = "Import"
 status = "partial"
-note = "Stage C. Scanner, manifest, normalised layout and a repeatable first importer stage exist and are tested on synthetic files. No extraction from containers, and no real source material has been imported."
+note = "Stage C. Scanner, manifest, normalised layout and two importer stages (loose media, and media inside ZIP-family archives read within a budget) exist and are tested on synthetic files. No proprietary container is unpacked, and no real source material has been imported into an asset set."
 
 [[milestone]]
 id = "M3"
@@ -939,6 +939,12 @@ evidence = "crates/dragonlink-trace (compare; tests); tools/dragonlink-trace"
 note = "Event-by-event comparison that states what kind of comparison it is. Exercised on rewrite traces and on a rewrite relabelled as an observation; never on a real observation."
 
 [[category.item]]
+id = "observation-replay"
+name = "Replay of observed outcomes"
+status = "implemented"
+evidence = "crates/dragonlink-trace/src/replay.rs (tests); tools/dragonlink-trace (replay)"
+note = "The outcomes a trace shows are scripted through the simulation, so that what still differs is a difference in rules and not in luck; hidden choices and impossible observations are reported. Tested on rewrite traces relabelled as observations only: no observation of an original exists, and through the synthetic fixture a replay tests this machinery and nothing else."
+[[category.item]]
 id = "timing-comparison"
 name = "Timing comparison"
 status = "partial"
@@ -997,7 +1003,7 @@ note = "Headless crates and tools build and test in CI; no app yet."
 id = "web"
 name = "Web / WASM"
 status = "partial"
-note = "The app compiles for wasm32-unknown-unknown in the gate and in CI. Not yet bundled or run in a browser."
+note = "The app is bundled for the browser by tools/dev/web.ps1 and checked in headless Edge: it starts, draws the placeholder banner, and a key press spins. Checked on the Windows host only; the bundle is 41 MB and is not optimised or hosted. Placeholder mode only."
 
 # --------------------------------------------------------------------------
 # Packaging
@@ -1011,7 +1017,7 @@ name = "Packaging"
 id = "source-importer"
 name = "Source importer"
 status = "partial"
-note = "Stage 1: loose files that already are standard media are copied into the asset set with their provenance and hashes. No container unpacking, no conversion, and no identification of what an asset is."
+note = "Stages 1 and 2: standard media found loose, or as entries of ZIP-family archives, is taken into the asset set unchanged with its provenance and hashes; archive entries only when their size and CRC-32 verify, within a decompression budget. Dry-run on a held package read fourteen archives with no entry failing. No proprietary container is unpacked, nothing is converted, and nothing is identified as a particular asset."
 
 [[category.item]]
 id = "asset-manifest"

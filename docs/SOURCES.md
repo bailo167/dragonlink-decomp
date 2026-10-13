@@ -116,8 +116,15 @@ cargo run -p dragonlink-pack -- verify
 cargo run -p dragonlink-pack -- assemble --exe <built application> --out <folder outside Git>
 ```
 
-The importer's first stage copies only loose files that already are a standard media format. It
-does not unpack containers, and it does not know what a file is: an imported asset has the
+The importer takes only files that already are a standard media format, unchanged: found loose
+(stage 1), or found as entries of a ZIP-family archive such as an APK (stage 2). An archive entry
+is taken only when the archive's own record of it checks out (its local header agrees with the
+directory, it gives exactly the declared number of bytes, and they have the declared CRC-32), and
+reading runs within a budget, so a small archive cannot be made to fill a disk. An archive or entry
+that cannot be read is reported and passed over. Archives inside archives are not opened, encrypted
+entries are not decrypted, and no proprietary container is understood.
+
+The importer does not know what a file is: an imported asset has the
 category of its format, an id made from its hash, no title, and confidence UNKNOWN. The source
 class given on the command line is recorded on every asset, so mobile and cabinet material stay
 distinguishable. Importing twice changes nothing. An asset set and a local package hold

@@ -93,10 +93,10 @@ evidence about the original. Compiling, passing our own tests or looking right n
 | Happy & Prosperous | 15 | 1 | 0 | 7 | 6% | 0% |
 | Panda Magic | 15 | 1 | 0 | 7 | 6% | 0% |
 | Autumn Moon | 15 | 1 | 0 | 7 | 6% | 0% |
-| Parity | 8 | 3 | 0 | 2 | 37% | 0% |
+| Parity | 9 | 4 | 0 | 2 | 44% | 0% |
 | Platforms | 4 | 0 | 0 | 4 | 0% | 0% |
 | Packaging | 5 | 1 | 0 | 3 | 20% | 0% |
-| **Overall** | **149** | **32** | **0** | **68** | **21%** | **0%** |
+| **Overall** | **150** | **33** | **0** | **68** | **22%** | **0%** |
 
 <!-- progress-table:end -->
 
@@ -147,14 +147,15 @@ See [docs/SOURCES.md](docs/SOURCES.md).
 | `crates/dragonlink-formats` | Identify files by content, measure entropy, list ZIP-family packages. |
 | `tools/dragonlink-inventory`, `tools/dragonlink-inspect` | Create and check the private source root; hash and classify source material; measure one unknown file. |
 | `apps/dragonlink` | The Bevy application. Placeholder mode only so far. |
-| `crates/dragonlink-trace`, `tools/dragonlink-trace` | The behavioural trace format, recording and comparison. |
+| `crates/dragonlink-trace`, `tools/dragonlink-trace` | The behavioural trace format, recording, comparison, and replay of observed outcomes through the simulation. |
 | `crates/dragonlink-assets` | The asset manifest: ids, provenance, hashes, verification, discovery. |
 | `tools/dragonlink-import`, `tools/dragonlink-pack` | Import your own source material into a local asset set; verify it; assemble a local package. |
 | `tools/progress-gen` | Validates the tracker and renders the progress matrix and table above. |
 | `tools/repo-hygiene` | Refuses proprietary material, dumps, secrets and private paths. |
 
-Planned and tracked: unpacking containers, converting and identifying assets, and showing imported
-assets in the application.
+The importer reads standard media that is loose or inside ZIP-family archives. Planned and tracked:
+unpacking other containers, converting and identifying assets, and showing imported assets in the
+application. The application also builds for the browser (`tools/dev/web.ps1`), in placeholder mode.
 The application presents simulation events; it never decides an outcome or computes an award.
 Details: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 

@@ -66,9 +66,41 @@ cargo run -p dragonlink-trace-cli -- compare a.jsonl b.jsonl --timing-tolerance-
 | Parity | an observation against a rewrite on recovered mathematics | agreement with the original |
 | Between observations | two observations | agreement between recordings |
 
-Only the first can be produced today. The next step towards the others is replaying an
-observation's outcomes through the simulation with a scripted outcome source, so that rules are
-compared on the same outcomes; that is tracked under "Parity".
+Only the first can be produced today, because there is no observation of the original yet.
+
+### Replay
+
+Lined up against a free-running rewrite, an observation differs at the first reel: the two games
+were not dealt the same outcomes. `replay` removes that difference.
+
+```sh
+cargo run -p dragonlink-trace-cli -- replay observation.jsonl --model synthetic
+```
+
+It reads **only the outcomes** a trace shows (the window each reel stopped on, the value each
+prize symbol carried, where prize symbols landed on each respin, the bet), derives the draws that
+make the simulation produce them under the given model, runs them, and compares what the
+simulation emitted with the trace. Awards, credit movements, feature entry and counters are never
+used to steer it; they are what is being checked. What still differs is a difference in rules.
+
+A replay reports, and never papers over:
+
+- **hidden choices**: several stops of a strip showing the same window, or several table entries
+  carrying the same value. The lowest is scripted and the choice is listed;
+- **inconsistencies**: an observed window the model's strip does not contain, a value its table
+  cannot give, a reel that never stopped. Nothing from that point on is replayed, because that
+  would mean inventing an outcome;
+- **where the simulation could not follow**, when it refuses a command the trace implies.
+
+And it states which of these it was:
+
+| Kind | When | What it shows |
+|---|---|---|
+| Machinery only | through the synthetic fixture | that the replay tooling works. Nothing about any original game. **Not parity.** |
+| Rules under a model | through mathematics that is not evidence of the cabinet game's (a mobile-derived model) | our rules under that model's reels and tables. **Not parity** with the cabinet game |
+| Parity | through recovered cabinet mathematics | agreement of rules and event order **on the outcomes observed**. Nothing about how outcomes are distributed |
+
+It has been exercised only on our own traces relabelled as observations.
 
 ## Recordings
 

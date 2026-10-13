@@ -37,15 +37,15 @@
 | `crates/dragonlink-core` | exists | Deterministic simulation. Commands in, events out. |
 | `crates/dragonlink-math` | exists | Mathematics analysis of a game configuration: exact return and feature analysis, seeded simulation, progressive EV, comparison, reports. |
 | `tools/dragonlink-analyze` | exists | `analyze-game`, `compare-games`, `progressive-ev`, `simulate`. |
-| `crates/dragonlink-trace` | exists | Trace format shared by rewrite traces and transcribed observations; comparison. |
-| `crates/dragonlink-formats` | exists | File identification by content, entropy, listing of ZIP-family archives. |
+| `crates/dragonlink-trace` | exists | Trace format shared by rewrite traces and transcribed observations; comparison; replay of observed outcomes through the simulation. |
+| `crates/dragonlink-formats` | exists | File identification by content, entropy, listing of ZIP-family archives, and reading their entries verified and within a decompression budget. |
 | `crates/dragonlink-assets` | exists | Asset manifest, logical asset ids, verification, discovery of the asset set with a stated reason when there is none. |
 | `apps/dragonlink` | exists | The Bevy executable. Placeholder mode only: generated cells, synthetic fixture. |
 | `tools/dragonlink-inventory` | exists | Create and check the private source root; hash and classify everything under a source folder. |
 | `tools/dragonlink-inspect` | exists | Look at one unknown file: content type, hash, entropy profile, strings statistics, archive summary. Measurements only, no content. |
-| `tools/dragonlink-import` | exists | Source material → normalised asset set + manifest. Stage 1: loose standard media only. |
+| `tools/dragonlink-import` | exists | Source material → normalised asset set + manifest. Stages 1 and 2: standard media found loose or inside ZIP-family archives. |
 | `tools/dragonlink-pack` | exists | Verify an asset set and assemble a local full package outside Git. |
-| `tools/dragonlink-trace` | exists | Record, validate and compare traces from the command line. |
+| `tools/dragonlink-trace` | exists | Record, validate, compare and replay traces from the command line. |
 | `tools/progress-gen` | exists | Tracker validation and rendering. |
 | `tools/repo-hygiene` | exists | Refuses proprietary material, dumps, secrets, private paths. |
 | `tools/dev` | exists | Windows gate and host setup scripts. |
