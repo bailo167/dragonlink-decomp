@@ -5,23 +5,36 @@ in. Every substantive claim here carries a confidence label and a source
 (see [../EVIDENCE.md](../EVIDENCE.md)). The machine-checked form of the claims is in
 `crates/dragonlink-model/claims/`.
 
-**State on 2026-10-13: research has just started.** Documents are added as findings exist. A topic
-without a document has no findings yet; it is not hidden work.
+**State on 2026-10-13.** A first pass over public sources is written up. It establishes the
+titles' Australian approval identities and platform generations from regulators' records, and the
+player-visible feature rules from the manufacturer's own court filing. It establishes **no
+mathematics**: none is public. No original software or media is held yet.
 
 ## Index
 
 | Topic | Document | State |
 |---|---|---|
-| Open questions, in one place | `crates/dragonlink-model/claims/family.toml` and the per-title claim files | open questions recorded |
-| Cabinet and platform generations, version matrix | to be written | not started |
-| Regulatory sources and identifiers | to be written | research under way |
-| Official mobile reference software | to be written | not started |
-| Golden Century | to be written | research under way |
-| Happy & Prosperous · Panda Magic · Autumn Moon | to be written | not started |
+| Regulatory approvals, identifiers, the national standard | [REGULATORY.md](REGULATORY.md) | ACT and Victoria catalogued; other jurisdictions not found |
+| Cabinets, platforms, version matrix | [PLATFORMS.md](PLATFORMS.md) | three Australian generations established; launch cabinet unknown |
+| Hold & Spin, jackpots, free games | [FEATURES.md](FEATURES.md) | rules sourced for the US family; Australian builds unconfirmed |
+| Mathematics and analysis (a research lane of its own) | [math/](math/README.md) | no original mathematics held; method and tooling |
+| Official mobile reference software | [MOBILE_REFERENCE.md](MOBILE_REFERENCE.md) | apps identified from listings; nothing acquired |
+| Patents | [PATENTS.md](PATENTS.md) | core family summarised |
+| Reference footage | [REFERENCE_MEDIA.md](REFERENCE_MEDIA.md) | sources listed; nothing watched |
+| Conflicts, things not found, leads | [OPEN_QUESTIONS.md](OPEN_QUESTIONS.md) | current |
+| Golden Century | [GOLDEN_CENTURY.md](GOLDEN_CENTURY.md) | identity established; game details mostly unknown |
+| Happy & Prosperous | [HAPPY_AND_PROSPEROUS.md](HAPPY_AND_PROSPEROUS.md) | identity established |
+| Panda Magic | [PANDA_MAGIC.md](PANDA_MAGIC.md) | identity established |
+| Autumn Moon | [AUTUMN_MOON.md](AUTUMN_MOON.md) | identity established |
 | Asset formats (containers, textures, fonts, audio, animation) | to be written | not started; no material held |
-| Mathematics (reel data, paytables, outcome generation) | to be written | no source held |
-| Features (Hold & Spin, jackpots, free games) | to be written | research under way |
-| Game flow (state machines, timing) | to be written | not started |
+| Game flow (state machines, timing) | to be written | not started; needs recordings |
+
+## How findings are labelled here
+
+- **VERIFIED**: the passage was read in the primary document in two independent passes.
+- **STRONG EVIDENCE**: read once in a primary source, or several independent sources agree.
+- Tables say "twice" or "once" where it matters.
+- A statement about the **US** family is not a statement about an Australian build. Scope is given.
 
 ## How to add a finding
 
@@ -37,5 +50,5 @@ without a document has no findings yet; it is not hidden work.
 ## What does not belong here
 
 Original files, extracted assets, decompiler output, large raw dumps, recordings or screenshots of
-the original, machine-specific paths. Those stay in the private source root
+the original, recovered mathematics, machine-specific paths. Those stay in the private source root
 ([../SOURCES.md](../SOURCES.md)).

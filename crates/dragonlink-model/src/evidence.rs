@@ -53,6 +53,9 @@ pub enum SourceClass {
     OfficialMobile,
     /// The manufacturer's own published material (pages, brochures, videos, patents).
     OfficialMedia,
+    /// A filing or order in a court's public record. It verifies what the
+    /// document says; a party's allegation in it remains that party's statement.
+    CourtRecord,
     /// A recording of the original being played.
     GameplayRecording,
     /// Somebody else's observation or write-up.
@@ -73,6 +76,7 @@ impl SourceClass {
                 | SourceClass::Regulatory
                 | SourceClass::OfficialMobile
                 | SourceClass::OfficialMedia
+                | SourceClass::CourtRecord
                 | SourceClass::GameplayRecording
         )
     }
@@ -280,6 +284,8 @@ mod tests {
         assert!(SourceClass::Regulatory.is_cabinet_math_evidence());
         assert!(SourceClass::Cabinet.is_cabinet_math_evidence());
         assert!(!SourceClass::SyntheticFixture.is_cabinet_math_evidence());
+        assert!(SourceClass::CourtRecord.can_verify());
+        assert!(!SourceClass::CourtRecord.is_cabinet_math_evidence());
     }
 
     #[test]

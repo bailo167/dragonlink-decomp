@@ -93,3 +93,24 @@ are showcase images in `docs/images/`.
 
 **Why.** Nothing this project writes needs to be one of those formats; test fixtures are built in
 test code. Erring towards refusal costs nothing and removes a class of accident.
+
+## D-010 — Recovered mathematics stays out of the repository by default (2026-10-13)
+
+**Decision.** A math configuration recovered from proprietary software (reel strips, weights,
+probabilities, value tables, RTP models) is treated as proprietary material: it lives in the private
+source root and the tools read it from there. The repository holds the tools, the schema, the
+method, the synthetic fixture, player-visible facts (rules, pay tables, denominations) with their
+sources, and whatever further findings the owner explicitly decides to publish.
+
+**Why.** The court's order in *Aristocrat v. Light & Wonder* records Aristocrat asserting exactly
+this material as trade secrets, while noting that rules, denominations and pay tables are visible
+to players (`docs/reverse-engineering/math/EVIDENCE_STATE.md`). The project's standing rule is to
+err towards not publishing proprietary data. Publishing recovered mathematics would be a legal
+decision with real exposure, and it is the owner's to make with advice, not a default.
+
+**Consequence.** `dragonlink-analyze` and the runtime take a configuration by path. Nothing in the
+public build depends on a recovered configuration. Reports generated from one are written next to
+it, not into the work tree.
+
+**Open for the owner.** Whether derived, aggregate results (an RTP figure, a feature frequency)
+from a recovered configuration may be published is undecided. Until decided, they are not.

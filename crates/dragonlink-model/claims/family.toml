@@ -5,9 +5,290 @@
 #   * any other confidence     -> `value`, `source`, and (unless the source is our own
 #                                 "hypothesis") a `citation` with an `accessed` date.
 #   * "verified" needs a primary source class (cabinet, regulatory, official_mobile,
-#     official_media, gameplay_recording).
+#     official_media, court_record, gameplay_recording).
 #   * source = "hypothesis" is our own conjecture and stays at "hypothesis".
 # Labels are defined in docs/EVIDENCE.md. Prose and context: docs/reverse-engineering/.
+#
+# Convention used below: "verified" means the passage was read in the primary document in
+# two independent passes on the access date; "strong_evidence" on a primary source means it
+# was read once and has not been re-checked.
+#
+# `scope` matters. `cabinet-us` statements come from Aristocrat's US complaint and describe
+# the US Dragon Link family generically; whether each holds for the Australian builds of the
+# four titles is recorded separately in the per-title files.
+#
+# Citation keys:
+#   Complaint = Aristocrat Technologies, Inc. v. Light & Wonder, Inc., D. Nev. 2:24-cv-00382, ECF 1 (26 Feb 2024)
+#               https://storage.courtlistener.com/recap/gov.uscourts.nvd.167218/gov.uscourts.nvd.167218.1.0_1.pdf
+#   Order     = same case, ECF 125, order granting preliminary injunction (20 Sep 2024)
+#               https://storage.courtlistener.com/recap/gov.uscourts.nvd.167218/gov.uscourts.nvd.167218.125.0.pdf
+#   ACT NI    = ACT notifiable instrument under the Gaming Machine Act 2004,
+#               https://www.legislation.act.gov.au/DownloadFile/ni/<NI>/current/PDF/<NI>.PDF
+
+# ---------------------------------------------------------------------------
+# Structure (player-visible)
+# ---------------------------------------------------------------------------
+
+[[claim]]
+id = "structure.grid"
+statement = "Dragon Link uses a 3 x 5 reel grid: five reels, each with three visible symbol positions."
+value = "5 reels x 3 rows"
+confidence = "verified"
+source = "court_record"
+citation = "Complaint para 97"
+accessed = "2026-10-13"
+scope = "cabinet-us"
+note = "Aristocrat's own description of its game, in its complaint."
+
+[[claim]]
+id = "structure.symbol-classes"
+statement = "The symbol set comprises five royal symbols, four picture symbols, a scatter symbol, a wild symbol and a Hold & Spin bonus symbol."
+value = "5 royals, 4 pictures, scatter, wild, Hold & Spin bonus symbol"
+confidence = "verified"
+source = "court_record"
+citation = "Complaint para 98"
+accessed = "2026-10-13"
+scope = "cabinet-us"
+
+[[claim]]
+id = "structure.wild-reels"
+statement = "The substitute (wild) symbol can appear on reels 2, 3, 4 and 5 only."
+value = "reels 2-5"
+confidence = "verified"
+source = "court_record"
+citation = "Complaint para 100"
+accessed = "2026-10-13"
+scope = "cabinet-us"
+
+[[claim]]
+id = "structure.denominations-us"
+statement = "The US games are multi-denomination: 1 cent, 2 cents, 5 cents, 10 cents, $1 and $2."
+value = "1c, 2c, 5c, 10c, $1, $2"
+confidence = "verified"
+source = "court_record"
+citation = "Complaint para 97"
+accessed = "2026-10-13"
+scope = "cabinet-us"
+note = "Australian denomination values are not established; see the per-title files."
+
+[[claim]]
+id = "structure.paytable-varies-by-denomination"
+statement = "Pay tables differ between denominations."
+value = "the complaint quotes different figures for a 10-cent and a $1 pay table"
+confidence = "strong_evidence"
+source = "court_record"
+citation = "Complaint paras 100 and 102"
+accessed = "2026-10-13"
+scope = "cabinet-us"
+note = "Read once. The complaint does not name the title the figures come from, nor the unit. Figures are reproduced in docs/reverse-engineering/MATH.md as an unverified lead for any Australian title."
+
+# ---------------------------------------------------------------------------
+# Hold & Spin (player-visible rules)
+# ---------------------------------------------------------------------------
+
+[[claim]]
+id = "hold-and-spin.trigger"
+statement = "Six or more Hold & Spin bonus symbols (golden orbs) on a single base-game spin trigger the Hold & Spin feature."
+value = "6 or more"
+confidence = "verified"
+source = "court_record"
+citation = "Complaint paras 29 and 103; Order p. 2"
+accessed = "2026-10-13"
+scope = "cabinet-us"
+
+[[claim]]
+id = "hold-and-spin.respins"
+statement = "The feature awards three free games; the count resets to three each time a new orb lands."
+value = "3, reset to 3 on each new orb"
+confidence = "verified"
+source = "court_record"
+citation = "Complaint para 103; Order p. 2"
+accessed = "2026-10-13"
+scope = "cabinet-us"
+
+[[claim]]
+id = "hold-and-spin.hold"
+statement = "The triggering orbs are held in place on entering the feature, and any orb that lands during it is also held."
+value = "all orbs held"
+confidence = "verified"
+source = "court_record"
+citation = "Complaint para 103; Order p. 2"
+accessed = "2026-10-13"
+scope = "cabinet-us"
+
+[[claim]]
+id = "hold-and-spin.orb-contents"
+statement = "Each orb displays a prize amount or a bonus/jackpot name. At 1c to 10c denominations the amounts are credit prizes; at $1 and $2 they are dollar prizes."
+value = "credit prize, dollar prize, or bonus/jackpot name"
+confidence = "verified"
+source = "court_record"
+citation = "Complaint para 103"
+accessed = "2026-10-13"
+scope = "cabinet-us"
+
+[[claim]]
+id = "hold-and-spin.grand"
+statement = "Collecting fifteen orbs, every position of the grid, wins the Grand Jackpot."
+value = "15 orbs"
+confidence = "verified"
+source = "court_record"
+citation = "Complaint para 103"
+accessed = "2026-10-13"
+scope = "cabinet-us"
+
+[[claim]]
+id = "hold-and-spin.end"
+statement = "At the end of the feature the value of each held orb is counted into a win meter."
+value = "sum of held orb values"
+confidence = "verified"
+source = "court_record"
+citation = "Complaint para 103"
+accessed = "2026-10-13"
+scope = "cabinet-us"
+
+[[claim]]
+id = "hold-and-spin.separate-reels"
+statement = "The Hold & Spin feature uses reels and probabilities of its own, distinct from the base game's."
+value = "the Order treats 'hold & spin reels and probabilities' as a category separate from 'base game math'"
+confidence = "partial"
+source = "court_record"
+citation = "Order p. 7 (the four categories of asserted trade secrets)"
+accessed = "2026-10-13"
+scope = "cabinet-us"
+note = "An inference from how the court grouped the asserted trade secrets, not a statement of how the feature is built. Our simulation models the feature with one per-position chance; that is ours and unevidenced."
+
+# ---------------------------------------------------------------------------
+# Jackpots and bonuses
+# ---------------------------------------------------------------------------
+
+[[claim]]
+id = "jackpots.tiers"
+statement = "There are four prize levels named Grand Jackpot, Major Jackpot, Minor Bonus and Mini Bonus."
+value = "Grand Jackpot, Major Jackpot, Minor Bonus, Mini Bonus"
+confidence = "verified"
+source = "court_record"
+citation = "Complaint para 103"
+accessed = "2026-10-13"
+scope = "cabinet-us"
+
+[[claim]]
+id = "jackpots.link-label-au"
+statement = "The original Australian approvals describe each title as '(1 Link + 1 iSAP)' and require operation with a linked progressive jackpot system carrying the approved 'Dragon Link' jackpot settings."
+value = "1 Link + 1 iSAP; LPJS specification 1.YA002"
+confidence = "verified"
+source = "regulatory"
+citation = "ACT NI 2018-199 and NI 2018-200"
+accessed = "2026-10-13"
+scope = "cabinet-au"
+note = "The instruments do not define 'Link' or 'iSAP'."
+
+[[claim]]
+id = "jackpots.progressive-levels"
+statement = "Which of the four levels are progressive, and whether linked or standalone, in the Australian configuration."
+confidence = "unknown"
+note = "Leads that disagree by region: Aristocrat's Asia pages name Grand and Major as two top progressive prizes, its US and EMEA pages name only Grand, and the '1 Link + 1 iSAP' label suggests one linked and one standalone progressive. See docs/reverse-engineering/FEATURES.md."
+
+# ---------------------------------------------------------------------------
+# Free games
+# ---------------------------------------------------------------------------
+
+[[claim]]
+id = "free-games.trigger"
+statement = "Three or more scatter symbols trigger the free games feature."
+value = "3 or more scatters"
+confidence = "verified"
+source = "court_record"
+citation = "Complaint para 105"
+accessed = "2026-10-13"
+scope = "cabinet-us"
+
+# ---------------------------------------------------------------------------
+# Platform
+# ---------------------------------------------------------------------------
+
+[[claim]]
+id = "platform.gen8-base-software"
+statement = "The original Australian builds of the four titles are listed as suitable for operation with Aristocrat 'Gen8 BASE Software (System Software, Linux, OS, BIOS)'."
+value = "Gen8 BASE Software 51302007 (2019), later 51332002 and 51972000"
+confidence = "verified"
+source = "regulatory"
+citation = "ACT NI 2019-726; NI 2023-515 (51972000)"
+accessed = "2026-10-13"
+scope = "cabinet-au"
+note = "51302007 and 51972000 were re-read; 51332002 (NI 2020-507) was read once."
+
+[[claim]]
+id = "platform.base-os"
+statement = "The Gen8 base software is Linux-based."
+value = "Linux"
+confidence = "verified"
+source = "regulatory"
+citation = "ACT NI 2019-726 ('Gen8 BASE Software (System Software, Linux, OS, BIOS)'); NI 2018-199 ('Linux OS X507')"
+accessed = "2026-10-13"
+scope = "cabinet-au"
+
+[[claim]]
+id = "platform.helix-plus"
+statement = "The original builds were regression tested on platform 51972000 with Gen8.9 carrier tray assemblies on the Gen 8 Helix+ Upright Casino Top."
+value = "Gen 8 Helix+ Upright Casino Top"
+confidence = "verified"
+source = "regulatory"
+citation = "ACT NI 2023-831"
+accessed = "2026-10-13"
+scope = "cabinet-au"
+note = "A 2023 regression entry. It does not establish the cabinet of the original release."
+
+[[claim]]
+id = "platform.marsx"
+statement = "The 2024 builds were regression tested on the Gen9 Mars X Slant with Gen9 BASE Software."
+value = "Gen9 Mars X Slant"
+confidence = "verified"
+source = "regulatory"
+citation = "ACT NI 2024-704"
+accessed = "2026-10-13"
+scope = "cabinet-au"
+
+[[claim]]
+id = "platform.baron"
+statement = "The 2024-25 builds were regression tested on the Gen10 Baron platform."
+value = "Gen10 Baron / Gen 10 The Baron Upright, program identifiers 62002006 and 62022000"
+confidence = "verified"
+source = "regulatory"
+citation = "ACT NI 2025-459; NI 2025-630"
+accessed = "2026-10-13"
+scope = "cabinet-au"
+
+[[claim]]
+id = "platform.launch-cabinet-au"
+statement = "On which cabinet did the original Australian release ship?"
+confidence = "unknown"
+note = "The 2018 ACT approvals name no cabinet. 'Dragon Link shipped on Helix in Australia' is an inference, not a sourced fact."
+
+[[claim]]
+id = "platform.generation-differences"
+statement = "Do the generations of a title (for Golden Century: specification 1.HDG11, 1.HDG96, 1.HD129, and the 'Grand' 1.HD157) differ in mathematics or presentation?"
+confidence = "unknown"
+
+[[claim]]
+id = "platform.mobile-relationship"
+statement = "Do the official social-casino implementations share assets, presentation timing or mathematics with the cabinet versions?"
+confidence = "unknown"
+note = "Policy until evidence says otherwise: mobile is valid for presentation only (docs/EVIDENCE.md)."
+
+# ---------------------------------------------------------------------------
+# Mathematics
+# ---------------------------------------------------------------------------
+
+[[claim]]
+id = "math.not-public"
+statement = "Aristocrat treats the mathematical design as a trade secret and states that it is not publicly disclosed: reel strip layouts, hit rates, probabilities and return percentages, Hold & Spin calculations for every denomination, and Grand and Major jackpot hit rates and average prizes. Rules, denominations and pay tables are visible to players."
+value = "mathematics asserted as trade secret; rules, denominations and pay tables player-visible"
+confidence = "verified"
+source = "court_record"
+citation = "Order pp. 2 and 6-7"
+accessed = "2026-10-13"
+scope = "cabinet-us"
+note = "What the court's order records of Aristocrat's position and its witnesses' declarations. It is why the questions below are open, and why recovered mathematics is kept out of this repository by default (docs/DECISIONS.md D-010)."
 
 [[claim]]
 id = "math.reel-strips"
@@ -19,6 +300,7 @@ note = "No cabinet software, par sheet or regulatory math document is held. Offi
 id = "math.rtp"
 statement = "What is the theoretical return to player of each title, per denomination and jurisdiction?"
 confidence = "unknown"
+note = "No figure was found in any regulatory or official source. The national standard requires the machine's own information screen to show RTP or its range, which makes footage of that screen the most direct lawful source."
 
 [[claim]]
 id = "math.rng"
@@ -40,14 +322,3 @@ confidence = "unknown"
 id = "math.jackpot-odds"
 statement = "What are the odds of each jackpot level, and how do progressive levels increment and reset?"
 confidence = "unknown"
-
-[[claim]]
-id = "platform.cabinet-generation"
-statement = "On which Aristocrat cabinet and platform generations did the Australian releases of the four titles ship?"
-confidence = "unknown"
-
-[[claim]]
-id = "platform.mobile-relationship"
-statement = "Do the official social-casino implementations share assets, presentation timing or mathematics with the cabinet versions?"
-confidence = "unknown"
-note = "Policy until evidence says otherwise: mobile is valid for presentation only (docs/EVIDENCE.md)."
