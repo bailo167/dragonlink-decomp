@@ -1,16 +1,31 @@
-//! Listing ZIP-family archives (ZIP, APK, XAPK, OBB, JAR) from their central directory.
+//! Listing and reading ZIP-family archives (ZIP, APK, XAPK, OBB, JAR).
 //!
-//! Listing only: names, sizes, methods and checksums are read from the
-//! central directory; no entry is decompressed, so there is nothing to bomb.
-//! The reader does not see bytes outside the directory (an APK signing block,
+//! **Listing** ([`list_zip`]) reads names, sizes, methods and checksums from
+//! the central directory; no entry is decompressed, so there is nothing to
+//! bomb. It does not see bytes outside the directory (an APK signing block,
 //! data appended after the archive) and says so in [`ZipListing::limitations`].
 //!
+//! **Reading** an entry ([`extract_entry`], [`read_entry`],
+//! [`read_entry_prefix`]) decompresses it within an [`ExtractBudget`] and
+//! verifies its size and CRC-32; the `extract` module says how.
+//!
 //! Input is untrusted: every offset and length is checked against the file
-//! size and against explicit limits before it is used.
+//! size and against explicit limits before it is used, and an entry name is
+//! never a path until [`ZipEntry::safe_relative_path`] has said it can be one.
 
 use std::io::{Read, Seek, SeekFrom};
+use std::path::PathBuf;
 
 use serde::Serialize;
+
+mod extract;
+#[cfg(test)]
+pub(crate) mod synthetic;
+
+pub use extract::{
+    ExtractBudget, ExtractError, ExtractLimits, METHOD_DEFLATE, METHOD_STORED, extract_entry,
+    read_entry, read_entry_prefix,
+};
 
 /// Most entries a listing will return.
 pub const MAX_ENTRIES: usize = 200_000;
@@ -69,6 +84,28 @@ impl ZipEntry {
             || n.contains('\0')
             || n.chars().nth(1) == Some(':')
             || n.split(['/', '\\']).any(|part| part == "..")
+    }
+
+    /// The name as a relative path that stays inside the folder it is joined
+    /// to, or `None` when the name cannot be trusted to.
+    ///
+    /// `None` for every name [`ZipEntry::name_is_unsafe`] flags, for a name
+    /// with a `:` anywhere (a drive or an alternate data stream on Windows),
+    /// and for a name with no real component. Both `/` and `\` separate
+    /// components, whatever the platform; empty and `.` components are
+    /// dropped. This guards against leaving the folder, nothing more: it does
+    /// not make a name valid on every file system.
+    pub fn safe_relative_path(&self) -> Option<PathBuf> {
+        if self.name_is_unsafe() || self.name.contains(':') {
+            return None;
+        }
+        let mut path = PathBuf::new();
+        for part in self.name.split(['/', '\\']) {
+            if !part.is_empty() && part != "." {
+                path.push(part);
+            }
+        }
+        (!path.as_os_str().is_empty()).then_some(path)
     }
 }
 
@@ -205,44 +242,13 @@ mod tests {
     use super::*;
     use std::io::Cursor;
 
-    /// A ZIP archive of stored entries, built by hand. Checksums are left zero:
-    /// the reader lists and does not verify.
+    /// A ZIP archive of stored entries, built by hand (`synthetic`).
     fn build(entries: &[(&str, &[u8])], comment: &[u8]) -> Vec<u8> {
-        let mut out = Vec::new();
-        let mut directory = Vec::new();
-        for (name, data) in entries {
-            let offset = out.len() as u32;
-            out.extend_from_slice(b"PK\x03\x04");
-            out.extend_from_slice(&[20, 0, 0, 0, 0, 0, 0, 0, 0, 0]); // version, flags, method, time, date
-            out.extend_from_slice(&0u32.to_le_bytes()); // crc
-            out.extend_from_slice(&(data.len() as u32).to_le_bytes());
-            out.extend_from_slice(&(data.len() as u32).to_le_bytes());
-            out.extend_from_slice(&(name.len() as u16).to_le_bytes());
-            out.extend_from_slice(&0u16.to_le_bytes());
-            out.extend_from_slice(name.as_bytes());
-            out.extend_from_slice(data);
-
-            directory.extend_from_slice(b"PK\x01\x02");
-            directory.extend_from_slice(&[20, 0, 20, 0, 0, 0, 0, 0, 0, 0, 0, 0]); // versions, flags, method, time, date
-            directory.extend_from_slice(&0u32.to_le_bytes()); // crc
-            directory.extend_from_slice(&(data.len() as u32).to_le_bytes());
-            directory.extend_from_slice(&(data.len() as u32).to_le_bytes());
-            directory.extend_from_slice(&(name.len() as u16).to_le_bytes());
-            directory.extend_from_slice(&[0u8; 12]); // extra, comment, disk, attributes
-            directory.extend_from_slice(&offset.to_le_bytes());
-            directory.extend_from_slice(name.as_bytes());
-        }
-        let dir_offset = out.len() as u32;
-        out.extend_from_slice(&directory);
-        out.extend_from_slice(b"PK\x05\x06");
-        out.extend_from_slice(&[0, 0, 0, 0]);
-        out.extend_from_slice(&(entries.len() as u16).to_le_bytes());
-        out.extend_from_slice(&(entries.len() as u16).to_le_bytes());
-        out.extend_from_slice(&(directory.len() as u32).to_le_bytes());
-        out.extend_from_slice(&dir_offset.to_le_bytes());
-        out.extend_from_slice(&(comment.len() as u16).to_le_bytes());
-        out.extend_from_slice(comment);
-        out
+        let entries: Vec<_> = entries
+            .iter()
+            .map(|(name, data)| synthetic::Entry::stored(name, data))
+            .collect();
+        synthetic::archive(&entries, comment)
     }
 
     #[test]
@@ -302,6 +308,44 @@ mod tests {
         assert!(listing.entries[1].name_is_unsafe());
         assert!(!listing.entries[2].name_is_unsafe());
         assert_eq!(listing.limitations.len(), 3);
+    }
+
+    #[test]
+    fn a_name_becomes_a_path_only_when_it_cannot_leave_the_folder() {
+        let path_of = |name: &str| {
+            let zip = build(&[(name, b"x")], b"");
+            let listing = list_zip(&mut Cursor::new(&zip)).unwrap();
+            listing.entries[0].safe_relative_path()
+        };
+        assert_eq!(
+            path_of("assets/audio/win.ogg"),
+            Some(["assets", "audio", "win.ogg"].iter().collect())
+        );
+        // Empty and `.` components are dropped; a backslash separates too.
+        assert_eq!(
+            path_of("./a//b\\c.png"),
+            Some(["a", "b", "c.png"].iter().collect())
+        );
+        for hostile in [
+            "../outside",
+            "a/../../outside",
+            "a\\..\\..\\outside",
+            "/etc/passwd",
+            "\\\\server\\share",
+            "C:/Windows/x",
+            "C:relative",
+            "a/b:stream",
+            "nul\0.png",
+            "",
+            "./",
+            "//",
+        ] {
+            assert_eq!(path_of(hostile), None, "{hostile:?}");
+        }
+        // Joined to a folder, a safe path is still inside it.
+        let inside = std::path::Path::new("out").join(path_of("a/./b/c").unwrap());
+        assert!(inside.starts_with("out"));
+        assert_eq!(inside.components().count(), 4);
     }
 
     #[test]
