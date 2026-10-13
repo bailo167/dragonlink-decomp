@@ -35,7 +35,7 @@ use bevy::render::view::screenshot::{Screenshot, save_to_disk};
 use dragonlink_core::{Command, CreditReason, DevRng, Event, Game};
 use dragonlink_model::MathModel;
 use dragonlink_model::fixtures::{golden_century_synthetic, synthetic_dev_fixture};
-use dragonlink_model::{OrbValue, SymbolKind};
+use dragonlink_model::{JackpotTier, OrbValue, SymbolKind};
 
 /// Seconds between one reel stopping and the next. Presentation only; ours.
 const REEL_STOP_INTERVAL: f32 = 0.18;
@@ -74,6 +74,37 @@ impl GameChoice {
         }
     }
 }
+
+/// The denomination, purely for display: the simulation works in credits, and
+/// this says how much money one credit stands for. Changing it changes only
+/// the dollar figures shown, never play. These are simulation dollars and
+/// stand for no real money.
+#[derive(Resource, Default)]
+struct Denom {
+    index: usize,
+}
+
+/// Cents per credit for each denomination, cheapest first.
+const DENOM_CENTS: [u64; 5] = [1, 2, 5, 10, 100];
+
+impl Denom {
+    fn cents(&self) -> u64 {
+        DENOM_CENTS.get(self.index).copied().unwrap_or(1)
+    }
+
+    fn label(&self) -> String {
+        match self.cents() {
+            100 => "$1".to_string(),
+            c => format!("{c}c"),
+        }
+    }
+}
+
+/// `credits` of play money as dollars, given cents per credit.
+fn money(credits: u64, cents: u64) -> String {
+    let total = credits.saturating_mul(cents);
+    format!("${}.{:02}", total / 100, total % 100)
+}
 /// Frames before the end of a smoke run at which the screenshot is taken.
 const SCREENSHOT_FRAMES_BEFORE_END: u32 = 20;
 /// How long before that the run starts looking for a settled frame to picture.
@@ -85,8 +116,7 @@ const WEB_CANVAS: &str = "#dragonlink-canvas";
 
 /// The line under the meters until something has happened.
 #[cfg(not(target_arch = "wasm32"))]
-const CONTROLS_HINT: &str =
-    "Space: spin    Up/Down: bet    Left/Right: lines    Esc: quit    (features play themselves)";
+const CONTROLS_HINT: &str = "Space: spin   Up/Down: bet   Left/Right: lines   D: denomination   Esc: quit   (features play themselves)";
 /// The line under the meters until something has happened. A page has no
 /// window to close, so there is no key for quitting.
 #[cfg(target_arch = "wasm32")]
@@ -212,6 +242,11 @@ struct CellLabel {
 }
 
 #[derive(Component)]
+struct JackpotMeter {
+    tier: JackpotTier,
+}
+
+#[derive(Component)]
 struct HudText;
 
 #[derive(Component)]
@@ -253,18 +288,24 @@ fn orb_text(value: OrbValue) -> String {
     }
 }
 
-/// A generated colour for a symbol. Placeholder art: the colours mean nothing.
+/// A generated colour for a symbol. Placeholder art: the colours are ours, and
+/// stand in for artwork we do not have. They are not any game's colours.
 fn cell_color(kind: Option<SymbolKind>, key: &str) -> Color {
     match kind {
         Some(SymbolKind::Wild) => Color::srgb(0.55, 0.25, 0.65),
         Some(SymbolKind::Scatter) => Color::srgb(0.15, 0.50, 0.55),
         Some(SymbolKind::Orb) => Color::srgb(0.80, 0.60, 0.10),
         _ => {
+            // A distinct hue per symbol key, so the tiles read apart. Royals
+            // (short keys) are cooler, pictures (words) warmer.
             let n = key
                 .bytes()
-                .fold(0u32, |a, b| a.wrapping_mul(31).wrapping_add(b.into()));
-            let shade = 0.22 + (n % 5) as f32 * 0.05;
-            Color::srgb(shade, shade + 0.04, shade + 0.10)
+                .fold(0u32, |a, b| a.wrapping_mul(131).wrapping_add(b.into()));
+            let hue = (n % 360) as f32;
+            let picture = key.len() > 2;
+            let sat = if picture { 0.45 } else { 0.30 };
+            let light = if picture { 0.32 } else { 0.26 };
+            Color::hsl(hue, sat, light)
         }
     }
 }
@@ -272,10 +313,19 @@ fn cell_color(kind: Option<SymbolKind>, key: &str) -> Color {
 fn setup(mut commands: Commands, sim: Res<Sim>) {
     commands.spawn(Camera2d);
     let model = sim.game.model();
-    let banner = format!(
-        "PLACEHOLDER MODE - generated shapes, no original assets\n{}\nNot evidence of how any Dragon Link game looks or behaves.",
-        model.provenance.banner().replace('\u{2014}', "-")
-    );
+    let title = if model.id.starts_with("golden-century") {
+        "GOLDEN CENTURY"
+    } else {
+        "DRAGONLINK (synthetic fixture)"
+    };
+    let gold = Color::srgb(1.0, 0.80, 0.28);
+    let muted = Color::srgb(0.62, 0.66, 0.72);
+    let tiers = [
+        (JackpotTier::Grand, Color::srgb(0.85, 0.20, 0.25)),
+        (JackpotTier::Major, Color::srgb(0.25, 0.70, 0.35)),
+        (JackpotTier::Minor, Color::srgb(0.30, 0.55, 0.90)),
+        (JackpotTier::Mini, Color::srgb(0.90, 0.60, 0.20)),
+    ];
     commands
         .spawn(Node {
             width: Val::Percent(100.0),
@@ -283,30 +333,75 @@ fn setup(mut commands: Commands, sim: Res<Sim>) {
             flex_direction: FlexDirection::Column,
             align_items: AlignItems::Center,
             justify_content: JustifyContent::Center,
-            row_gap: Val::Px(14.0),
+            row_gap: Val::Px(12.0),
             ..default()
         })
         .with_children(|root| {
+            // Title.
             root.spawn((
-                Text::new(banner),
+                Text::new(title),
                 TextFont {
-                    font_size: FontSize::Px(16.0),
+                    font_size: FontSize::Px(34.0),
                     ..default()
                 },
-                TextColor(Color::srgb(1.0, 0.78, 0.25)),
-                TextLayout::justify(Justify::Center),
+                TextColor(gold),
             ));
+            // Jackpot bar.
             root.spawn(Node {
                 flex_direction: FlexDirection::Row,
-                column_gap: Val::Px(8.0),
+                column_gap: Val::Px(10.0),
                 ..default()
             })
+            .with_children(|bar| {
+                for (tier, colour) in tiers {
+                    bar.spawn((
+                        Node {
+                            width: Val::Px(150.0),
+                            padding: UiRect::all(Val::Px(6.0)),
+                            flex_direction: FlexDirection::Column,
+                            align_items: AlignItems::Center,
+                            row_gap: Val::Px(2.0),
+                            ..default()
+                        },
+                        BackgroundColor(colour.with_alpha(0.22)),
+                    ))
+                    .with_children(|box_| {
+                        box_.spawn((
+                            Text::new(format!("{tier:?}").to_uppercase()),
+                            TextFont {
+                                font_size: FontSize::Px(14.0),
+                                ..default()
+                            },
+                            TextColor(colour),
+                        ));
+                        box_.spawn((
+                            JackpotMeter { tier },
+                            Text::new("-"),
+                            TextFont {
+                                font_size: FontSize::Px(18.0),
+                                ..default()
+                            },
+                            TextColor(Color::WHITE),
+                        ));
+                    });
+                }
+            });
+            // Reels, on a framed panel.
+            root.spawn((
+                Node {
+                    flex_direction: FlexDirection::Row,
+                    column_gap: Val::Px(6.0),
+                    padding: UiRect::all(Val::Px(8.0)),
+                    ..default()
+                },
+                BackgroundColor(Color::srgb(0.06, 0.07, 0.10)),
+            ))
             .with_children(|reels| {
                 for reel in 0..model.grid.reels {
                     reels
                         .spawn(Node {
                             flex_direction: FlexDirection::Column,
-                            row_gap: Val::Px(8.0),
+                            row_gap: Val::Px(6.0),
                             ..default()
                         })
                         .with_children(|column| {
@@ -315,8 +410,8 @@ fn setup(mut commands: Commands, sim: Res<Sim>) {
                                     .spawn((
                                         Cell { reel, row },
                                         Node {
-                                            width: Val::Px(112.0),
-                                            height: Val::Px(96.0),
+                                            width: Val::Px(116.0),
+                                            height: Val::Px(100.0),
                                             align_items: AlignItems::Center,
                                             justify_content: JustifyContent::Center,
                                             ..default()
@@ -339,15 +434,17 @@ fn setup(mut commands: Commands, sim: Res<Sim>) {
                         });
                 }
             });
+            // Meters.
             root.spawn((
                 HudText,
                 Text::new(""),
                 TextFont {
-                    font_size: FontSize::Px(20.0),
+                    font_size: FontSize::Px(22.0),
                     ..default()
                 },
                 TextColor(Color::WHITE),
             ));
+            // Status line.
             root.spawn((
                 StatusText,
                 Text::new(CONTROLS_HINT),
@@ -355,7 +452,20 @@ fn setup(mut commands: Commands, sim: Res<Sim>) {
                     font_size: FontSize::Px(15.0),
                     ..default()
                 },
-                TextColor(Color::srgb(0.75, 0.78, 0.82)),
+                TextColor(muted),
+            ));
+            // Compact, persistent disclaimer (docs/LEGAL.md).
+            root.spawn((
+                Text::new(
+                    "Synthetic reimplementation - generated art, invented maths. Not Dragon Link, \
+not evidence of any real game, simulation credits only (no real money).",
+                ),
+                TextFont {
+                    font_size: FontSize::Px(13.0),
+                    ..default()
+                },
+                TextColor(Color::srgb(0.80, 0.62, 0.20)),
+                TextLayout::justify(Justify::Center),
             ));
         });
 }
@@ -367,8 +477,13 @@ fn input(
     smoke: Res<Smoke>,
     mut sim: ResMut<Sim>,
     mut presentation: ResMut<Presentation>,
+    mut denom: ResMut<Denom>,
     mut exit: MessageWriter<AppExit>,
 ) {
+    // Denomination (display only) cycles with D, while idle.
+    if keys.just_pressed(KeyCode::KeyD) && sim.game.is_idle() && presentation.queue.is_empty() {
+        denom.index = (denom.index + 1) % DENOM_CENTS.len();
+    }
     // In a browser, leaving the event loop would only freeze the page.
     if cfg!(not(target_arch = "wasm32")) && keys.just_pressed(KeyCode::Escape) {
         exit.write(AppExit::Success);
@@ -683,30 +798,47 @@ fn present(
     }
 }
 
+#[allow(clippy::type_complexity)]
 fn hud(
     sim: Res<Sim>,
     presentation: Res<Presentation>,
+    denom: Res<Denom>,
     mut hud: Single<&mut Text, (With<HudText>, Without<StatusText>)>,
     mut status: Single<&mut Text, (With<StatusText>, Without<HudText>)>,
+    mut meters: Query<(&JackpotMeter, &mut Text), (Without<HudText>, Without<StatusText>)>,
 ) {
     let game = &sim.game;
+    let cents = denom.cents();
+    let state = if !presentation.queue.is_empty() {
+        "SPINNING"
+    } else if game.is_idle() {
+        "READY"
+    } else {
+        "FEATURE"
+    };
     hud.0 = format!(
-        "CREDITS {}     BET {} ({} x {} lines)     WIN {}     {}",
+        "CREDITS {} ({})     {}  BET {} ({} x {} lines)     WIN {}     {state}",
         presentation.shown_credits,
-        game.total_bet(),
+        money(presentation.shown_credits, cents),
+        denom.label(),
+        money(game.total_bet(), cents),
         game.credits_per_line(),
         game.lines(),
-        presentation.shown_win,
-        if !presentation.queue.is_empty() {
-            "SPINNING"
-        } else if game.is_idle() {
-            "READY"
-        } else {
-            "FEATURE"
-        }
+        money(presentation.shown_win, cents),
     );
     if !presentation.status.is_empty() {
         status.0.clone_from(&presentation.status);
+    }
+    // Jackpot meters: synthetic fixed amounts for the current bet.
+    let total_bet = game.total_bet();
+    for (meter, mut text) in &mut meters {
+        let amount = game
+            .model()
+            .hold_and_spin
+            .as_ref()
+            .and_then(|hs| hs.jackpots.iter().find(|j| j.tier == meter.tier))
+            .map(|j| u64::from(j.total_bet_multiple).saturating_mul(total_bet));
+        text.0 = amount.map_or_else(|| "-".to_string(), |c| money(c, cents));
     }
 }
 
@@ -817,6 +949,7 @@ fn main() -> AppExit {
             shown_credits: cli.credits,
             ..default()
         })
+        .insert_resource(Denom::default())
         .insert_resource(ReelAnim::default())
         .insert_resource(Smoke {
             frames_left: cli.smoke_frames,
