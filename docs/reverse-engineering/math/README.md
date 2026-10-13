@@ -33,6 +33,23 @@ The aim is to sort every belief about these games into one of: **myth · mathema
 observation · configuration difference · genuine state-dependent behaviour · genuine expected-value
 difference · implementation quirk · defect**.
 
+## The ladder
+
+Where a configuration comes from, in order of preference (DECISIONS D-013):
+
+| Rung | Source | Result | Provenance of its constants |
+|---|---|---|---|
+| 1 | Cabinet-side evidence: litigation exhibits, regulatory material, patents, research, lawfully held cabinet software | exact where found | `extracted`, `regulatory`, `derived` |
+| 2 | The official mobile app, analysed on the device | exact for the mobile implementation | `official_mobile` |
+| 3 | The official mobile app, observed over very many automated spins | reel strips assembled exactly from stopped windows where strips are fixed; weights and feature probabilities estimated with intervals | `inferred_statistically`, scope mobile |
+
+A rung is used only as far as the one above fails, and a configuration never hides which rung each
+constant came from. A model from rung 2 or 3 is a mobile model: the closest authentic
+implementation, compared with cabinet evidence wherever cabinet evidence exists.
+
+**The one thing that may never be shown:** that the hidden probabilities are, number for number,
+the Australian cabinet's. Only genuine cabinet software or configuration settles that.
+
 ## Method
 
 1. **Exact over simulated.** Where a configuration is complete, quantities are computed exactly:

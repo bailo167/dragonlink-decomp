@@ -316,6 +316,18 @@ status = "not_started"
 note = "Every stop is equally likely in the current model."
 
 [[category.item]]
+id = "strip-reconstruction"
+name = "Reel-strip reconstruction from observed windows"
+status = "not_started"
+note = "Assemble strips exactly from overlapping stopped windows; estimate stop weighting with intervals. Rung 3 of the ladder (DECISIONS D-013)."
+
+[[category.item]]
+id = "automated-collection"
+name = "Automated spin collection from the official mobile app"
+status = "not_started"
+note = "Only needed if mobile outcomes are decided server-side. Needs the app installed (BLOCKERS B-003)."
+
+[[category.item]]
 id = "capture-validation"
 name = "Statistical validation against captured gameplay"
 status = "not_started"

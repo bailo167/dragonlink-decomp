@@ -156,3 +156,37 @@ count define the picture, which is what a visual comparison will need.
 
 **Timing constants are ours.** Reel-stop and event intervals in the application were chosen so the
 sequence can be followed. They were not measured on an original machine and are labelled so.
+
+## D-013 — The mathematics is pursued down a ladder; only one thing can stay unproven (2026-10-13)
+
+**Decision (the owner's).** No lane waits on cabinet software. The mathematics is pursued in this
+order, each rung used only as far as the one above it fails:
+
+1. **Cabinet-side evidence from lawful public sources**: litigation exhibits, regulatory material,
+   patents, research, and any cabinet software the owner lawfully comes to hold. Exact where found.
+2. **The official mobile implementation, analysed locally**: whatever the installed app implements
+   on the device (tables, reels, pay logic, assets) is recovered from it directly. It is the
+   closest authentic implementation available.
+3. **The official mobile implementation, observed**: if outcomes are decided on a server, spins are
+   collected automatically in large numbers and the observable model is reconstructed. Reel strips
+   are assembled exactly from overlapping stopped windows where the game uses fixed strips; stop
+   weighting and feature probabilities are estimated, with intervals.
+
+**What can remain unproven forever:** that the hidden probabilities of the result are, number for
+number, those of the Australian cabinet. Only genuine cabinet software or configuration can show
+that. Everything else has a path.
+
+**What does not change.**
+- A model from rung 2 or 3 is a *mobile* model. Its provenance is `official_mobile` (rung 2) or
+  `inferred_statistically` with scope `mobile` (rung 3) on every constant, its reports say so, and
+  it is compared with cabinet evidence, never presented as it (EVIDENCE.md rule 4, D-002, D-010).
+- Estimates carry their sample size and interval and keep the class `inferred_statistically`
+  until replaced by an extracted value. Rare events (the top jackpot) are reported with the width
+  their rarity gives them, not with false precision.
+- Player-visible facts about the cabinet game (rules, pay tables, bet structure) come from cabinet
+  footage and documents, and are used to test a mobile-derived model: where the mobile game's
+  visible rules differ from the cabinet's, that difference is a finding.
+
+**Risk noted.** Automated play of the mobile app is very likely against its terms of service and
+may cost the account used. That is the owner's decision; an account kept for the purpose is used.
+Collection runs on the owner's own machines against the owner's own account and nothing else.

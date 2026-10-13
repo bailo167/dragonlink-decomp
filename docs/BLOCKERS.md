@@ -65,6 +65,12 @@ evidence pass. It returns here only as a narrowed entry naming exactly what coul
   Lightning Link and Dragon Link platform research.
 - **Limit:** material that exists publicly but could only be obtained by taking pirated cabinet
   software is recorded as a lead and not obtained.
+- **Path if that comes up empty:** the official mobile implementation, first analysed locally,
+  then, if outcomes are decided server-side, observed through automated collection and
+  reconstructed (DECISIONS D-013). So this lane is not blocked.
+- **The only residue that can stay open:** proof that the hidden probabilities are those of the
+  Australian cabinet. That needs genuine cabinet software or configuration and nothing else settles
+  it. It is recorded as a known limit of the result, not as work waiting on anyone.
 
 ### B-004 (withdrawn) — Player-visible rules, pay tables and game information
 
