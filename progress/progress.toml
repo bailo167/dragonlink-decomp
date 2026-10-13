@@ -572,7 +572,7 @@ note = "Symbol set described from Australian play in public footage; roles of sc
 id = "paytable"
 name = "Paytable"
 status = "partial"
-note = "Sixteen pay-table entries read from win messages in one transcribed Australian session, and one entry seen to differ between $1 and the cent denominations (docs/reverse-engineering/GOLDEN_CENTURY_SESSION.md). Incomplete; no rules screen found; messages read once."
+note = "Sixteen pay-table entries read from win messages in one transcribed Australian session, one of them differing between $1 and the cent denominations, and checked against a separate reading of the credit meter: 221 of 221 $1 games paid exactly what they give (docs/reverse-engineering/GOLDEN_CENTURY_SESSION.md). Incomplete; no rules screen found."
 
 [[category.item]]
 id = "bets"

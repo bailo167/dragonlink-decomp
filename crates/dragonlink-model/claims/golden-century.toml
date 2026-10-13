@@ -156,7 +156,7 @@ source = "gameplay_recording"
 citation = "Public recording, YouTube id y8c8lEdPW8Y, read game by game; times and counts in docs/reverse-engineering/GOLDEN_CENTURY_SESSION.md"
 accessed = "2026-10-13"
 scope = "cabinet-au, Queensland club, one session on one machine"
-note = "Win messages were read once by one reader; the windows they are checked against were read twice. Sixteen combinations were seen and the table is incomplete: no pay for the nine, no five of a kind for a royal, nothing for four of a chest or vase. Entries seen once: two women for 5, 4 and 3; chest for 5; queen; jack for 4. All four pictures pay for two of a kind, so this is not the US pay table of the other three titles. No rules or pay-table screen for this title has been found in any recording."
+note = "Win messages were read once by one reader; the windows they are checked against were read twice. Checked against a separate reading of the credit meter: all 221 $1 base games that began within five and a half seconds of the one before paid exactly what these entries and the line shapes give, 46 of them something and 175 nothing; a pair of royals pays nothing (35 occurrences); three nines pay 5 (one game, from the meter alone). The table is incomplete: no five of a kind for a royal, nothing for four of a chest or vase. Entries seen once: two women for 5, 4 and 3; chest for 5; queen; jack for 4. All four pictures pay for two of a kind, so this is not the US pay table of the other three titles. No rules or pay-table screen for this title has been found in any recording."
 
 [[claim]]
 id = "paytable.varies-by-denomination"

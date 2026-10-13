@@ -225,7 +225,8 @@ and merged through the gate.
 - **The $1 game is a different configuration from the 1c to 10c games** on that machine: different
   reels, and one pay seen to differ. Changing the number of lines does not change the reels.
 - Reel strips do not assemble yet. More sessions are the remedy; the tooling takes them.
-- What each game paid in total is being derived from the credit meter, to check the entries.
+- The entries were checked against a separate reading of the credit meter: all 221 $1 games that
+  could be checked paid exactly what the entries and line shapes give.
 
 ## Known limits of what exists
 

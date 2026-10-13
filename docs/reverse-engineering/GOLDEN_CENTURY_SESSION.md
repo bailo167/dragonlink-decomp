@@ -33,7 +33,7 @@ finding about how the game differs between denominations. Read 2026-10-13.
 | Positions left unread in the final sheet | 9, in three games, all blanked by a win animation at the moment of the still |
 | Prize-symbol values read | 664; every one is a whole multiple of the game's total bet |
 
-What a single reader saw, and nobody has re-read: the win messages, and the meters.
+What a single reader saw, and nobody has re-read: the win messages, and the meters. They were read by different readers from different frames, and the two are checked against each other below.
 
 ## What the session shows about the game
 
@@ -104,8 +104,38 @@ of the first in the recording. An empty cell means no message was seen, not that
   the top picture does ([FOOTAGE.md](FOOTAGE.md)). So Golden Century's Australian pay table is not
   that table.
 - Three scatters pay twice the total bet (one observation, 10c; [FOOTAGE.md](FOOTAGE.md)).
-- Not seen: any pay for the nine, any five-of-a-kind for a royal, the scatter for four or five, and
-  any pay made up of wilds alone.
+- Not seen: any five-of-a-kind for a royal, the scatter for four or five, and any pay made up of
+  wilds alone.
+
+### The entries checked against the credit meter
+
+The entries above come from messages, read once. They were then tested against something read
+separately, by another reader, from other frames: the credit meter just after each game began. At
+that instant every earlier win has been added and the new bet taken, so what a game paid is the
+credit after it, plus the next bet, less the credit before it. No win message and no win meter is
+involved.
+
+For every $1 base game with one credit per line that began within five and a half seconds of the
+one before (too soon for a game to have been missed in between), the pays on lines 1 to 5 were
+worked out from the window, the line shapes and the entries, and compared with what the meter says
+the game paid.
+
+| | Games |
+|---|---|
+| Checked | 221 |
+| Paid exactly what the entries give | **221** |
+| of which paid something | 46 |
+| of which paid nothing, as the entries say | 175 |
+
+- So the line shapes and the entries that occurred in those games are confirmed by a second,
+  independent reading: two women for 2, chest for 2 and 3, vase for 2 and 3, warriors for 2 (at
+  $1), king, queen, jack and ten for 3, jack and ten for 4.
+- **A pair of royals pays nothing.** Pairs of nines, tens, jacks, queens and kings from the left
+  reel occurred 35 times in games that paid nothing.
+- **Three nines pay 5**: one game, from the meter alone. PARTIAL.
+- Seventeen further games began more than five and a half seconds after the one before. Fourteen
+  of them are not explained, and every one of those follows a gap of seven seconds or more: a game
+  the detector missed sits in between, and its bet and win are in the difference.
 
 ### The pay table differs between $1 and the cent denominations
 
@@ -190,8 +220,8 @@ read twice, convert, reconstruct.
 - One session, one machine, one evening. Nothing here says the next machine is configured the same.
 - The win messages and meters were read once. A message is one of several the machine cycles
   through, so a game's whole win is often more than the one message read.
-- What each game paid in total has not been derived yet: the credit meter is being read at a fixed
-  instant after each game for that, and the result will be checked against the entries above.
-- The detector missed some games (the credit meter shows where), so the session is not a complete
-  account and no return figure can be taken from it.
+- What each game paid is derived from the credit meter for $1 games only. At the cent
+  denominations 25 and 50 lines are played and only five line shapes are known.
+- The detector missed some games (the credit meter shows where: fourteen places in the $1 play
+  alone), so the session is not a complete account and no return figure can be taken from it.
 - The build generation is unknown.
