@@ -37,7 +37,7 @@
 | `crates/dragonlink-core` | exists | Deterministic simulation. Commands in, events out. |
 | `crates/dragonlink-math` | exists | Mathematics analysis of a game configuration: exact return and feature analysis, seeded simulation, progressive EV, comparison, reports. |
 | `tools/dragonlink-analyze` | exists | `analyze-game`, `compare-games`, `progressive-ev`, `simulate`. |
-| `crates/dragonlink-trace` | planned | Trace format shared by rewrite traces and transcribed observations; comparison. |
+| `crates/dragonlink-trace` | exists | Trace format shared by rewrite traces and transcribed observations; comparison. |
 | `crates/dragonlink-formats` | exists | File identification by content, entropy, listing of ZIP-family archives. |
 | `crates/dragonlink-assets` | planned | Asset manifest, logical asset ids, discovery of the asset set, placeholder mode. |
 | `apps/dragonlink` | exists | The Bevy executable. Placeholder mode only: generated cells, synthetic fixture. |
@@ -45,7 +45,7 @@
 | `tools/dragonlink-inspect` | planned | Look at one unknown file: signature, entropy profile, structure. |
 | `tools/dragonlink-import` | planned | Source material → normalised asset set + manifest. |
 | `tools/dragonlink-pack` | planned | Validate an asset set and assemble a local full package. |
-| `tools/dragonlink-trace` | planned | Produce, validate and compare traces from the command line. |
+| `tools/dragonlink-trace` | exists | Record, validate and compare traces from the command line. |
 | `tools/progress-gen` | exists | Tracker validation and rendering. |
 | `tools/repo-hygiene` | exists | Refuses proprietary material, dumps, secrets, private paths. |
 | `tools/dev` | exists | Windows gate and host setup scripts. |

@@ -6,7 +6,9 @@ members = [
     "crates/dragonlink-core",
     "crates/dragonlink-math",
     "crates/dragonlink-formats",
+    "crates/dragonlink-trace",
     "tools/dragonlink-analyze",
+    "tools/dragonlink-trace",
     "tools/dragonlink-inventory",
     "tools/progress-gen",
     "tools/repo-hygiene",
@@ -19,7 +21,9 @@ default-members = [
     "crates/dragonlink-core",
     "crates/dragonlink-math",
     "crates/dragonlink-formats",
+    "crates/dragonlink-trace",
     "tools/dragonlink-analyze",
+    "tools/dragonlink-trace",
     "tools/dragonlink-inventory",
     "tools/progress-gen",
     "tools/repo-hygiene",
@@ -39,6 +43,7 @@ dragonlink-model = { path = "crates/dragonlink-model" }
 dragonlink-core = { path = "crates/dragonlink-core" }
 dragonlink-math = { path = "crates/dragonlink-math" }
 dragonlink-formats = { path = "crates/dragonlink-formats" }
+dragonlink-trace = { path = "crates/dragonlink-trace" }
 
 # External (pinned exactly; bump deliberately, one at a time)
 bevy = { version = "=0.20.0", default-features = false }

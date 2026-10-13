@@ -80,6 +80,14 @@ shell runs the simulation on screen.
   from the built-in font, the meter showing a win before the reels had landed, and the previous
   spin's result lingering on reels still in motion.
 
+### Traces (2026-10-13)
+
+- `dragonlink-trace`: one JSON Lines format for rewrite traces and transcribed observations,
+  validation that refuses mislabelled headers, and an event-by-event comparison with timing
+  statistics that says whether it was a determinism check, a structural comparison, parity, or a
+  comparison between observations. The command-line tool records, validates and compares.
+- Only determinism checks are possible so far: there is no observation of the original.
+
 ## Known limits of what exists
 
 - Every rule in the simulation is a generic slot-game rule, written down so it can be checked. None
@@ -94,7 +102,8 @@ shell runs the simulation on screen.
 
 ## Next
 
-1. `dragonlink-trace`: the trace format, a rewrite-trace producer and the comparison tool.
+1. Replay an observation's outcomes through the simulation (scripted outcome source), so rules can
+   be compared on the same outcomes once a recording is transcribed.
 2. `dragonlink-assets`, `dragonlink-import`, `dragonlink-pack`: manifest, first importer stage,
    local package validation.
 3. Bundle and run the web build in a browser.

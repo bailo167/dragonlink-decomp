@@ -93,10 +93,10 @@ evidence about the original. Compiling, passing our own tests or looking right n
 | Happy & Prosperous | 15 | 0 | 0 | 1 | 0% | 0% |
 | Panda Magic | 15 | 0 | 0 | 1 | 0% | 0% |
 | Autumn Moon | 15 | 0 | 0 | 1 | 0% | 0% |
-| Parity | 8 | 1 | 0 | 0 | 12% | 0% |
+| Parity | 8 | 3 | 0 | 1 | 37% | 0% |
 | Platforms | 4 | 0 | 0 | 4 | 0% | 0% |
 | Packaging | 5 | 0 | 0 | 2 | 0% | 0% |
-| **Overall** | **146** | **21** | **0** | **36** | **14%** | **0%** |
+| **Overall** | **146** | **23** | **0** | **37** | **15%** | **0%** |
 
 <!-- progress-table:end -->
 
@@ -147,11 +147,11 @@ See [docs/SOURCES.md](docs/SOURCES.md).
 | `crates/dragonlink-formats` | Identify files by content, measure entropy, list ZIP-family packages. |
 | `tools/dragonlink-inventory` | Create and check the private source root; hash and classify source material. |
 | `apps/dragonlink` | The Bevy application. Placeholder mode only so far. |
+| `crates/dragonlink-trace`, `tools/dragonlink-trace` | The behavioural trace format, recording and comparison. |
 | `tools/progress-gen` | Validates the tracker and renders the progress matrix and table above. |
 | `tools/repo-hygiene` | Refuses proprietary material, dumps, secrets and private paths. |
 
-Planned and tracked: the trace format and comparison tools, the inspection, import and packaging
-tools, and the asset manifest.
+Planned and tracked: the inspection, import and packaging tools, and the asset manifest.
 The application presents simulation events; it never decides an outcome or computes an award.
 Details: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 

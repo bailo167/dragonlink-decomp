@@ -2623,6 +2623,29 @@ dependencies = [
 ]
 
 [[package]]
+name = "dragonlink-trace"
+version = "0.0.1"
+dependencies = [
+ "dragonlink-core",
+ "dragonlink-model",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.21",
+]
+
+[[package]]
+name = "dragonlink-trace-cli"
+version = "0.0.1"
+dependencies = [
+ "anyhow",
+ "clap",
+ "dragonlink-model",
+ "dragonlink-trace",
+ "serde_json",
+ "tempfile",
+]
+
+[[package]]
 name = "either"
 version = "1.19.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
