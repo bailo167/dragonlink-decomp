@@ -1,7 +1,8 @@
 # What public footage shows
 
-Findings read from public recordings of machines being played: Happy & Prosperous, Panda Magic and
-Autumn Moon. (Golden Century's pass is reported separately when it completes.) Read 2026-10-13.
+Findings read from public recordings of machines being played, for all four titles. Golden Century
+has [its own section](#golden-century); the sections before it cover Happy & Prosperous, Panda Magic
+and Autumn Moon. Read 2026-10-13.
 
 The recordings are source material, kept privately with their hashes; this page holds what was read
 from them, with the video and timestamp for each item. Video references are YouTube identifiers:
@@ -9,13 +10,14 @@ from them, with the video and timestamp for each item. Video references are YouT
 
 ## How this was done, and its limits
 
-- About 150 to 170 videos per title were scanned through their preview storyboards (one small
+- About 150 to 175 videos per title were scanned through their preview storyboards (one small
   frame every 5 to 10 seconds), filtered for text-page screens, and the candidates read at full
   resolution. **This is not frame by frame**: a screen shown for under about five seconds can be
   missed.
 - **No Australian recording of a Game Rules, pay-table or information screen was found** for any of
-  the three titles. No return figure and no version identifier was found anywhere.
-- The **US** rules and pay-table screens were found and transcribed for all three.
+  the four titles. No return figure and no version identifier was found anywhere.
+- The **US** rules and pay-table screens were found and transcribed for three titles. For Golden
+  Century none was found in any country.
 - No recording could be placed against a regulatory specification: no frame shows a version, and
   every Australian top-screen strip from 2018 to 2026 reads "© 2016".
 - Labels: VERIFIED here means legible in a frame and confirmed in a second frame or recording.
@@ -133,6 +135,67 @@ show, and **the feature uses its own reel strips** by the rules' own statement (
   credits are less than the current bet, the player may stake them for a chance at one game at that
   bet (`2P7J7tM63A8` 12:45). STRONG EVIDENCE.
 
+## Golden Century
+
+175 videos were triaged, and 182 caption tracks searched for any mention of a pay table, rules or
+return. **No rules, pay-table or information page for Golden Century appears in any of them**, in
+Australia or elsewhere. The button that opens it is on screen in every recording; nobody presses it.
+What follows is read from ordinary play on machines whose top-screen line names Dragon Link.
+Scope: Australian cabinet, Queensland clubs unless stated.
+
+| Field | Finding | Where | Label |
+|---|---|---|---|
+| Product line on the top screen | title, "Dragon Link" and "© 2016 Aristocrat Technologies Australia Pty Limited"; with $1 selected the title reads "Golden Century $1" | `1bAevGz0K2k` 0:06; `y8c8lEdPW8Y` 0:08, 18:35; `T49m2COe0Ho` 0:04; `vNWXRftZOE4` 0:58 (NSW) | VERIFIED |
+| Grid | five reels, three rows | every recording | VERIFIED |
+| Denominations | 1c, 2c, 5c, 10c, $1 on a chooser, with a confirmation prompt; the credit conversion is shown ($1 is 100, 50, 20, 10 credits and 1 credit) | `1bAevGz0K2k` 0:06 to 0:14; `y8c8lEdPW8Y` 0:08 to 18:41 | VERIFIED |
+| $2 denomination | five lines, one credit per line, bet $10, on a NSW machine under a Dragon Link sign | `cCB2KxFUzW0` 0:43 | STRONG EVIDENCE: one frame, product line not legible |
+| **Lines are selectable** | counts seen: 1, 3, 4, 5, 10, 20, 25, 50. Largest seen: 50 at 1c and 2c, 25 at 5c and 10c, 5 at $1 and $2 | `1bAevGz0K2k` 1:48; `y8c8lEdPW8Y` 0:12, 14:36, 15:11, 15:41, 18:41, 29:50; `kVjwYtVwhkk` 20:45; `T49m2COe0Ho` 0:04 | VERIFIED for the combinations seen. The full list per denomination, and that these are maximums, PARTIAL |
+| Credits per line | 1, 2, 3, 4, 5 and 10 seen. Largest bet seen: $5 in Queensland | `y8c8lEdPW8Y`; `1bAevGz0K2k` 2:45; `f5sMl9a5jds` 0:12 | PARTIAL: the full ladder is not shown |
+| Symbols seen | nine, ten, jack, queen, king (no ace in any frame read); two women in traditional dress; a blue-and-white vase; a red chest of gold; terracotta warriors; a yellow pennant (scatter); an emperor's face in stacks (behaves as the wild); a flaming gold disc (the prize symbol); red double doors (mystery symbol, free games only) | `1bAevGz0K2k` 0:16 to 0:21, 5:20 to 5:36; `y8c8lEdPW8Y` 14:36 to 18:41 | STRONG EVIDENCE: descriptions; the set may be incomplete |
+| Scatter | prompt that three pennants start the free games. One pay read: 100 credits for three on a 50-credit bet, twice the total bet | `y8c8lEdPW8Y` 15:05, 15:41 | prompt VERIFIED; pay STRONG EVIDENCE; four and five not seen |
+| Wild | no rule text. The emperor is seen stacked on reels 2, 3 and 4, never on reel 1 | `1bAevGz0K2k` 0:18, 5:20 | PARTIAL |
+| Hold & Spin trigger | prompt that six discs start the feature | `1bAevGz0K2k` 0:18, 1:48; `y8c8lEdPW8Y` 15:11 | VERIFIED |
+| Hold & Spin sequence | a start-feature prompt; a "free spins remaining" header; a top-screen count of discs collected, against fifteen for the Grand; a completion message; each disc tallied into a total | `1bAevGz0K2k` 1:54 to 2:45; `f5sMl9a5jds` 4:23 | text VERIFIED. The count returning to three on a new disc was not isolated: PARTIAL |
+| Hold & Spin values | discs show credits at 1c to 10c and dollars at $1 and $2, or a level's name. One tally checked at 1c: four discs of 500 credits, three of 1,500, four Mini of $10, total $105 | `1bAevGz0K2k` 2:21 to 2:45 | tally VERIFIED; the set of values not found |
+| Free games | three pennants award six free games | `1bAevGz0K2k` 5:20, 5:30; `y8c8lEdPW8Y` 15:41 | VERIFIED |
+| Mystery symbol | red doors land in blocks and all open onto one symbol | `1bAevGz0K2k` 5:33 to 5:35 | STRONG EVIDENCE: one recording. Agrees with the manufacturer's page |
+| Retrigger | not seen | | not found |
+| Jackpot levels | Grand Jackpot, Major Jackpot, Minor Bonus, Mini Bonus | `y8c8lEdPW8Y` 0:08, 18:35; `p6OesyvM5vA` 0:06 | VERIFIED |
+| Which levels move | the Grand and the Major are running meters: the Grand rose by two cents within one tally, the Major from $595.99 to $619.20 across one session | `1bAevGz0K2k` 2:28 to 2:41; `y8c8lEdPW8Y` 0:08 against 53:03 | VERIFIED that both increment. Rates, resets and ceilings not found |
+| Mini and Minor | fixed for each denomination: $10 and $50 at 1c; $20 and $100 at 2c; $50 and $250 at 5c; $100 and $500 at 10c; $250 and $1,250 at $1 | `y8c8lEdPW8Y` 0:08, 14:36, 15:11, 15:41, 18:35; `1bAevGz0K2k` 1:55; `vNWXRftZOE4` 0:58 | VERIFIED |
+| Mini and Minor at $2 | $500 and $2,500 | `cCB2KxFUzW0` 0:43 | STRONG EVIDENCE |
+| Meter values seen | Grand between $10,343 and $15,545.85; Major between $512.94 and $1,190.03, across nine machines from 2020 to 2026 | several | STRONG EVIDENCE each. A sample, not a range |
+| Gamble | a notice that gamble is not offered when the gamble win would exceed $10,000: a gamble feature exists; its rules were not seen | `1bAevGz0K2k` 0:12; `y8c8lEdPW8Y` 15:05 | VERIFIED |
+
+What this adds to the other three titles' findings:
+
+- **Lines are chosen by the player**, up to a maximum that depends on the denomination. The table
+  near the top of this page gives those maximums. The side line indicators lag a denomination change
+  by about a second, so only frames where lines, credits per line and denomination multiply to the
+  displayed bet were used.
+- **In every denomination the Mini is 1,000 credits and the Minor 5,000 credits**, except at $1 and
+  $2 where they are 250 and 1,250 credits. That resolves the second conflict below as a rule of the
+  club configuration rather than an inconsistency.
+- **Hold & Spin discs can carry the Mini or the Major** by name, as the US rules text says.
+
+Kept out of the table: a US recording at 2c with 50 lines and a "bet multiplier" (`Lc-kO0h1a0U`,
+January 2018) and one at $1 with 25 lines (`BwWoGAy-WaU` 24:54); and a recording of uncertain
+country with denominations from 5c to $2 (`VYUB_FdOLWE` 6:00).
+
+**Dragon Cash, again.** "Golden Century - Dragon Cash" has the same main screen. Every clip read
+from one NSW channel, and two 2026 clips from the main Queensland channel, are Dragon Cash by their
+own top-screen line. Its NSW machine offers 1c to $2 and a 30-line option at 1c. It is a separate
+product and a separate scope in the claims.
+
+**Generations cannot be told apart.** Every legible Australian product line from August 2019 to
+October 2026 reads "© 2016", and the denominations, layout, prompts and Mini and Minor values are
+unchanged across that span. Nothing recognisable as the "Grand" variant appears.
+
+**A way to the pay table that needs no rules screen.** The machine prints each line win on a status
+line. Read from a session played on one line, or with the line map known, those messages give the
+pay table directly. A full-resolution session is held for it; automatic text recognition did not
+read the small text reliably, so it is a manual job. No single-line Dragon Link session was found.
+
 ## Conflicts recorded
 
 1. **Lines:** 50 at every denomination on US rules pages; 50, 25 or 5 by denomination on Australian
@@ -146,10 +209,12 @@ show, and **the feature uses its own reel strips** by the rules' own statement (
 
 ## Not found
 
-For the Australian builds of all three: the Game Rules and information pages themselves; the pay
-table as displayed in Australia; any return figure; any version identifier; the full list of bet
-options; whether and how lines can be reduced. For Panda Magic, also any Hold & Spin rules text,
-even for the US. Hosts other than YouTube were not searched.
+For the Australian builds of all four: the Game Rules and information pages themselves; the pay
+table and the line map as displayed in Australia; any return figure; any version identifier; the
+full list of lines and credits per line for each denomination; jackpot start-up values and rates.
+For Panda Magic, also any Hold & Spin rules text, even for the US. For Golden Century, also any
+pay table at all, pays for four and five scatters, and the retrigger. Hosts other than YouTube were
+not searched; two uploads on the main Queensland channel could not be fetched.
 
 A denser scan (one or two frames per second of the two main Australian channels) would remove the
 five-second blind spot, and is the next step before anything is asked of anyone.

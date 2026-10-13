@@ -159,6 +159,17 @@ shell runs the simulation on screen.
   manufacturer's pages; and that the upper two jackpot levels move while the lower two are fixed.
 - No Australian rules, pay-table or information screen was found, and no return figure.
 
+### Footage pass: Golden Century (2026-10-13)
+
+- 175 videos triaged and 182 caption tracks searched. **No rules, pay-table or information page for
+  Golden Century was found in any recording**, so the first title has no pay table from footage.
+- Read from Australian play: lines are chosen by the player up to 50, 25 or 5 by denomination; six
+  free games from three scatters; the mystery-symbol reveal; the Hold & Spin prompts and counters;
+  the Mini and Minor fixed per denomination; the Grand and Major both incrementing.
+- Much footage titled Dragon Link is the stand-alone Dragon Cash, and no recording can be tied to a
+  build generation.
+- Next for this gap: read pays from the machine's line-win messages; a denser scan.
+
 ## Known limits of what exists
 
 - Every rule in the simulation is a generic slot-game rule, written down so it can be checked. None

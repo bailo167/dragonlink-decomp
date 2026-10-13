@@ -372,7 +372,7 @@ note = "No source held. An online evidence pass over litigation, regulatory, arc
 id = "visible-paytables"
 name = "Player-visible pay tables, lines and bet structures"
 status = "partial"
-note = "US pay tables and Hold & Spin rules of three titles transcribed from machines' rules screens in public footage; Australian lines by denomination read from play. The Australian pay-table and information screens, bet ladders and any return figure are not found (docs/reverse-engineering/FOOTAGE.md)."
+note = "US pay tables and Hold & Spin rules of three titles transcribed from machines' rules screens in public footage; Australian lines by denomination, fixed prize values and free-games awards read from play for all four. No pay table for Golden Century, no Australian rules screen, no full bet ladder and no return figure were found (docs/reverse-engineering/FOOTAGE.md)."
 
 [[category.item]]
 id = "denomination-bet-effects"
@@ -560,24 +560,25 @@ note = "ACT specifications across generations, Victorian builds, US personality 
 id = "layout"
 name = "Reel layout and lines"
 status = "partial"
-note = "Australia: five reels by three rows (stated for the family) with 50-, 25- and 5-line configurations, from the manufacturer's archived pages. Which denomination uses which line count, and the payline shapes, are not found."
+note = "Australia (Queensland clubs): five by three; lines chosen by the player up to 50 at 1c and 2c, 25 at 5c and 10c, 5 at $1, read from public footage. Payline shapes not found."
 
 [[category.item]]
 id = "symbols"
 name = "Symbol set"
-status = "investigating"
-note = "The mobile build names four picture symbols, Nine to King, a wild and two scatters, matching the classes stated for the US family. Artwork and Australian confirmation outstanding."
+status = "partial"
+note = "Symbol set described from Australian play in public footage; roles of scatter, wild, prize symbol and mystery symbol observed. No rules text found, so the set may be incomplete. No artwork held."
 
 [[category.item]]
 id = "paytable"
 name = "Paytable"
-status = "not_started"
+status = "investigating"
+note = "No pay table for Golden Century was found in any recording, in any country. One Australian observation: three scatters pay twice the total bet. A route through the machine's line-win messages is identified and not yet worked (docs/reverse-engineering/FOOTAGE.md)."
 
 [[category.item]]
 id = "bets"
 name = "Denominations and bet options"
 status = "partial"
-note = "Australian denominations per state are established from the manufacturer's archived pages. The bet ladder is not found."
+note = "Denominations and the credit conversion read from public footage; credits per line of 1, 2, 3, 4, 5 and 10 seen. The full ladder per denomination is not shown in any recording."
 
 [[category.item]]
 id = "reel-strips"
@@ -588,19 +589,19 @@ status = "not_started"
 id = "hold-and-spin"
 name = "Hold & Spin rules and presentation"
 status = "investigating"
-note = "Trigger of six prize symbols confirmed in the mobile build's own strings and in the US complaint; not confirmed on an Australian build; presentation not started."
+note = "Australia, from public footage: six prize symbols trigger; spins-remaining and collected-of-fifteen counters; prizes in credits or a level's name, tallied at the end. No rules text for this title; value set and weights unknown. Not implemented to these observations."
 
 [[category.item]]
 id = "jackpots"
 name = "Jackpot levels and presentation"
 status = "investigating"
-note = "Four levels; strong evidence that in Australia the Grand is linked, the Major a stand-alone progressive, and the Minor and Mini fixed. Venue start-up values for the Grand recorded. Major parameters and increment rates not public. Not implemented."
+note = "Australia, from public footage: Grand and Major are running meters; Mini and Minor are fixed per denomination (1,000 and 5,000 credits up to 10c; 250 and 1,250 at $1). Strong evidence the Grand is linked and the Major stand-alone. Start-up values, rates and ceilings not public. Not implemented."
 
 [[category.item]]
 id = "free-games"
 name = "Free games feature"
-status = "investigating"
-note = "Australia: mystery symbols all reveal the same symbol, and can lead into Hold & Spin (manufacturer's archived page). Trigger of three scatters from the US record and the mobile build. Initial award not stated officially. Not implemented."
+status = "partial"
+note = "Australia: three scatters award six free games; mystery symbols land in blocks and reveal one symbol (public footage, agreeing with the manufacturer's page). Retrigger not seen. Not implemented."
 
 [[category.item]]
 id = "art-ui"
@@ -928,7 +929,7 @@ note = "One JSON Lines format for rewrite traces and transcribed observations; h
 id = "source-recordings"
 name = "Source recordings of the original"
 status = "partial"
-note = "Public recordings of Australian and US machines located, scanned and partly read for three titles; held privately with hashes. No recording is yet tied to a regulatory build, and none has been transcribed into a trace."
+note = "Public recordings of Australian and US machines located, scanned and partly read for all four titles; held privately with hashes. No recording is tied to a regulatory build (every one reads the same 2016 notice), and none has been transcribed into a trace."
 
 [[category.item]]
 id = "event-comparison"

@@ -61,15 +61,19 @@ reported. What they settled is no longer listed; what follows is what remains.
   the line configurations (50, 25 and 5 lines), the denominations per state, the launch cabinets,
   each title's free-games rule, the retrigger for two titles, the four jackpot levels and, at
   strong evidence, which are progressive; and venue start-up values for the Grand.
-- **Settled since, from public footage of three titles**
-  ([reverse-engineering/FOOTAGE.md](reverse-engineering/FOOTAGE.md)): which denomination uses which
-  line count on Queensland club machines; the free-games award of six and the retriggers; the US pay
-  table and Hold & Spin rules text, read from the machines' own screens.
+- **Settled since, from public footage of all four titles**
+  ([reverse-engineering/FOOTAGE.md](reverse-engineering/FOOTAGE.md)): that lines are chosen by the
+  player up to a maximum set by the denomination on Queensland club machines; the free-games award
+  of six; the retriggers of two titles; the fixed Mini and Minor values per denomination; that the
+  Grand and Major both increment; and, for three titles, the US pay table and Hold & Spin rules
+  text read from the machines' own screens.
 - **Still not found**, for the Australian builds: the Game Rules and information screens themselves,
-  so the pay table as displayed in Australia; any return figure; the full bet ladder; any version
-  identifier tying a recording to a build; the Major's parameters and all increment rates.
-- **Still being searched:** Golden Century's footage pass; then a denser scan of the two main
-  Australian channels, since the first pass sampled a frame every five to ten seconds.
+  so the pay table and line map as displayed in Australia; any pay table at all for Golden Century;
+  any return figure; the full bet ladder; any version identifier tying a recording to a build; the
+  Major's parameters and all increment rates.
+- **Not yet done, and next:** a denser scan of the two main Australian channels, since the first
+  pass sampled a frame every five to ten seconds; reading pays from the machines' line-win messages;
+  hosts other than YouTube.
 - **Not exhausted, recorded so they are not assumed done:** forums and marketplaces that refused
   automated reading; other US regulators' certification lists; open-data portals of NSW.
 - **Asked of the owner:** nothing. A visit to a machine would be asked only for a field that

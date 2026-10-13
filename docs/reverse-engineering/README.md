@@ -23,7 +23,7 @@ and the content it downloads for Golden Century ([MOBILE_PACKAGE.md](MOBILE_PACK
 | The official mobile package, first inventory | [MOBILE_PACKAGE.md](MOBILE_PACKAGE.md) | Mighty Fu Casino 5.6.0 held, hashed and measured; formats under analysis |
 | The Australian release: lines, denominations, cabinets, free games, jackpots | [AUSTRALIAN_CONFIGURATION.md](AUSTRALIAN_CONFIGURATION.md) | established from the manufacturer's archived pages; pay table, bet ladder and returns not found |
 | Published return figures; what regulation requires | [PUBLISHED_RETURNS.md](PUBLISHED_RETURNS.md) | a US range for two titles; Lightning Link in Australia by denomination; constraints with clause numbers |
-| What public footage shows | [FOOTAGE.md](FOOTAGE.md) | three titles: US pay tables and rules transcribed; Australian lines by denomination, free games and jackpot behaviour read from play |
+| What public footage shows | [FOOTAGE.md](FOOTAGE.md) | all four titles scanned: US pay tables and rules transcribed for three; Australian lines, fixed prizes, free games and jackpot behaviour read from play; no Australian rules screen, and no Golden Century pay table, found |
 | The litigation record | [LITIGATION.md](LITIGATION.md) | free public record read; structure, admissions, the Australian launch year |
 | Platform software | [PLATFORM_SOFTWARE.md](PLATFORM_SOFTWARE.md) | lineage and Gen7 layout public; Gen8 and later internals not |
 | Patents | [PATENTS.md](PATENTS.md) | core family summarised |
