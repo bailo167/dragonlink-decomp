@@ -42,7 +42,7 @@
 | `crates/dragonlink-assets` | exists | Asset manifest, logical asset ids, verification, discovery of the asset set with a stated reason when there is none. |
 | `apps/dragonlink` | exists | The Bevy executable. Placeholder mode only: generated cells, synthetic fixture. |
 | `tools/dragonlink-inventory` | exists | Create and check the private source root; hash and classify everything under a source folder. |
-| `tools/dragonlink-inspect` | planned | Look at one unknown file: signature, entropy profile, structure. |
+| `tools/dragonlink-inspect` | exists | Look at one unknown file: content type, hash, entropy profile, strings statistics, archive summary. Measurements only, no content. |
 | `tools/dragonlink-import` | exists | Source material → normalised asset set + manifest. Stage 1: loose standard media only. |
 | `tools/dragonlink-pack` | exists | Verify an asset set and assemble a local full package outside Git. |
 | `tools/dragonlink-trace` | exists | Record, validate and compare traces from the command line. |

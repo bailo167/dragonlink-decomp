@@ -1,0 +1,23 @@
+[package]
+name = "dragonlink-inspect"
+description = "Look at one unknown file: content type, hash, entropy profile, strings statistics, archive summary"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[dependencies]
+dragonlink-formats.workspace = true
+anyhow.workspace = true
+clap.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+
+[lints]
+workspace = true
