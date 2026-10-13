@@ -154,6 +154,9 @@ fn load(spec: &str) -> Result<GameConfiguration> {
     if spec == "happy-prosperous" {
         return Ok(GameConfiguration::happy_prosperous_synthetic());
     }
+    if spec == "panda-magic" {
+        return Ok(GameConfiguration::panda_magic_synthetic());
+    }
     let text = fs::read_to_string(spec).with_context(|| format!("reading configuration {spec}"))?;
     GameConfiguration::from_json(&text).with_context(|| format!("configuration {spec}"))
 }

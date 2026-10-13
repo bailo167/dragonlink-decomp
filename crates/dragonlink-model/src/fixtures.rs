@@ -1363,6 +1363,350 @@ pub fn happy_prosperous_synthetic() -> MathModel {
     }
 }
 
+/// Identifier of [`panda_magic_synthetic`], written into trace headers.
+pub const PANDA_MAGIC_SYNTHETIC_ID: &str = "panda-magic-synthetic-1";
+
+/// A **synthetic** Panda Magic configuration: the game's *evidenced
+/// structure* with *invented* numbers. Panda Magic runs on the same
+/// engine family as Golden Century, so it shares this project's Dragon Link
+/// simulation; only the symbols, the pay table and the free-games rule differ
+/// (`docs/reverse-engineering/FOOTAGE.md`).
+///
+/// Official visible values used here: the US family pay table (top picture
+/// 150/50/10 and 2 for two; second to fourth 100 down to 5; royals 75/50 down
+/// to 5), seen for Panda Magic in one rules-screen frame and read in full on
+/// its sibling titles' screens; the scatter 100/15/2 times the total bet; six
+/// free games with three more on a retrigger; the royals removed inside the
+/// feature; and the twelve orb prize multiples. Invented and never to be
+/// quoted as Dragon Link's: every reel strip, weight, the land chance and the
+/// jackpot amounts. Like Happy & Prosperous this title has no free-games
+/// mystery reveal; the feature plays royal-free reels. Fidelity gap: on the
+/// real machine Hold & Spin can trigger inside the free games, which this
+/// config does not yet model (the free reels carry no orb).
+pub fn panda_magic_synthetic() -> MathModel {
+    const NINE: u16 = 0;
+    const TEN: u16 = 1;
+    const JACK: u16 = 2;
+    const QUEEN: u16 = 3;
+    const KING: u16 = 4;
+    const LOTUS: u16 = 5; // fourth picture
+    const JUNK: u16 = 6; // third picture
+    const ROOSTER: u16 = 7; // second picture (rooster)
+    const TIGER: u16 = 8; // top picture
+    const PANDA: u16 = 9; // wild (panda), reels 2 to 5 only
+    const LANTERN: u16 = 10; // scatter (red lantern)
+    const ORB: u16 = 11; // Hold & Spin prize symbol
+
+    let symbols = [
+        ("9", SymbolKind::Regular),
+        ("10", SymbolKind::Regular),
+        ("J", SymbolKind::Regular),
+        ("Q", SymbolKind::Regular),
+        ("K", SymbolKind::Regular),
+        ("lotus", SymbolKind::Regular),
+        ("junk", SymbolKind::Regular),
+        ("rooster", SymbolKind::Regular),
+        ("tiger", SymbolKind::Regular),
+        ("panda", SymbolKind::Wild),
+        ("lantern", SymbolKind::Scatter),
+        ("orb", SymbolKind::Orb),
+    ]
+    .into_iter()
+    .enumerate()
+    .map(|(i, (key, kind))| SymbolDef {
+        id: SymbolId(i as u16),
+        key: key.to_string(),
+        kind,
+    })
+    .collect::<Vec<_>>();
+
+    let reel = |parts: &[(u16, usize)]| -> Vec<SymbolId> {
+        parts
+            .iter()
+            .flat_map(|(sym, n)| std::iter::repeat_n(*sym, *n))
+            .map(SymbolId)
+            .collect()
+    };
+
+    // The base reels: royals common, pictures rarer, the top picture (bell)
+    // rarest; an orb block of three per reel, a wild block on reels 2 to 5, one
+    // scatter. Synthetic.
+    let reel_strips = vec![
+        reel(&[
+            (NINE, 7),
+            (ORB, 3),
+            (TEN, 6),
+            (LOTUS, 2),
+            (JACK, 6),
+            (ROOSTER, 1),
+            (QUEEN, 4),
+            (LANTERN, 1),
+            (KING, 4),
+            (JUNK, 2),
+            (NINE, 6),
+            (TIGER, 1),
+            (TEN, 6),
+            (JACK, 6),
+        ]),
+        reel(&[
+            (TEN, 6),
+            (PANDA, 2),
+            (NINE, 7),
+            (ORB, 3),
+            (JACK, 6),
+            (JUNK, 2),
+            (QUEEN, 4),
+            (LANTERN, 1),
+            (KING, 4),
+            (ROOSTER, 1),
+            (LOTUS, 2),
+            (TEN, 6),
+            (TIGER, 1),
+            (NINE, 6),
+            (JACK, 6),
+        ]),
+        reel(&[
+            (JACK, 7),
+            (ORB, 3),
+            (NINE, 7),
+            (PANDA, 2),
+            (TEN, 6),
+            (LOTUS, 2),
+            (QUEEN, 4),
+            (LANTERN, 1),
+            (JUNK, 2),
+            (KING, 4),
+            (ROOSTER, 1),
+            (NINE, 6),
+            (TIGER, 1),
+            (TEN, 6),
+            (JACK, 6),
+        ]),
+        reel(&[
+            (NINE, 7),
+            (ORB, 3),
+            (TEN, 6),
+            (PANDA, 2),
+            (JACK, 6),
+            (ROOSTER, 1),
+            (QUEEN, 4),
+            (JUNK, 2),
+            (LANTERN, 1),
+            (KING, 4),
+            (LOTUS, 2),
+            (NINE, 6),
+            (TIGER, 1),
+            (TEN, 6),
+            (JACK, 6),
+        ]),
+        reel(&[
+            (TEN, 7),
+            (ORB, 3),
+            (NINE, 7),
+            (PANDA, 2),
+            (JACK, 6),
+            (JUNK, 2),
+            (QUEEN, 4),
+            (LANTERN, 1),
+            (KING, 4),
+            (ROOSTER, 1),
+            (LOTUS, 2),
+            (TEN, 6),
+            (TIGER, 1),
+            (NINE, 6),
+            (JACK, 6),
+        ]),
+    ];
+
+    // Paylines 1 to 5 are the evidenced shapes; 6 to 50 synthetic.
+    let known = [
+        [1, 1, 1, 1, 1],
+        [0, 0, 0, 0, 0],
+        [2, 2, 2, 2, 2],
+        [0, 1, 2, 1, 0],
+        [2, 1, 0, 1, 2],
+    ];
+    let mut paylines: Vec<Payline> = known.iter().map(|rows| Payline(rows.to_vec())).collect();
+    let mut pattern = 0u32;
+    while paylines.len() < 50 {
+        let rows: Vec<u8> = (0..5)
+            .map(|r| ((pattern / 3u32.pow(r)) % 3) as u8)
+            .collect();
+        let all_same = rows.iter().all(|r| *r == rows[0]);
+        if !all_same && !known.iter().any(|k| k[..] == rows[..]) {
+            paylines.push(Payline(rows));
+        }
+        pattern += 1;
+    }
+
+    // Line pays, per credit on the line. The US family pay table (official
+    // visible values); only the top picture pays for two of a kind.
+    let mut line_pays = Vec::new();
+    for (symbol, pays) in [
+        //              2   3   4    5
+        (TIGER, [2, 10, 50, 150]),
+        (ROOSTER, [0, 5, 30, 100]),
+        (JUNK, [0, 5, 25, 100]),
+        (LOTUS, [0, 5, 25, 100]),
+        (KING, [0, 5, 20, 75]),
+        (QUEEN, [0, 5, 10, 50]),
+        (JACK, [0, 5, 10, 50]),
+        (TEN, [0, 5, 10, 50]),
+        (NINE, [0, 5, 10, 50]),
+    ] {
+        for (count, pay) in (2u8..=5).zip(pays) {
+            if pay > 0 {
+                line_pays.push(LinePay {
+                    symbol: SymbolId(symbol),
+                    count,
+                    pay,
+                });
+            }
+        }
+    }
+
+    // Scatter: the family's 100/15/2 times the total bet (official visible).
+    let scatter_pays = vec![
+        ScatterPay {
+            symbol: SymbolId(LANTERN),
+            count: 3,
+            total_bet_multiple: 2,
+        },
+        ScatterPay {
+            symbol: SymbolId(LANTERN),
+            count: 4,
+            total_bet_multiple: 15,
+        },
+        ScatterPay {
+            symbol: SymbolId(LANTERN),
+            count: 5,
+            total_bet_multiple: 100,
+        },
+    ];
+
+    // Orb values: the twelve official multiples and the four levels; synthetic
+    // weights (as Golden Century and Autumn Moon).
+    let orb_values = [
+        (260, OrbValue::BetMultiple(1)),
+        (220, OrbValue::BetMultiple(2)),
+        (160, OrbValue::BetMultiple(3)),
+        (120, OrbValue::BetMultiple(4)),
+        (90, OrbValue::BetMultiple(5)),
+        (70, OrbValue::BetMultiple(10)),
+        (46, OrbValue::BetMultiple(15)),
+        (28, OrbValue::BetMultiple(20)),
+        (12, OrbValue::BetMultiple(50)),
+        (6, OrbValue::BetMultiple(100)),
+        (3, OrbValue::BetMultiple(200)),
+        (2, OrbValue::BetMultiple(250)),
+        (45, OrbValue::Jackpot(JackpotTier::Mini)),
+        (14, OrbValue::Jackpot(JackpotTier::Minor)),
+        (3, OrbValue::Jackpot(JackpotTier::Major)),
+    ]
+    .into_iter()
+    .map(|(weight, value)| WeightedOrbValue { weight, value })
+    .collect();
+
+    let jackpots = [
+        (JackpotTier::Mini, 15),
+        (JackpotTier::Minor, 60),
+        (JackpotTier::Major, 300),
+        (JackpotTier::Grand, 1000),
+    ]
+    .into_iter()
+    .map(|(tier, total_bet_multiple)| JackpotDef {
+        tier,
+        total_bet_multiple,
+    })
+    .collect();
+
+    // Free-game reels: the royals removed (official US rule), so only the four
+    // pictures, the wild (reels 2 to 5) and the scatter appear; no orb and no
+    // mystery reveal. Synthetic composition.
+    let free_reel_strips = vec![
+        reel(&[
+            (LOTUS, 8),
+            (JUNK, 6),
+            (ROOSTER, 5),
+            (TIGER, 2),
+            (LANTERN, 1),
+        ]),
+        reel(&[
+            (LOTUS, 6),
+            (PANDA, 3),
+            (JUNK, 6),
+            (ROOSTER, 5),
+            (TIGER, 2),
+            (LANTERN, 1),
+        ]),
+        reel(&[
+            (JUNK, 6),
+            (PANDA, 3),
+            (LOTUS, 6),
+            (ROOSTER, 5),
+            (TIGER, 2),
+            (LANTERN, 1),
+        ]),
+        reel(&[
+            (LOTUS, 6),
+            (PANDA, 3),
+            (ROOSTER, 5),
+            (JUNK, 6),
+            (TIGER, 2),
+            (LANTERN, 1),
+        ]),
+        reel(&[
+            (ROOSTER, 6),
+            (PANDA, 3),
+            (LOTUS, 6),
+            (JUNK, 5),
+            (TIGER, 2),
+            (LANTERN, 1),
+        ]),
+    ];
+
+    MathModel {
+        id: PANDA_MAGIC_SYNTHETIC_ID.to_string(),
+        provenance: MathProvenance::SyntheticDevFixture,
+        description: "SYNTHETIC Panda Magic: the game's evidenced structure (the Golden \
+                      Century engine family, with its own symbols, the US family pay table and \
+                      royals removed inside the free games) with INVENTED strips, weights and \
+                      jackpot amounts. Not recovered from any machine; never quote its numbers \
+                      as Dragon Link's (docs/reverse-engineering/FOOTAGE.md, docs/DECISIONS.md \
+                      D-017)."
+            .to_string(),
+        grid: GridShape { reels: 5, rows: 3 },
+        symbols,
+        reel_strips,
+        paylines,
+        line_pays,
+        scatter_pays,
+        bet: BetModel {
+            credits_per_line_options: vec![1, 2, 3, 4, 5, 10],
+            line_options: vec![5, 25, 50],
+        },
+        hold_and_spin: Some(HoldAndSpinModel {
+            orb: SymbolId(ORB),
+            trigger_count: 6,
+            initial_respins: 3,
+            reset_respins_on_new_orb: true,
+            orb_land_chance: Ratio { num: 1, den: 14 },
+            orb_values,
+            full_grid_award: Some(JackpotTier::Grand),
+            jackpots,
+        }),
+        free_games: Some(FreeGamesModel {
+            trigger_count: 3,
+            initial_games: 6,
+            retrigger_count: 3,
+            retrigger_games: 3,
+            free_reel_strips,
+            mystery: None,
+            reveal_values: Vec::new(),
+        }),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

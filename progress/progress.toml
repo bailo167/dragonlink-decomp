@@ -72,7 +72,7 @@ note = "Parallel lane. Analysis tooling exists and is tested on the synthetic fi
 id = "M7"
 name = "Happy & Prosperous, Panda Magic, Autumn Moon"
 status = "partial"
-note = "Generalise the systems proven on Golden Century to the other three titles. Autumn Moon (`--game autumn-moon`) and Happy & Prosperous (`--game happy-prosperous`) now play end to end on the shared engine with synthetic maths, the US family pay table and their own symbols; Happy & Prosperous removes the royals inside its free games rather than revealing a mystery symbol. Panda Magic not started."
+note = "Generalise the systems proven on Golden Century to the other three titles. All three now play end to end on the shared engine with synthetic maths, the US family pay table and their own symbols: Autumn Moon (`--game autumn-moon`, free-games mystery reveal), Happy & Prosperous (`--game happy-prosperous`, royal-free feature) and Panda Magic (`--game panda-magic`, royal-free feature; Hold & Spin inside the free games is a known fidelity gap)."
 
 # --------------------------------------------------------------------------
 # Foundation
@@ -795,7 +795,7 @@ note = "Four levels; strong evidence that in Australia the Grand is linked, the 
 id = "free-games"
 name = "Free games feature"
 status = "partial"
-note = "Six free games, three extra on a retrigger, royals removed, and Hold & Spin can start inside free games: read from Australian footage and matching the manufacturer's page. Not implemented."
+note = "Six free games, three extra on a retrigger, royals removed, and Hold & Spin can start inside free games: read from Australian footage and matching the manufacturer's page. The synthetic Panda Magic config implements the six games, the three-game retrigger and the royal-free feature reels; Hold & Spin starting inside the free games is a known fidelity gap, not yet modelled. Strips and weights are synthetic."
 
 [[category.item]]
 id = "art-ui"

@@ -341,6 +341,32 @@ impl GameConfiguration {
         }
     }
 
+    /// A **synthetic** Panda Magic configuration (`dragonlink_model::fixtures`).
+    pub fn panda_magic_synthetic() -> GameConfiguration {
+        let model = dragonlink_model::fixtures::panda_magic_synthetic();
+        let constants = required_paths(&model)
+            .into_iter()
+            .map(|path| ConstantRecord {
+                path: path.to_string(),
+                provenance: ConstantProvenance::Synthetic,
+                source: String::new(),
+                note: String::new(),
+            })
+            .collect();
+        GameConfiguration {
+            schema: SCHEMA.to_string(),
+            identity: ConfigIdentity {
+                name: "Panda Magic (synthetic)".to_string(),
+                notes: "Panda Magic's evidenced structure with invented strips, weights and                         jackpot amounts. Not recovered from any machine; its statistics are its                         own (docs/reverse-engineering/FOOTAGE.md)."
+                    .to_string(),
+                ..ConfigIdentity::default()
+            },
+            model,
+            constants,
+            behaviour: Behaviour::default(),
+        }
+    }
+
     /// Parse and check a configuration.
     pub fn from_json(text: &str) -> Result<GameConfiguration, ConfigError> {
         let config: GameConfiguration = serde_json::from_str(text)?;

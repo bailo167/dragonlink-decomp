@@ -215,3 +215,82 @@ fn the_synthetic_happy_prosperous_is_playable() {
     assert!(free > 0, "free games never triggered");
     assert_eq!(reveal, 0, "there is no mystery reveal in this title");
 }
+
+#[test]
+fn the_synthetic_panda_magic_is_playable() {
+    use dragonlink_core::{DevRng, Event, Game};
+    use dragonlink_model::fixtures::panda_magic_synthetic;
+    let model = panda_magic_synthetic();
+    model.validate().expect("the synthetic model is runnable");
+    assert_eq!(model.paylines.len(), 50);
+    // Same family as Happy & Prosperous: twelve symbols, no mystery reveal.
+    assert_eq!(model.symbols.len(), 12);
+    assert!(
+        model
+            .free_games
+            .as_ref()
+            .expect("free games")
+            .mystery
+            .is_none(),
+        "Panda Magic has no free-games mystery reveal"
+    );
+
+    let report = simulate(&model, 1, 400_000).expect("simulate");
+    eprintln!(
+        "synthetic Panda Magic: RTP {:.1}% (line {:.1}, scatter {:.1}, feature {:.1}); hit {:.1}%; feature about 1 in {:.0}",
+        report.rtp.estimate * 100.0,
+        report.line_rtp * 100.0,
+        report.scatter_rtp * 100.0,
+        report.feature_rtp * 100.0,
+        report.hit_frequency.estimate * 100.0,
+        1.0 / report.feature_frequency.estimate.max(1e-9),
+    );
+    assert!(
+        (0.5..1.5).contains(&report.rtp.estimate),
+        "RTP {:.3}",
+        report.rtp.estimate
+    );
+    assert!(report.line_rtp > 0.0 && report.scatter_rtp > 0.0);
+    assert!(report.feature_frequency.estimate > 0.0);
+
+    // The feature set plays and returns cleanly; the royals never appear inside
+    // the free games, and no reveal ever fires (no mystery symbol).
+    let royals: Vec<String> = ["9", "10", "J", "Q", "K"]
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
+    let mut game = Game::new(model, 1_000_000_000).unwrap();
+    let mut rng = DevRng::new(4);
+    let (mut free, mut retrig, mut reveal) = (0, 0, 0);
+    let mut in_free = false;
+    for _ in 0..60_000 {
+        for e in &game.play_spin(&mut rng).unwrap() {
+            match e {
+                Event::FreeGamesStarted { games } => {
+                    assert_eq!(*games, 6, "six free games");
+                    free += 1;
+                    in_free = true;
+                }
+                Event::FreeGamesRetriggered { added, .. } => {
+                    assert_eq!(*added, 3, "three extra games on a retrigger");
+                    retrig += 1;
+                }
+                Event::FreeGamesCompleted { .. } => in_free = false,
+                Event::MysteryRevealed { .. } => reveal += 1,
+                Event::ReelStopped { symbols, .. } if in_free => {
+                    for key in symbols {
+                        assert!(
+                            !royals.contains(key),
+                            "royal {key} appeared inside the free games"
+                        );
+                    }
+                }
+                _ => {}
+            }
+        }
+        assert!(game.is_idle());
+    }
+    eprintln!("Panda Magic: {free} free rounds, {retrig} retriggers in 60k spins");
+    assert!(free > 0, "free games never triggered");
+    assert_eq!(reveal, 0, "there is no mystery reveal in this title");
+}
