@@ -87,4 +87,4 @@ Free games are not implemented in the simulation.
 
 - A "Coin Shower" animation plays on any win of 25 times the bet or more (Complaint ¶104, read
   once). STRONG EVIDENCE (US family).
-- Golden Century and Autumn Moon: "Win up to 250x your bet on a scatter" (Pages, read once).
+- "Win up to 250x your bet on a scatter" (Pages, read once): on the Australian pages of all four titles, not only Golden Century and Autumn Moon as first recorded. No screen read from footage shows a scatter paying 250: the US pay table of three titles gives 100 times the total bet for five. 250 is the largest prize-symbol multiple in the US Hold & Spin rules, and in Autumn Moon the wild's top line pay in free games ([FOOTAGE.md](FOOTAGE.md)). What the sentence refers to is unexplained.

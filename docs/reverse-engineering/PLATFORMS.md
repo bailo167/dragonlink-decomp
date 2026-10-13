@@ -29,13 +29,17 @@ specifications is **UNKNOWN**.
 
 ## What is not established
 
-- **The cabinet of the original Australian release.** The 2018 ACT approvals name no cabinet, and
-  Helix+ appears only in a 2023 regression entry. "Dragon Link shipped on Helix in Australia" is an
-  inference. UNKNOWN.
+- **The cabinet of the original Australian release** was listed here as UNKNOWN: the 2018 ACT
+  approvals name no cabinet, and Helix+ appears only in a 2023 regression entry.
+  **Established 2026-10-13:** Aristocrat's own archived Australian title pages list the Helix
+  family for every region (Helix X, Helix+, Helix+ Slant, Helix, Helix Slant and Helix Slant
+  Superscreen in NSW and the ACT; fewer elsewhere). VERIFIED for the original release as marketed
+  from 2016 to 2024 ([AUSTRALIAN_CONFIGURATION.md](AUSTRALIAN_CONFIGURATION.md)). Which cabinet a
+  given machine of 2016 was is not stated.
 - **Whether the generations share mathematics or presentation.** Three generations and a "Grand"
   variant exist for Golden Century alone. Nothing says what changed. Each finding about a cabinet
   build must therefore record which generation it came from.
-- **The first Australian approval.** See [OPEN_QUESTIONS.md](OPEN_QUESTIONS.md), conflict 1.
+- **The first Australian approval.** The launch year is settled as 2016; the approval record is not public. See [OPEN_QUESTIONS.md](OPEN_QUESTIONS.md), conflict 1.
 - **Relationship to official mobile software.** UNKNOWN; see [MOBILE_REFERENCE.md](MOBILE_REFERENCE.md).
 
 ## Consequences for the project

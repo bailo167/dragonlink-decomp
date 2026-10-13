@@ -41,6 +41,28 @@ scope = "cabinet-us"
 note = "Aristocrat's own description of its game, in its complaint."
 
 [[claim]]
+id = "structure.lines-au"
+statement = "The original Australian release was offered in 50-line, 25-line and 5-line configurations."
+value = "50 lines, 25 lines, 5 lines"
+confidence = "verified"
+source = "official_media"
+citation = "Aristocrat's Australian title pages (aristocrat.com/anz/games), Internet Archive captures 2020 to 2023, re-checked on the Golden Century capture of 19 June 2021 (docs/reverse-engineering/AUSTRALIAN_CONFIGURATION.md)"
+accessed = "2026-10-13"
+scope = "cabinet-au, original release 2016 to 2024"
+note = "Identical on all four titles' pages. Not stated for the 2024 and later builds. A trade article quotes the manufacturer: a 50-line game in Australia and an 88-line game in Asia."
+
+[[claim]]
+id = "structure.lines-by-denomination-au"
+statement = "On Queensland club machines the player chooses the number of lines, up to a maximum set by the denomination: 50 at 1c and 2c, 25 at 5c and 10c, 5 at $1."
+value = "largest line counts seen: 1c 50; 2c 50; 5c 25; 10c 25; $1 5"
+confidence = "strong_evidence"
+source = "gameplay_recording"
+citation = "Public recordings, YouTube ids and times: Golden Century y8c8lEdPW8Y 14:36, 15:11, 15:41, 18:41; Happy & Prosperous XP7TKGqq7zM 0:05, 9:11, 9:40; Autumn Moon nYM0NGR3px0 0:14, 7:35, 7:50; Panda Magic y3yNze50f3U 0:55 (docs/reverse-engineering/FOOTAGE.md)"
+accessed = "2026-10-13"
+scope = "cabinet-au, Queensland clubs"
+note = "Read from footage in one pass by one reader; not yet re-read independently. Recordings of four titles agree. Smaller counts were seen in play (1, 3, 4, 5, 10, 20), so lines are selectable; that the largest seen are maximums is an inference. One casino recording shows 50 lines at 10c, so club and casino configurations differ. US rules pages say 50 lines are played at every denomination."
+
+[[claim]]
 id = "structure.symbol-classes"
 statement = "The symbol set comprises five royal symbols, four picture symbols, a scatter symbol, a wild symbol and a Hold & Spin bonus symbol."
 value = "5 royals, 4 pictures, scatter, wild, Hold & Spin bonus symbol"
@@ -70,6 +92,17 @@ citation = "Complaint para 97"
 accessed = "2026-10-13"
 scope = "cabinet-us"
 note = "Australian denomination values are not established; see the per-title files."
+
+[[claim]]
+id = "structure.denominations-au"
+statement = "The original Australian release offered 1c, 2c, 5c, 10c and $1, with $2 in New South Wales and the ACT only."
+value = "NSW and ACT: 1c, 2c, 5c, 10c, $1, $2. Queensland, Victoria, Northern Territory: 1c, 2c, 5c, 10c, $1"
+confidence = "verified"
+source = "official_media"
+citation = "Aristocrat's Australian title pages (aristocrat.com/anz/games), Internet Archive captures 2020 to 2023, re-checked on the Golden Century capture of 19 June 2021 (docs/reverse-engineering/AUSTRALIAN_CONFIGURATION.md)"
+accessed = "2026-10-13"
+scope = "cabinet-au, original release 2016 to 2024"
+note = "The earlier Australian microsite agrees. Queensland club machines in public footage show the same five on their denomination chooser. The complete bet ladder has not been found."
 
 [[claim]]
 id = "structure.paytable-varies-by-denomination"
@@ -157,6 +190,17 @@ accessed = "2026-10-13"
 scope = "cabinet-us"
 note = "An inference from how the court grouped the asserted trade secrets, not a statement of how the feature is built. Our simulation models the feature with one per-position chance; that is ours and unevidenced."
 
+[[claim]]
+id = "hold-and-spin.rules-text-us"
+statement = "The US rules pages state: six to fourteen scattered prize symbols trigger the feature; the triggering symbols are held and the other positions become individual reels; three free spins are awarded and the count returns to three when a new prize symbol lands; the feature ends when no spins remain or the Grand is won; a prize symbol carries Major, Minor, Mini or a multiple of the total bet; only one prize symbol may hold 250, 200 or Major."
+value = "trigger 6 to 14 prize symbols; individual reels; 3 spins, reset on a new prize symbol; prize multiples of the total bet 250, 200, 100, 50, 20, 15, 10, 5, 4, 3, 2, 1, or Major, Minor, Mini; Minor 5,000 credits; Mini 1,000 credits; at most one of 250, 200 or Major"
+confidence = "strong_evidence"
+source = "gameplay_recording"
+citation = "Public recordings, YouTube ids and times: Happy & Prosperous t_g9hlCODBU 4:14.0, 4:16.5; OxMnVxG6Yqc 0:15.2 (docs/reverse-engineering/FOOTAGE.md)"
+accessed = "2026-10-13"
+scope = "cabinet-us"
+note = "Read from footage in one pass by one reader; not yet re-read independently. Read on the Happy & Prosperous rules pages in two recordings, and matching on Autumn Moon's at reduced size. Paraphrased. US footage is not evidence about the Australian build. The same pages word the levels as a linked progressive Grand and a stand-alone progressive Major."
+
 # ---------------------------------------------------------------------------
 # Jackpots and bonuses
 # ---------------------------------------------------------------------------
@@ -184,9 +228,36 @@ note = "The instruments do not define 'Link' or 'iSAP'."
 
 [[claim]]
 id = "jackpots.progressive-levels"
-statement = "Which of the four levels are progressive, and whether linked or standalone, in the Australian configuration."
-confidence = "unknown"
-note = "Leads that disagree by region: Aristocrat's Asia pages name Grand and Major as two top progressive prizes, its US and EMEA pages name only Grand, and the '1 Link + 1 iSAP' label suggests one linked and one standalone progressive. See docs/reverse-engineering/FEATURES.md."
+statement = "In the Australian configuration the Grand is a linked progressive, the Major a stand-alone progressive on each machine, and the Minor and Mini fixed prizes."
+value = "Grand: linked progressive. Major: stand-alone progressive. Minor and Mini: fixed"
+confidence = "strong_evidence"
+source = "official_media"
+citation = "Five indicators set out in docs/reverse-engineering/AUSTRALIAN_CONFIGURATION.md: ACT NI 2018-199 ('1 Link + 1 iSAP'); the NSW jackpot standard's definition of iSAP; a still on Aristocrat's Australian title pages showing one Grand across a bank and differing Majors; an Aristocrat training deck on jackpots (Queensland, 2022); Aristocrat's 2017 US release"
+accessed = "2026-10-13"
+scope = "cabinet-au, original release"
+note = "No single source says it of the Australian titles in so many words. Public footage agrees: the Grand and the Major both increment and the Minor and Mini do not (jackpots.meters-au, jackpots.minor-mini-au). Against it: Aristocrat's Asia pages name Grand and Major as two top progressive prizes, and the '1 Link + 1 iSAP' label is absent from most 2024 and later specifications. Whether the structure changed is unknown."
+
+[[claim]]
+id = "jackpots.meters-au"
+statement = "On Australian machines the Grand and the Major are running meters that increase during play."
+value = "Grand and Major both increment"
+confidence = "strong_evidence"
+source = "gameplay_recording"
+citation = "Public recordings, YouTube ids and times: Golden Century 1bAevGz0K2k 2:28 to 2:41 (Grand); y8c8lEdPW8Y 0:08 against 53:03 (Major) (docs/reverse-engineering/FOOTAGE.md)"
+accessed = "2026-10-13"
+scope = "cabinet-au"
+note = "Read from footage in one pass by one reader; not yet re-read independently. Increment rates, start-up values and ceilings are not shown anywhere found. Venue statements of Grand start-up values are in docs/reverse-engineering/AUSTRALIAN_CONFIGURATION.md."
+
+[[claim]]
+id = "jackpots.minor-mini-au"
+statement = "On Queensland club machines the Mini and Minor are fixed for each denomination: 1,000 and 5,000 credits from 1c to 10c, and 250 and 1,250 credits at $1."
+value = "Mini / Minor: 1c $10 / $50; 2c $20 / $100; 5c $50 / $250; 10c $100 / $500; $1 $250 / $1,250"
+confidence = "strong_evidence"
+source = "gameplay_recording"
+citation = "Public recordings, YouTube ids and times: Golden Century y8c8lEdPW8Y 0:08, 14:36, 15:11, 15:41, 18:35; 1bAevGz0K2k 1:55 (docs/reverse-engineering/FOOTAGE.md)"
+accessed = "2026-10-13"
+scope = "cabinet-au, Queensland clubs"
+note = "Read from footage in one pass by one reader; not yet re-read independently. Club machines of the other three titles show the same values at the denominations seen. One NSW frame shows $500 and $2,500 at $2. An Australian casino machine shows $1,000 and $5,000 at $1, as the US rules text does (1,000 and 5,000 credits), so the $1 values differ between club and casino configurations."
 
 # ---------------------------------------------------------------------------
 # Free games
@@ -201,6 +272,18 @@ source = "court_record"
 citation = "Complaint para 105"
 accessed = "2026-10-13"
 scope = "cabinet-us"
+note = "On Australian machines a prompt says three scatters start the free games (free-games.award-au)."
+
+[[claim]]
+id = "free-games.award-au"
+statement = "On Australian machines three scatters award six free games."
+value = "6 free games"
+confidence = "strong_evidence"
+source = "gameplay_recording"
+citation = "Public recordings, YouTube ids and times: Golden Century 1bAevGz0K2k 5:20, 5:30; Happy & Prosperous uXp_uWK4OH8 1:52; Panda Magic tg4nMylHxhI 3:57; Autumn Moon nYM0NGR3px0 3:48 (docs/reverse-engineering/FOOTAGE.md)"
+accessed = "2026-10-13"
+scope = "cabinet-au, Queensland clubs"
+note = "Read from footage in one pass by one reader; not yet re-read independently. Recordings of all four titles agree, and the US rules text of three titles says six free games for any three or more scatters. Retriggers differ by title and are in the per-title files."
 
 # ---------------------------------------------------------------------------
 # Platform
@@ -260,9 +343,25 @@ scope = "cabinet-au"
 
 [[claim]]
 id = "platform.launch-cabinet-au"
-statement = "On which cabinet did the original Australian release ship?"
-confidence = "unknown"
-note = "The 2018 ACT approvals name no cabinet. 'Dragon Link shipped on Helix in Australia' is an inference, not a sourced fact."
+statement = "The original Australian release was listed for the Helix family of cabinets."
+value = "NSW and ACT: Helix X, Helix+, Helix+ Slant, Helix, Helix Slant, Helix Slant Superscreen. Queensland: the same without Helix X. Victoria and Northern Territory: Helix+, Helix"
+confidence = "verified"
+source = "official_media"
+citation = "Aristocrat's Australian title pages (aristocrat.com/anz/games), Internet Archive captures 2020 to 2023, re-checked on the Golden Century capture of 19 June 2021 (docs/reverse-engineering/AUSTRALIAN_CONFIGURATION.md)"
+accessed = "2026-10-13"
+scope = "cabinet-au, original release 2016 to 2024"
+note = "The manufacturer's own listing. The 2018 ACT approvals name no cabinet. Which cabinet a given 2016 machine was is not stated."
+
+[[claim]]
+id = "platform.first-release-au"
+statement = "Dragon Link was launched in 2016."
+value = "launched 2016; marketed for Queensland and NSW by November 2016"
+confidence = "verified"
+source = "court_record"
+citation = "Aristocrat Technologies Australia Pty Ltd v Light & Wonder, Inc. [2024] FCA 439 [2]; repeated in [2024] FCA 870 [3] (docs/reverse-engineering/LITIGATION.md)"
+accessed = "2026-10-13"
+scope = "cabinet-au"
+note = "The Federal Court's statement of the launch year. Aristocrat's Australian microsite in the Internet Archive does not list the product on 29 May 2016 and lists it for Queensland and NSW by 13 November 2016 (read once). Every legible Australian machine in public footage from 2019 to 2026 carries a 2016 copyright notice. The earliest ACT approval is of 29 March 2018; no NSW or Queensland approval record is public."
 
 [[claim]]
 id = "platform.generation-differences"
@@ -298,9 +397,9 @@ note = "No cabinet software, par sheet or regulatory math document is held. Offi
 
 [[claim]]
 id = "math.rtp"
-statement = "What is the theoretical return to player of each title, per denomination and jurisdiction?"
+statement = "What is the theoretical return to player of each title, per denomination and variation, in Australia?"
 confidence = "unknown"
-note = "No figure was found in any regulatory or official source. The national standard requires the machine's own information screen to show RTP or its range, which makes footage of that screen the most direct lawful source."
+note = "No Australian figure for Dragon Link was found in any regulatory or official source, and no footage shows the machine's information screen. A US regulator prints a payout range for two of the titles (per-title files, math.published-return-us), and the ACT printed Lightning Link's return by denomination in 2015 (docs/reverse-engineering/PUBLISHED_RETURNS.md). Neither is a figure for these games in Australia."
 
 [[claim]]
 id = "math.rng"

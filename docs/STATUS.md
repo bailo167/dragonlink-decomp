@@ -189,6 +189,22 @@ and merged through the gate.
   headless browser: it starts, shows its placeholder banner, and spins on a key press
   ([BUILDING.md](BUILDING.md), "The web bundle").
 
+### The passes' findings entered as claims (2026-10-13)
+
+- The claims database went from 99 to 124 claims: 45 verified, 49 strong evidence, 9 partial,
+  21 open questions. Seventeen questions that were open this morning now have sourced answers
+  (lines, denominations and symbols for each title, the pay table of three titles as shown in the
+  US, which jackpot levels are progressive, the launch cabinets), and new claims record the launch
+  year, the free-games award and the fixed prize values.
+- **Labelling of footage.** A reading from footage is entered as strong evidence at most, even
+  where two recordings agree, because each was read in one pass by one reader. An independent
+  second reading is what would make one verified.
+- The knowledge base was corrected where the passes overtook it: an Autumn Moon 2026 build exists
+  (1.HD138); return figures do exist publicly, in the United States; the launch cabinet is
+  established; the "250x" sentence is on all four Australian pages and matches no screen.
+  [reverse-engineering/OPEN_QUESTIONS.md](reverse-engineering/OPEN_QUESTIONS.md) now says which
+  conflicts are settled and by what.
+
 ## Known limits of what exists
 
 - Every rule in the simulation is a generic slot-game rule, written down so it can be checked. None

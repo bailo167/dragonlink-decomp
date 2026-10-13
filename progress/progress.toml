@@ -175,7 +175,7 @@ note = "Mighty Fu Casino 5.6.0 obtained from the Play Store, hashed and inventor
 id = "provenance-db"
 name = "Source provenance database (claims)"
 status = "implemented"
-evidence = "crates/dragonlink-model/claims/ (99 claims); crates/dragonlink-model/src/claims.rs (tests enforce the evidence rules)"
+evidence = "crates/dragonlink-model/claims/ (124 claims); crates/dragonlink-model/src/claims.rs (tests enforce the evidence rules)"
 
 [[category.item]]
 id = "format-id"

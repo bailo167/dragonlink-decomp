@@ -6,7 +6,7 @@ Approval records and standards that name the four titles. All read on **2026-10-
 independent passes and is labelled VERIFIED. *once* means a single reading that has not been
 re-checked; it is labelled STRONG EVIDENCE until it is.
 
-None of these documents states an RTP, a line count, a denomination list or a pay table.
+None of these documents states an RTP, a line count, a denomination list or a pay table for Dragon Link. A US regulator's list does print a payout range for two of the titles, and the ACT printed Lightning Link's return by denomination in 2015: see [PUBLISHED_RETURNS.md](PUBLISHED_RETURNS.md).
 
 ## Australian Capital Territory — Gambling and Racing Commission
 
@@ -47,7 +47,7 @@ The instruments do not say what distinguishes 1.HD129 from 1.HDG96. **UNKNOWN.**
 | Autumn Moon – Dragon Link - Grand | **1.HD159** | 1.YA038 | 01-A2815/S01 | 2026 (No 32), 31 Jul 2026 | 2026-389 | twice |
 
 "Updated" entries for the three 2018 specifications are in NI 2018-312 (read once).
-No 2026 non-Grand re-approval of Panda Magic or Autumn Moon was found.
+No 2026 non-Grand re-approval of Panda Magic was found. **Corrected 2026-10-13:** one exists for Autumn Moon, specification **1.HD138** (NI 2026-420, 14 September 2026, read once), found in a later sweep of the register for 2016 to 2026. The same sweep found a second "Grand" specification for three titles a few weeks after the first, with no stated difference: Golden Century 1.HD174 (NI 2026-418), Happy & Prosperous 1.HD173 (NI 2026-417) and Autumn Moon 1.HD169 (NI 2026-416), each read once.
 
 ### Regression-test entries (platform evidence)
 
@@ -121,7 +121,7 @@ have not been checked against the PDF by eye; they are not reproduced here until
 
 ## Not found
 
-- Any RTP figure or range for the four titles, in any regulatory or official source.
+- Any **Australian** RTP figure or range for the four titles, in any regulatory or official source. (A US range for two titles is in [PUBLISHED_RETURNS.md](PUBLISHED_RETURNS.md).)
 - A public title-level approvals register for New South Wales, Queensland, South Australia,
   Tasmania, the Northern Territory or Western Australia.
 - The first Australian approval date and jurisdiction. The earliest record found is the ACT's of
