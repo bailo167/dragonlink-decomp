@@ -50,6 +50,8 @@ const SMOKE_FRAME_SECONDS: f32 = 1.0 / 60.0;
 const SMOKE_PRESS_EVERY: u32 = 12;
 /// Seconds a feature waits between its steps when they play by themselves.
 const FEATURE_STEP_PAUSE: f32 = 0.5;
+/// Seconds between symbol changes while a reel is spinning. Presentation only.
+const REEL_CYCLE_SECONDS: f32 = 0.05;
 /// Background of a cell on a winning line, and of a feature banner.
 const WIN_COLOR: Color = Color::srgb(0.85, 0.62, 0.12);
 
@@ -177,6 +179,14 @@ struct Presentation {
     shown_win: u64,
     /// Seconds left before a feature plays its next step by itself.
     step_timer: f32,
+}
+
+/// Which reels are spinning, for the reel animation.
+#[derive(Resource, Default)]
+struct ReelAnim {
+    spinning: Vec<bool>,
+    timer: f32,
+    phase: usize,
 }
 
 #[derive(Resource)]
@@ -413,6 +423,68 @@ fn input(
     }
 }
 
+/// While a reel is spinning, run its cells through the symbols so the window
+/// reads as moving. Presentation only; the outcome is already decided.
+fn animate_reels(
+    time: Res<Time>,
+    smoke: Res<Smoke>,
+    sim: Res<Sim>,
+    mut reels_spin: ResMut<ReelAnim>,
+    mut cells: Query<(&Cell, &mut BackgroundColor)>,
+    mut labels: Query<(&CellLabel, &mut Text)>,
+) {
+    if reels_spin.spinning.iter().all(|s| !*s) {
+        return;
+    }
+    let dt = if smoke.frames_left.is_some() {
+        SMOKE_FRAME_SECONDS
+    } else {
+        time.delta_secs()
+    };
+    reels_spin.timer -= dt;
+    if reels_spin.timer > 0.0 {
+        return;
+    }
+    reels_spin.timer = REEL_CYCLE_SECONDS;
+    reels_spin.phase = reels_spin.phase.wrapping_add(1);
+    let model = sim.game.model();
+    // Symbols that read while spinning: everything but the orb and scatter, so
+    // the blur does not look like a pending feature.
+    let rolling: Vec<&dragonlink_model::SymbolDef> = model
+        .symbols
+        .iter()
+        .filter(|s| matches!(s.kind, SymbolKind::Regular | SymbolKind::Wild))
+        .collect();
+    if rolling.is_empty() {
+        return;
+    }
+    let spin_bg = Color::srgb(0.10, 0.11, 0.15);
+    for reel in 0..model.grid.reels {
+        if !reels_spin
+            .spinning
+            .get(reel as usize)
+            .copied()
+            .unwrap_or(false)
+        {
+            continue;
+        }
+        for row in 0..model.grid.rows {
+            let pick = (reels_spin.phase + reel as usize * 5 + row as usize * 3) % rolling.len();
+            let key = rolling[pick].key.clone();
+            for (cell, mut background) in &mut cells {
+                if cell.reel == reel && cell.row == row {
+                    background.0 = spin_bg;
+                }
+            }
+            for (label, mut text) in &mut labels {
+                if label.reel == reel && label.row == row {
+                    text.0.clone_from(&key);
+                }
+            }
+        }
+    }
+}
+
 /// Play a feature's steps by itself, with a pause between them, so the player
 /// does not drive Hold & Spin or the free games by hand.
 fn drive_features(
@@ -451,9 +523,14 @@ fn present(
     smoke: Res<Smoke>,
     sim: Res<Sim>,
     mut presentation: ResMut<Presentation>,
+    mut reels_spin: ResMut<ReelAnim>,
     mut cells: Query<(&Cell, &mut BackgroundColor)>,
     mut labels: Query<(&CellLabel, &mut Text)>,
 ) {
+    let reels = sim.game.model().grid.reels as usize;
+    if reels_spin.spinning.len() != reels {
+        reels_spin.spinning = vec![false; reels];
+    }
     presentation.wait -= if smoke.frames_left.is_some() {
         SMOKE_FRAME_SECONDS
     } else {
@@ -483,15 +560,17 @@ fn present(
                 presentation.shown_win = 0;
             }
             Event::SpinStarted { spin } => {
-                // The window shows the reels in motion, not the previous result.
-                for reel in 0..model.grid.reels {
-                    for row in 0..model.grid.rows {
-                        set_cell(reel, row, "~".to_string(), Color::srgb(0.12, 0.13, 0.16));
-                    }
+                // Every reel starts spinning; `animate_reels` fills the window
+                // until each reel's stop arrives.
+                for s in reels_spin.spinning.iter_mut() {
+                    *s = true;
                 }
                 presentation.status = format!("Spin {spin}");
             }
             Event::ReelStopped { reel, symbols, .. } => {
+                if let Some(s) = reels_spin.spinning.get_mut(*reel as usize) {
+                    *s = false;
+                }
                 for (row, key) in symbols.iter().enumerate() {
                     let kind = model.symbols.iter().find(|s| &s.key == key).map(|s| s.kind);
                     set_cell(*reel, row as u8, key.clone(), cell_color(kind, key));
@@ -738,6 +817,7 @@ fn main() -> AppExit {
             shown_credits: cli.credits,
             ..default()
         })
+        .insert_resource(ReelAnim::default())
         .insert_resource(Smoke {
             frames_left: cli.smoke_frames,
             screenshot: cli.screenshot,
@@ -745,7 +825,10 @@ fn main() -> AppExit {
             hold: 0,
         })
         .add_systems(Startup, setup)
-        .add_systems(Update, (smoke, input, drive_features, present, hud).chain())
+        .add_systems(
+            Update,
+            (smoke, input, drive_features, present, animate_reels, hud).chain(),
+        )
         .run()
 }
 
