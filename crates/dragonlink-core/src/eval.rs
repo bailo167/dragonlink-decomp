@@ -41,8 +41,10 @@ impl Win {
     }
 }
 
-/// The paying run on one line: `(symbol, count, pay per credit)`.
-fn line_run(model: &MathModel, symbols: &[SymbolId]) -> Option<(SymbolId, u8, u32)> {
+/// The paying run for the symbols along one line, left to right:
+/// `(symbol, count, pay per credit bet on the line)`, or `None` when the line
+/// pays nothing. Public so that exact analysis applies the same rules.
+pub fn line_run(model: &MathModel, symbols: &[SymbolId]) -> Option<(SymbolId, u8, u32)> {
     let is_wild = |s: &SymbolId| model.kind(*s) == Some(SymbolKind::Wild);
 
     let wild_run = symbols.iter().take_while(|s| is_wild(s)).count() as u8;

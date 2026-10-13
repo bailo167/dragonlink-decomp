@@ -3,6 +3,8 @@ resolver = "3"
 members = [
     "crates/dragonlink-model",
     "crates/dragonlink-core",
+    "crates/dragonlink-math",
+    "tools/dragonlink-analyze",
     "tools/progress-gen",
     "tools/repo-hygiene",
 ]
@@ -12,6 +14,8 @@ members = [
 default-members = [
     "crates/dragonlink-model",
     "crates/dragonlink-core",
+    "crates/dragonlink-math",
+    "tools/dragonlink-analyze",
     "tools/progress-gen",
     "tools/repo-hygiene",
 ]
@@ -28,6 +32,7 @@ publish = false
 # Internal crates
 dragonlink-model = { path = "crates/dragonlink-model" }
 dragonlink-core = { path = "crates/dragonlink-core" }
+dragonlink-math = { path = "crates/dragonlink-math" }
 
 # External (pinned exactly; bump deliberately, one at a time)
 bevy = { version = "=0.20.0", default-features = false }

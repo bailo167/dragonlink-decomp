@@ -20,7 +20,7 @@ use crate::math::{
 use crate::symbol::{SymbolDef, SymbolId, SymbolKind};
 
 /// Identifier of [`synthetic_dev_fixture`], written into trace headers.
-pub const SYNTHETIC_DEV_FIXTURE_ID: &str = "synthetic-dev-1";
+pub const SYNTHETIC_DEV_FIXTURE_ID: &str = "synthetic-dev-2";
 
 const A: u16 = 0;
 const B: u16 = 1;
@@ -66,23 +66,27 @@ pub fn synthetic_dev_fixture() -> MathModel {
     })
     .collect();
 
-    // Each strip has one block of three orbs and one single orb, so that the
-    // window can hold enough orbs to start the feature.
+    // Each strip has one block of two orbs and one single orb, so that the
+    // window can hold enough orbs to start the feature. The strips, chances and
+    // values were adjusted with `dragonlink-analyze` until the fixture had a
+    // sane shape (a return a little under 100%, the feature about once in 78
+    // spins). They were tuned for usability as a development fixture and
+    // towards no real game's figures, which are unknown.
     let reel_strips = vec![
         strip(&[
-            A, E, F, ORB, ORB, ORB, G, H, B, E, F, G, SCATTER, H, C, F, ORB, D, E, G, H, A, F, H,
+            A, E, F, A, ORB, ORB, G, H, B, E, F, G, SCATTER, H, C, F, ORB, D, E, G, H, A, F, H,
         ]),
         strip(&[
-            B, F, G, H, WILD, E, C, G, ORB, ORB, ORB, H, A, F, E, SCATTER, H, D, F, ORB, G, H, B, E,
+            B, F, G, H, WILD, E, C, G, B, ORB, ORB, H, A, F, E, SCATTER, H, D, F, ORB, G, H, B, E,
         ]),
         strip(&[
-            C, G, H, E, F, A, H, G, WILD, F, D, ORB, ORB, ORB, E, H, G, B, SCATTER, F, ORB, H, E, G,
+            C, G, H, E, F, A, H, G, WILD, F, D, C, ORB, ORB, E, H, G, B, SCATTER, F, ORB, H, E, G,
         ]),
         strip(&[
-            D, H, E, F, G, WILD, B, H, E, A, G, F, H, SCATTER, E, C, ORB, ORB, ORB, G, F, ORB, H, E,
+            D, H, E, F, G, WILD, B, H, E, A, G, F, H, SCATTER, E, C, D, ORB, ORB, G, F, ORB, H, E,
         ]),
         strip(&[
-            A, G, F, E, H, C, G, E, H, B, F, SCATTER, G, D, ORB, ORB, ORB, H, E, F, ORB, A, H, E,
+            A, G, F, E, H, C, G, E, H, B, F, SCATTER, G, D, A, ORB, ORB, H, E, F, ORB, A, H, E,
         ]),
     ];
 
@@ -136,13 +140,14 @@ pub fn synthetic_dev_fixture() -> MathModel {
     ];
 
     let orb_values = [
-        (40, OrbValue::BetMultiple(1)),
-        (25, OrbValue::BetMultiple(2)),
-        (15, OrbValue::BetMultiple(3)),
-        (10, OrbValue::BetMultiple(5)),
-        (5, OrbValue::BetMultiple(10)),
-        (3, OrbValue::Jackpot(JackpotTier::Mini)),
-        (2, OrbValue::Jackpot(JackpotTier::Minor)),
+        (400, OrbValue::BetMultiple(2)),
+        (250, OrbValue::BetMultiple(4)),
+        (150, OrbValue::BetMultiple(6)),
+        (100, OrbValue::BetMultiple(10)),
+        (50, OrbValue::BetMultiple(20)),
+        (30, OrbValue::Jackpot(JackpotTier::Mini)),
+        (19, OrbValue::Jackpot(JackpotTier::Minor)),
+        (1, OrbValue::Jackpot(JackpotTier::Major)),
     ]
     .into_iter()
     .map(|(weight, value)| WeightedOrbValue { weight, value })
@@ -181,7 +186,7 @@ pub fn synthetic_dev_fixture() -> MathModel {
             trigger_count: 6,
             initial_respins: 3,
             reset_respins_on_new_orb: true,
-            orb_land_chance: Ratio { num: 1, den: 12 },
+            orb_land_chance: Ratio { num: 1, den: 20 },
             orb_values,
             full_grid_award: Some(JackpotTier::Grand),
             jackpots,

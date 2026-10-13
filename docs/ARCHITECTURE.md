@@ -35,6 +35,8 @@
 |---|---|---|
 | `crates/dragonlink-model` | exists | Evidence labels, claims database, symbols, layouts, runnable math models, the synthetic fixture. |
 | `crates/dragonlink-core` | exists | Deterministic simulation. Commands in, events out. |
+| `crates/dragonlink-math` | exists | Mathematics analysis of a game configuration: exact return and feature analysis, seeded simulation, progressive EV, comparison, reports. |
+| `tools/dragonlink-analyze` | exists | `analyze-game`, `compare-games`, `progressive-ev`, `simulate`. |
 | `crates/dragonlink-trace` | planned | Trace format shared by rewrite traces and transcribed observations; comparison. |
 | `crates/dragonlink-formats` | planned | File identification by content, entropy, safe archive reading. |
 | `crates/dragonlink-assets` | planned | Asset manifest, logical asset ids, discovery of the asset set, placeholder mode. |
