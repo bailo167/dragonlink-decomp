@@ -224,7 +224,9 @@ and merged through the gate.
   messages, with the shapes of lines 1 to 5.
 - **The $1 game is a different configuration from the 1c to 10c games** on that machine: different
   reels, and one pay seen to differ. Changing the number of lines does not change the reels.
-- Reel strips do not assemble yet. More sessions are the remedy; the tooling takes them.
+- Reel reconstruction was extended to windows that sit at more than one stop (recurring runs,
+  stacks). With it two of the five $1 reels assemble as candidates; three still miss windows.
+  More sessions are the remedy; the tooling takes them.
 - The entries were checked against a separate reading of the credit meter: all 221 $1 games that
   could be checked paid exactly what the entries and line shapes give.
 
@@ -255,9 +257,9 @@ In order of value. The first four need nothing from anyone.
 2. **Find the games the detector misses.** The credit meter shows fourteen places in the $1 play
    of the first session. Until they are found a session is not a complete account, so it gives no
    observed return, hit rate or feature frequency.
-3. **Reconstruction that copes with stacks and near-complete coverage**: deduce a single missing
-   window where the neighbouring windows leave only one possibility, and estimate how many stops a
-   repeated window occupies, each reported as what it is (derived, or inferred statistically).
+3. **Reconstruction with a window or two missing**: recurring runs and stacks are handled; a
+   reel one window short is still refused. Where the neighbouring windows leave only one
+   possibility the missing window could be proposed, labelled as a hypothesis.
 4. **The rest of the Golden Century pay table**: lines 6 to 50 from the 27 messages that name
    them and from the meter at the cent denominations; four and five of a kind as they turn up.
 5. **Model the game's real structure in the simulation**: denominations, selectable lines,

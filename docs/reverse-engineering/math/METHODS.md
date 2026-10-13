@@ -96,15 +96,35 @@ it was seen to stop on (`dragonlink-math::reconstruct`, `dragonlink-analyze reco
   into separate loops); three occurrences can. Where several orders have exactly the observed
   windows, their number is reported, and they are mathematically identical: they differ only in what
   scrolls past.
-- **Equal likelihood of stops is tested**, not assumed: a chi-square test of the window counts
-  against equal shares. If it fails, stops are weighted or a window occurs at more than one stop;
-  the shares stand and no strip is asserted.
+- **A window can sit at more than one stop**, and on a real reel several do. A run of four symbols
+  that occurs twice puts two windows at two stops each; a stack of one symbol longer than the
+  window puts one window at consecutive stops. The two cases are found differently.
+  - *By the chain (derived).* Every run of `rows − 1` symbols must be left as often as it is
+    entered. Where the distinct windows enter a run more often than they leave it, a window is
+    used more than once. Windows are given the fewest extra stops that balance the chain, which is
+    **the shortest strip that shows exactly these windows**. If two equally short ways exist that
+    repeat different windows, no strip is asserted.
+  - *By the counts (estimated).* A stack's window leads from a run back to the same run, so the
+    chain balances whatever its length. Its number of stops is estimated from how often it was
+    seen. This is the one statistical figure in a strip's length.
+- **One unseen window is not papered over.** A chain missing one window still closes, by going
+  round the whole strip twice. That is refused: closing the chain may not put most windows at a
+  second stop.
+- **Equal likelihood of stops is tested**, not assumed: a chi-square test of the counts against
+  each window being seen in proportion to the stops it sits at. If it fails, stops are weighted,
+  windows are missing, or a window sits at more stops than the chain requires; the shares stand
+  and no strip is asserted.
+- **What "the shortest strip" assumes.** A window could sit at more stops than the chain requires
+  and the strip be longer. Only the counts can show that, so a strip assembled from few sightings
+  per stop is a candidate, and says so through its fit.
 - **Completeness is estimated**: the share of spins expected to show a window not seen yet
   (Good–Turing: windows seen once ÷ spins). A reconstruction is not relied on while that is not
   small.
 
 Checked by rebuilding every reel of the synthetic fixture from 20,000 simulated spins, and by
-showing that substituting the rebuilt strips leaves the exact analysis unchanged.
+showing that substituting the rebuilt strips leaves the exact analysis unchanged; and on made-up
+strips with a repeated run of four, with a stack of five, with one window withheld (refused), and
+with one stop favoured (refused).
 
 What this cannot do: recover anything that is not a function of the visible windows. Feature
 probabilities (how often a position lands a prize symbol on a respin, the value distribution) need

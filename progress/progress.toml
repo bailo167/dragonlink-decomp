@@ -331,7 +331,7 @@ note = "Window shares with intervals, a test of equal stop likelihood, an estima
 id = "footage-windows"
 name = "Reel windows transcribed from public cabinet footage"
 status = "partial"
-note = "Rung 1b (DECISIONS D-015). One 53-minute Australian session of Golden Century: 583 games, every one read, 1,808 reel windows read twice by different readers with no disagreement. Coverage at $1 is nearly complete on four reels, but no strip assembles yet (windows missing, and stacked symbols need multiplicities the sample cannot give). One session of one title."
+note = "Rung 1b (DECISIONS D-015). One 53-minute Australian session of Golden Century: 583 games, every one read, 1,808 reel windows read twice by different readers with no disagreement. At $1, two of five reels assemble as candidate strips (one fitting its counts well, one only just) now that the reconstruction finds windows that sit at more than one stop; three reels still miss windows, and no cent-denomination reel assembles. One session of one title; strips are kept privately."
 
 [[category.item]]
 id = "automated-collection"

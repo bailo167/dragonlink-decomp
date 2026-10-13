@@ -199,16 +199,21 @@ Hold & Spin was played to the end several times, twice inside free games, and fr
 triggered five times. Stills of features were read but features are not yet analysed: their reels
 and rules are separate from the base game's.
 
-## Reel reconstruction: not there yet
+## Reel reconstruction: two of five reels, as candidates
 
 The trace of each configuration was put through `dragonlink-analyze reconstruct-reels`.
 
 - At $1, 236 base games give nearly complete coverage of four reels: the tool estimates that under
   3% of further games would show a window not yet seen on those reels, and about 6% on the fifth.
-- **No strip assembles yet.** Two reasons. Some windows are still missing. And symbols come in
-  stacks, so the same window sits at more than one stop: assembling such a strip needs to know how
-  many times, and a few hundred games cannot tell three times from four.
-- The cent denominations have far fewer games each and are further off.
+- The first attempt assembled nothing, and the reason was in the method, not only in the data: it
+  assumed every window sits at one stop. On these reels several windows sit at two, because runs
+  of symbols recur. The reconstruction was extended to find such windows from the chain itself
+  ([math/METHODS.md](math/METHODS.md), "Reconstructing a reel from observation").
+- **With that, two of the five $1 reels assemble**: the third, whose counts fit the strip well, and
+  the first, whose counts fit it only just. Both are the shortest strips that show exactly the
+  windows seen, and both are candidates until more games confirm them.
+- **Three $1 reels do not assemble**: windows are still missing from the second, fourth and fifth.
+- No reel of a cent denomination assembles: each has far fewer games.
 - Strips, and anything that would give them, stay private when they exist
   ([../DECISIONS.md](../DECISIONS.md), D-010 and D-015).
 

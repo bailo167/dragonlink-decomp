@@ -30,7 +30,7 @@ use dragonlink_math::compare::compare;
 use dragonlink_math::exact::{DEFAULT_ENUMERATION_LIMIT, analyze};
 use dragonlink_math::overlap::window_overlap;
 use dragonlink_math::progressive::progressive_ev;
-use dragonlink_math::reconstruct::{Strip, reconstruct_from_events, windows_by_reel};
+use dragonlink_math::reconstruct::{RepeatBasis, Strip, reconstruct_from_events, windows_by_reel};
 use dragonlink_math::report::{comparison_report, game_report, progressive_report};
 use dragonlink_math::sim::simulate;
 use dragonlink_model::JackpotTier;
@@ -286,6 +286,26 @@ fn main() -> Result<()> {
                         u.degrees_of_freedom,
                         u.z
                     ));
+                }
+                if let Some(stops) = r.stops {
+                    let chain = r
+                        .repeats
+                        .iter()
+                        .filter(|x| x.basis == RepeatBasis::Chain)
+                        .count();
+                    out.push_str(&format!(
+                        "  shortest strip showing exactly these windows: {stops} stops; {chain} windows sit at more than one stop by the chain (derived), {} stacks sized from counts (estimated)\n",
+                        r.repeats.len() - chain
+                    ));
+                    if let Some(f) = &r.fit {
+                        out.push_str(&format!(
+                            "  seen in proportion to stops: {} (chi-square {:.1} on {} degrees of freedom, z = {:+.2})\n",
+                            if f.consistent { "consistent" } else { "REJECTED" },
+                            f.chi_square,
+                            f.degrees_of_freedom,
+                            f.z
+                        ));
+                    }
                 }
                 match &r.strip {
                     Strip::Unique { symbols } => {

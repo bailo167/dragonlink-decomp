@@ -23,11 +23,26 @@
 //!    are mathematically identical (point 1); they differ only in what
 //!    scrolls past, which a longer view of the reel would settle. The number
 //!    of such strips is reported, never hidden.
-//! 3. **Uniform stops are a hypothesis to test.** If every stop is equally
-//!    likely, every window has the same share. The counts are tested against
-//!    that. When the test fails, either stops are weighted or some window
-//!    occurs at more than one stop; the shares still stand, and the strip is
-//!    not assembled.
+//! 3. **A window can sit at more than one stop**, and on real reels several
+//!    do: a run of four symbols that occurs twice puts two windows at two
+//!    stops each, and a stack of one symbol longer than the window puts the
+//!    same window at consecutive stops. Two different things reveal this.
+//!    - *The chain.* Every run of `rows − 1` symbols must be left as often as
+//!      it is entered. Where the distinct windows enter a run more often
+//!      than they leave it, some window that leaves it is used more than
+//!      once. The windows are given the fewest extra stops that balance the
+//!      chain: the **shortest strip that shows exactly these windows**. That
+//!      is derived, not estimated, and it is an assumption only in "the
+//!      shortest": the counts are then tested against it.
+//!    - *The counts.* A stack's window leads from a run back to the same
+//!      run, so the chain balances whatever its number of stops. That number
+//!      is estimated from how often the window was seen, and is the one
+//!      statistical figure in a strip's length.
+//! 4. **Uniform stops are a hypothesis to test.** If every stop is equally
+//!    likely, a window is seen in proportion to the stops it sits at. The
+//!    counts are tested against that. When the test fails, stops are
+//!    weighted, windows are missing, or a window sits at more stops than the
+//!    chain requires; the shares still stand, and the strip is not asserted.
 //!
 //! Completeness is estimated, not assumed: the share of spins expected to
 //! show a window not yet seen (Good–Turing) says whether more collection is
@@ -46,6 +61,31 @@ use crate::sim::{Interval, wilson};
 
 /// Most candidate strips counted before giving up counting.
 pub const CANDIDATE_CAP: usize = 1000;
+/// Most runs the chain may be out of balance by. Beyond this the windows are
+/// too incomplete for the shortest balancing to mean anything.
+const MAX_IMBALANCE: usize = 8;
+/// Most steps the search for an order may take.
+const SEARCH_BUDGET: u64 = 5_000_000;
+
+/// How a window's number of stops was arrived at.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RepeatBasis {
+    /// Required for the windows to chain into a cycle. Derived.
+    Chain,
+    /// A stack: estimated from how often the window was seen.
+    Count,
+}
+
+/// A window that sits at more than one stop of the reconstructed strip.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct Repeat {
+    pub symbols: Vec<String>,
+    pub stops: usize,
+    /// Times the window was seen.
+    pub count: u64,
+    pub basis: RepeatBasis,
+}
 
 /// One window and how often it was seen.
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -94,19 +134,38 @@ pub struct ReelReconstruction {
     pub windows: Vec<WindowStat>,
     /// Estimated share of spins that would show a window not seen yet.
     pub unseen_share: f64,
+    /// The counts against "every window is equally likely".
     pub uniformity: Option<Uniformity>,
+    /// Stops on the shortest strip that shows exactly these windows, when
+    /// the chain could be balanced.
+    pub stops: Option<usize>,
+    /// Windows that sit at more than one stop of it.
+    pub repeats: Vec<Repeat>,
+    /// The counts against that strip: each window seen in proportion to its
+    /// stops. `None` when the chain could not be balanced.
+    pub fit: Option<Uniformity>,
     pub strip: Strip,
 }
 
 fn uniformity(counts: &[u64], total: u64) -> Option<Uniformity> {
+    fit(counts, &vec![1; counts.len()], total)
+}
+
+/// The counts against "each window is seen in proportion to its stops".
+fn fit(counts: &[u64], stops: &[usize], total: u64) -> Option<Uniformity> {
     let k = counts.len();
-    if k < 2 || total == 0 {
+    let all_stops: usize = stops.iter().sum();
+    if k < 2 || total == 0 || all_stops == 0 || stops.len() != k {
         return None;
     }
-    let expected = total as f64 / k as f64;
+    let per_stop = total as f64 / all_stops as f64;
     let chi_square: f64 = counts
         .iter()
-        .map(|c| (*c as f64 - expected).powi(2) / expected)
+        .zip(stops)
+        .map(|(c, m)| {
+            let expected = per_stop * *m as f64;
+            (*c as f64 - expected).powi(2) / expected
+        })
         .sum();
     let df = (k - 1) as f64;
     // Wilson–Hilferty: (X/df)^(1/3) is close to normal.
@@ -119,8 +178,154 @@ fn uniformity(counts: &[u64], total: u64) -> Option<Uniformity> {
     })
 }
 
-/// Chain windows that each occur at one stop into cyclic strips. Returns the
-/// number of distinct strips (capped) and one of them.
+/// Every arrangement of `0..n`, by Heap's method.
+fn for_each_permutation(n: usize, mut visit: impl FnMut(&[usize])) {
+    let mut order: Vec<usize> = (0..n).collect();
+    let mut counters = vec![0usize; n];
+    visit(&order);
+    let mut at = 0;
+    while at < n {
+        if counters[at] < at {
+            if at % 2 == 0 {
+                order.swap(0, at);
+            } else {
+                order.swap(counters[at], at);
+            }
+            visit(&order);
+            counters[at] += 1;
+            at = 0;
+        } else {
+            counters[at] = 0;
+            at += 1;
+        }
+    }
+}
+
+/// How many stops each distinct window sits at on the shortest cyclic strip
+/// that shows exactly these windows, as far as the chain decides it. Stacks
+/// are left at one stop here.
+fn chain_stops(windows: &[&Vec<String>], rows: usize) -> Result<Vec<usize>, String> {
+    if rows < 2 {
+        return Err("a one-row window carries no order".into());
+    }
+    // Runs of rows-1 symbols, numbered.
+    let mut runs: BTreeMap<&[String], usize> = BTreeMap::new();
+    let mut ends: Vec<(usize, usize)> = Vec::with_capacity(windows.len());
+    for window in windows {
+        let mut run_of = |symbols| {
+            let next = runs.len();
+            *runs.entry(symbols).or_insert(next)
+        };
+        let from = run_of(&window[..rows - 1]);
+        ends.push((from, run_of(&window[1..])));
+    }
+    let run_count = runs.len();
+    let mut leaving: Vec<Vec<usize>> = vec![Vec::new(); run_count];
+    let mut balance = vec![0i64; run_count]; // entered minus left
+    for (index, (from, to)) in ends.iter().enumerate() {
+        leaving[*from].push(index);
+        balance[*from] -= 1;
+        balance[*to] += 1;
+    }
+    // Runs entered more often than left, and left more often than entered,
+    // once for each time.
+    let mut over: Vec<usize> = Vec::new();
+    let mut under: Vec<usize> = Vec::new();
+    for (run, b) in balance.iter().enumerate() {
+        for _ in 0..b.unsigned_abs() {
+            if *b > 0 { &mut over } else { &mut under }.push(run);
+        }
+    }
+    let mut stops = vec![1usize; windows.len()];
+    if over.is_empty() {
+        return Ok(stops);
+    }
+    if over.len() > MAX_IMBALANCE {
+        return Err(format!(
+            "{} runs of symbols are entered more often than they are left: windows are missing",
+            over.len()
+        ));
+    }
+    // The shortest way from each over-entered run to each under-entered one,
+    // through the windows seen (breadth first).
+    let mut ways: BTreeMap<(usize, usize), Vec<usize>> = BTreeMap::new();
+    for start in &over {
+        let mut came_by: Vec<Option<usize>> = vec![None; run_count];
+        let mut reached = vec![false; run_count];
+        reached[*start] = true;
+        let mut queue = std::collections::VecDeque::from([*start]);
+        while let Some(run) = queue.pop_front() {
+            for window in &leaving[run] {
+                let to = ends[*window].1;
+                if !reached[to] {
+                    reached[to] = true;
+                    came_by[to] = Some(*window);
+                    queue.push_back(to);
+                }
+            }
+        }
+        for target in &under {
+            if !reached[*target] {
+                continue;
+            }
+            let mut path = Vec::new();
+            let mut run = *target;
+            while let Some(window) = came_by[run] {
+                path.push(window);
+                run = ends[window].0;
+            }
+            ways.insert((*start, *target), path);
+        }
+    }
+    // Pair them so that the fewest stops are added.
+    let mut best: Option<usize> = None;
+    let mut answers: Vec<Vec<usize>> = Vec::new();
+    for_each_permutation(under.len(), |order| {
+        let mut added = vec![0usize; windows.len()];
+        let mut cost = 0usize;
+        for (from, to) in over.iter().zip(order.iter().map(|at| under[*at])) {
+            let Some(path) = ways.get(&(*from, to)) else {
+                return;
+            };
+            cost += path.len();
+            for window in path {
+                added[*window] += 1;
+            }
+        }
+        if best.is_none_or(|b| cost < b) {
+            best = Some(cost);
+            answers.clear();
+        }
+        if best == Some(cost) && !answers.contains(&added) {
+            answers.push(added);
+        }
+    });
+    match answers.as_slice() {
+        [] => {
+            Err("the chain cannot be closed through the windows seen: windows are missing".into())
+        }
+        // One unseen window leaves a chain that closes only by going round
+        // the whole strip a second time. That is a strip which shows exactly
+        // these windows, and it is not the reel.
+        [added] if 2 * added.iter().sum::<usize>() > windows.len() => Err(
+            "closing the chain would put most windows at a second stop: a window is missing".into(),
+        ),
+        [added] => {
+            for (stop, extra) in stops.iter_mut().zip(added) {
+                *stop += extra;
+            }
+            Ok(stops)
+        }
+        several => Err(format!(
+            "the chain can be closed in {} equally short ways that put different windows at more              than one stop: more games are needed to tell them apart",
+            several.len()
+        )),
+    }
+}
+
+/// Chain windows into cyclic strips; a window that sits at several stops is
+/// given once for each, next to its copies. Returns the number of distinct
+/// strips (capped) and one of them.
 fn assemble(windows: &[&Vec<String>], rows: usize) -> Result<(usize, Vec<String>), String> {
     let n = windows.len();
     if rows < 2 {
@@ -152,7 +357,17 @@ fn assemble(windows: &[&Vec<String>], rows: usize) -> Result<(usize, Vec<String>
     let mut example: Option<Vec<usize>> = None;
     // Iterative depth-first search: `choice[d]` is the next option to try at depth d.
     let mut choice = vec![0usize];
+    let mut steps = 0u64;
     while let Some(depth) = path.len().checked_sub(1) {
+        steps += 1;
+        if steps > SEARCH_BUDGET {
+            if example.is_some() {
+                // Orders exist; how many could not be counted.
+                count = count.max(CANDIDATE_CAP);
+                break;
+            }
+            return Err("too many possible orders to search".into());
+        }
         let current = windows[path[depth]];
         let options = leaving.get(&current[1..]).map_or(&[][..], Vec::as_slice);
         if path.len() == n {
@@ -175,7 +390,11 @@ fn assemble(windows: &[&Vec<String>], rows: usize) -> Result<(usize, Vec<String>
         while choice[depth] < options.len() {
             let next = options[choice[depth]];
             choice[depth] += 1;
-            if !used[next] {
+            // Copies of one window are interchangeable: take them in order,
+            // so that each distinct strip is counted once.
+            let earlier_copy_unused =
+                next > 0 && !used[next - 1] && windows[next - 1] == windows[next];
+            if !used[next] && !earlier_copy_unused {
                 used[next] = true;
                 path.push(next);
                 choice.push(0);
@@ -227,30 +446,73 @@ pub fn reconstruct_reel(observed: &[Vec<String>]) -> ReelReconstruction {
     let all_counts: Vec<u64> = counts.values().copied().collect();
     let uniformity = uniformity(&all_counts, total);
 
+    let distinct: Vec<&Vec<String>> = counts.keys().copied().collect();
+    let mut stops = None;
+    let mut repeats = Vec::new();
+    let mut fitted = None;
     let strip = if observed.iter().any(|w| w.len() != rows) {
         Strip::NotAssembled {
             reason: "the windows are not all the same height".into(),
         }
-    } else if uniformity.is_some_and(|u| !u.consistent) {
+    } else if distinct.is_empty() {
         Strip::NotAssembled {
-            reason: "the windows are not equally frequent: stops are weighted, or a window occurs \
-                     at more than one stop"
-                .into(),
+            reason: "nothing was observed".into(),
         }
     } else {
-        let distinct: Vec<&Vec<String>> = counts.keys().copied().collect();
-        if distinct.is_empty() {
-            Strip::NotAssembled {
-                reason: "nothing was observed".into(),
-            }
-        } else {
-            match assemble(&distinct, rows) {
-                Ok((1, symbols)) => Strip::Unique { symbols },
-                Ok((candidates, example)) => Strip::Ambiguous {
-                    candidates,
-                    example,
-                },
-                Err(reason) => Strip::NotAssembled { reason },
+        match chain_stops(&distinct, rows) {
+            Err(reason) => Strip::NotAssembled { reason },
+            Ok(mut per_window) => {
+                let from_chain = per_window.clone();
+                // A stack's stops are not decided by the chain: estimate them
+                // from the counts, against the stops everything else has.
+                let is_stack = |w: &Vec<String>| w.windows(2).all(|pair| pair[0] == pair[1]);
+                for _ in 0..3 {
+                    let all: usize = per_window.iter().sum();
+                    let per_stop = total as f64 / all as f64;
+                    for (index, window) in distinct.iter().enumerate() {
+                        if is_stack(window) {
+                            let seen = all_counts[index] as f64;
+                            per_window[index] = ((seen / per_stop).round() as usize).max(1);
+                        }
+                    }
+                }
+                stops = Some(per_window.iter().sum());
+                for (index, window) in distinct.iter().enumerate() {
+                    if per_window[index] > 1 {
+                        repeats.push(Repeat {
+                            symbols: (*window).clone(),
+                            stops: per_window[index],
+                            count: all_counts[index],
+                            basis: if per_window[index] == from_chain[index] {
+                                RepeatBasis::Chain
+                            } else {
+                                RepeatBasis::Count
+                            },
+                        });
+                    }
+                }
+                repeats.sort_by(|a, b| b.stops.cmp(&a.stops).then(a.symbols.cmp(&b.symbols)));
+                fitted = fit(&all_counts, &per_window, total);
+                if fitted.is_some_and(|f| !f.consistent) {
+                    Strip::NotAssembled {
+                        reason: "the windows are not seen in proportion to the stops they sit at                                  on the shortest strip that shows them: stops are weighted,                                  windows are missing, or a window sits at more stops than the                                  chain requires"
+                            .into(),
+                    }
+                } else {
+                    let expanded: Vec<&Vec<String>> = distinct
+                        .iter()
+                        .zip(&per_window)
+                        .flat_map(|(window, times)| std::iter::repeat_n(*window, *times))
+                        .collect();
+                    match assemble(&expanded, rows) {
+                        Ok((1, symbols)) => Strip::Unique { symbols },
+                        Ok((candidates, example)) => Strip::Ambiguous {
+                            candidates,
+                            example,
+                        },
+                        Err(reason) => Strip::NotAssembled { reason },
+                    }
+                }
             }
         }
     };
@@ -260,6 +522,9 @@ pub fn reconstruct_reel(observed: &[Vec<String>]) -> ReelReconstruction {
         windows,
         unseen_share,
         uniformity,
+        stops,
+        repeats,
+        fit: fitted,
         strip,
     }
 }
@@ -303,7 +568,7 @@ pub fn windows_of(strip: &[String], rows: usize) -> Vec<Vec<String>> {
 mod tests {
     use super::*;
     use crate::exact::analyze;
-    use dragonlink_core::{DevRng, Game};
+    use dragonlink_core::{DevRng, Game, OutcomeRng};
     use dragonlink_model::SymbolId;
     use dragonlink_model::fixtures::synthetic_dev_fixture;
 
@@ -320,6 +585,119 @@ mod tests {
     fn same_cycle(a: &[String], b: &[String]) -> bool {
         a.len() == b.len()
             && (0..a.len()).any(|k| (0..a.len()).all(|i| a[(i + k) % a.len()] == b[i]))
+    }
+
+    /// `games` uniform stops of `reel`, as an observer would see them.
+    fn play(reel: &[String], games: usize, seed: u64) -> Vec<Vec<String>> {
+        let mut rng = DevRng::new(seed);
+        (0..games)
+            .map(|_| {
+                let stop = rng.below(reel.len() as u32).unwrap() as usize;
+                (0..3)
+                    .map(|row| reel[(stop + row) % reel.len()].clone())
+                    .collect()
+            })
+            .collect()
+    }
+
+    fn strip_of(r: &ReelReconstruction) -> &[String] {
+        match &r.strip {
+            Strip::Unique { symbols } => symbols,
+            Strip::Ambiguous { example, .. } => example,
+            Strip::NotAssembled { reason } => panic!("not assembled: {reason}"),
+        }
+    }
+
+    #[test]
+    fn a_run_of_four_that_occurs_twice_puts_two_windows_at_two_stops() {
+        // "A B C D" occurs twice, so the windows A B C and B C D each sit at two stops.
+        let reel = strip("A B C D E F G A B C D H I J K L M");
+        // Seen once per stop, and seen in play.
+        for observed in [windows_of(&reel, 3), play(&reel, 3000, 7)] {
+            let r = reconstruct_reel(&observed);
+            assert_eq!(r.stops, Some(reel.len()));
+            assert_eq!(r.windows.len(), reel.len() - 2);
+            let repeated: Vec<_> = r.repeats.iter().map(|x| x.symbols.join(" ")).collect();
+            assert_eq!(repeated, ["A B C", "B C D"]);
+            assert!(
+                r.repeats
+                    .iter()
+                    .all(|x| x.stops == 2 && x.basis == RepeatBasis::Chain)
+            );
+            assert!(r.fit.unwrap().consistent);
+            // The windows of the strip found are the windows of the reel, stop for stop.
+            assert_eq!(
+                sorted(windows_of(strip_of(&r), 3)),
+                sorted(windows_of(&reel, 3))
+            );
+        }
+        // Plain uniformity alone would have refused this reel.
+        assert!(
+            !reconstruct_reel(&play(&reel, 3000, 7))
+                .uniformity
+                .unwrap()
+                .consistent
+        );
+    }
+
+    #[test]
+    fn a_stack_longer_than_the_window_is_sized_from_how_often_it_is_seen() {
+        // Five S in a row: the window S S S sits at three stops.
+        let reel = strip("A B S S S S S C D E F G H I J K");
+        let r = reconstruct_reel(&play(&reel, 6000, 3));
+        assert_eq!(r.stops, Some(reel.len()));
+        assert_eq!(r.repeats.len(), 1);
+        assert_eq!(r.repeats[0].symbols, strip("S S S"));
+        assert_eq!(r.repeats[0].stops, 3);
+        assert_eq!(r.repeats[0].basis, RepeatBasis::Count);
+        assert!(same_cycle(strip_of(&r), &reel));
+    }
+
+    #[test]
+    fn a_missing_window_is_not_papered_over_by_a_second_lap() {
+        let reel = strip("A B C D E F G H I J K L");
+        let mut observed = windows_of(&reel, 3);
+        observed.retain(|w| w != &strip("D E F"));
+        // The windows that remain do close into a cycle, by going round twice.
+        let r = reconstruct_reel(&observed);
+        assert!(
+            matches!(&r.strip, Strip::NotAssembled { reason } if reason.contains("missing")),
+            "{:?}",
+            r.strip
+        );
+        assert_eq!(r.stops, None);
+        // The same in play.
+        let mut seen = play(&reel, 2000, 9);
+        seen.retain(|w| w != &strip("D E F"));
+        assert!(matches!(
+            reconstruct_reel(&seen).strip,
+            Strip::NotAssembled { .. }
+        ));
+    }
+
+    #[test]
+    fn a_window_seen_too_often_for_its_stops_is_not_explained_away() {
+        // A plain reel, one stop of which was favoured.
+        let reel = strip("A B C D E F G H I J K L M N O P");
+        let mut seen = play(&reel, 1600, 4);
+        seen.extend(std::iter::repeat_n(strip("C D E"), 150));
+        let r = reconstruct_reel(&seen);
+        assert_eq!(r.stops, Some(reel.len()));
+        assert!(r.repeats.is_empty());
+        assert!(!r.fit.unwrap().consistent);
+        assert!(matches!(&r.strip, Strip::NotAssembled { reason } if reason.contains("weighted")));
+    }
+
+    #[test]
+    fn every_arrangement_is_visited_once() {
+        let mut seen = std::collections::BTreeSet::new();
+        for_each_permutation(4, |order| {
+            seen.insert(order.to_vec());
+        });
+        assert_eq!(seen.len(), 24);
+        let mut visits = 0;
+        for_each_permutation(1, |_| visits += 1);
+        assert_eq!(visits, 1);
     }
 
     #[test]
