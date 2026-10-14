@@ -410,6 +410,7 @@ pub fn spawn(commands: &mut Commands, model: &MathModel, art: &ArtPack, fonts: &
 
             // The moving reels, drawn over the landed cells while they spin.
             spawn_strips(c, model.grid.reels);
+            spawn_wild_talls(c, model.grid.reels);
             spawn_feature_layer(c, art, &fonts.meter);
             spawn_hs_overlays(c, &fonts.meter);
             spawn_win_lines(c, &fonts.sans);
@@ -4877,5 +4878,131 @@ pub fn win_lines(
             image.image = h.clone();
         }
         set(&mut vis, true);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Stacked emperors
+// ---------------------------------------------------------------------------
+//
+// Cabinet footage: two or three emperors stacked on a reel become one tall
+// full-length emperor (the game's own Wild2UP / Wild3UP animations: the heads
+// wipe into the figure, which then burns with a fire border) and stay so
+// until the reel spins again.
+
+/// The tiles of the game's stack animations: each 130 x 118 frame pixels,
+/// the first at (43, 39).
+const WILD_TILE: (f32, f32) = (130.0, 118.0);
+const WILD_TILE_AT: (f32, f32) = (43.0, 39.0);
+/// Frames per second of the stack animations.
+const WILD_FPS: f32 = 30.0;
+
+/// Emperor stacks landed: reel, top row, height, when (seconds of `Time`).
+#[derive(Resource, Default)]
+pub struct WildStacks(Vec<(u8, u8, u8, f32)>);
+
+/// The tall emperor drawn over one reel's stack.
+#[derive(Component)]
+pub struct WildTall {
+    reel: u8,
+}
+
+/// One tall-emperor node per reel, over the reels.
+pub fn spawn_wild_talls(c: &mut ChildSpawnerCommands, reels: u8) {
+    for reel in 0..reels {
+        c.spawn((
+            WildTall { reel },
+            Node {
+                position_type: PositionType::Absolute,
+                ..default()
+            },
+            ImageNode {
+                image_mode: NodeImageMode::Stretch,
+                ..default()
+            },
+            GlobalZIndex(2),
+            Visibility::Hidden,
+        ));
+    }
+}
+
+/// Find emperor stacks as reels land; forget them as reels spin.
+pub fn wild_stacks(
+    fidelity: Res<Fidelity>,
+    time: Res<Time>,
+    reels: Res<Reels>,
+    mut stacks: ResMut<WildStacks>,
+) {
+    if !fidelity.0 {
+        return;
+    }
+    // A stack goes once its reel spins again (not while it settles).
+    stacks
+        .0
+        .retain(|s| !matches!(reels.states[s.0 as usize].motion, Motion::Spinning { .. }));
+    for reel in reels.just_stopped() {
+        let landing = &reels.states[reel].landing;
+        let mut row = 0;
+        while row < landing.len() {
+            if symbol_of(&landing[row]) != "emperor" {
+                row += 1;
+                continue;
+            }
+            let start = row;
+            while row < landing.len() && symbol_of(&landing[row]) == "emperor" {
+                row += 1;
+            }
+            let len = row - start;
+            if len >= 2 {
+                stacks
+                    .0
+                    .push((reel as u8, start as u8, len as u8, time.elapsed_secs()));
+            }
+        }
+    }
+}
+
+/// Draw the tall emperors: the wipe, then the burning figure.
+pub fn wild_talls(
+    fidelity: Res<Fidelity>,
+    time: Res<Time>,
+    art: Res<ArtPack>,
+    stacks: Res<WildStacks>,
+    mut talls: Query<(&WildTall, &mut Node, &mut ImageNode, &mut Visibility)>,
+) {
+    if !fidelity.0 {
+        return;
+    }
+    // Each tile of the animation fills one reel cell.
+    let (sx, sy) = (PITCH.0 * 0.97 / WILD_TILE.0, PITCH.1 / WILD_TILE.1);
+    for (tall, mut node, mut image, mut vis) in &mut talls {
+        let stack = stacks.0.iter().find(|s| s.0 == tall.reel);
+        let frame = stack.and_then(|&(_, _, len, t0)| {
+            let n = ((time.elapsed_secs() - t0) * WILD_FPS) as usize;
+            let intro = art.anims.get(&format!("wild{len}_intro"))?;
+            if n < intro.len() {
+                return intro.get(n).cloned();
+            }
+            let lp = art.anims.get(&format!("wild{len}_loop"))?;
+            lp.get((n - intro.len()) % lp.len().max(1)).cloned()
+        });
+        let want = match (stack, frame) {
+            (Some(&(reel, top, len, _)), Some(h)) => {
+                if image.image != h {
+                    image.image = h;
+                }
+                let (cx, cy) = cell_center(reel, top);
+                let frame_h = if len == 3 { 432.0 } else { 312.0 };
+                node.left = Val::Px(cx - (WILD_TILE_AT.0 + WILD_TILE.0 / 2.0) * sx);
+                node.top = Val::Px(cy - (WILD_TILE_AT.1 + WILD_TILE.1 / 2.0) * sy);
+                node.width = Val::Px(216.0 * sx);
+                node.height = Val::Px(frame_h * sy);
+                Visibility::Inherited
+            }
+            _ => Visibility::Hidden,
+        };
+        if *vis != want {
+            *vis = want;
+        }
     }
 }

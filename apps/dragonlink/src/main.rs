@@ -1749,6 +1749,7 @@ fn main() -> AppExit {
     .insert_resource(cabinet::Rollup::default())
     .insert_resource(cabinet::FeatureShow::default())
     .insert_resource(cabinet::GambleShow::default())
+    .insert_resource(cabinet::WildStacks::default())
     .insert_resource(if fidelity {
         cabinet::reel_strips(&cli.game.model())
     } else {
@@ -1806,6 +1807,8 @@ fn main() -> AppExit {
                 cabinet::door_reveal,
                 cabinet::door_draw,
                 cabinet::win_lines,
+                cabinet::wild_stacks,
+                cabinet::wild_talls,
             )
                 .chain(),
             (
