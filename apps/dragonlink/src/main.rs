@@ -1175,7 +1175,7 @@ fn present(
         // A stack of emperors on a winning line stands, with its sound, and
         // the win waits for it (real game).
         if fidelity.0
-            && feature.wild.is_none()
+            && !feature.wild_sounded()
             && reels_motion.rested_for() >= cabinet::RESULT_AFTER_REST
             && matches!(presentation.queue.front(), Some((_, Event::LineWin { .. })))
         {
@@ -1184,12 +1184,30 @@ fn present(
                 presentation.wait = 0.0;
                 break;
             }
-            let wins = presentation.queue.iter().filter_map(|(_, e)| match e {
-                Event::LineWin { line, count, .. } => Some((*line, *count)),
-                _ => None,
+            let wins: Vec<(u16, u8)> = presentation
+                .queue
+                .iter()
+                .filter_map(|(_, e)| match e {
+                    Event::LineWin { line, count, .. } => Some((*line, *count)),
+                    _ => None,
+                })
+                .collect();
+            let paylines = &sim.game.model().paylines;
+            let stack = stacks.on_lines(paylines, wins.iter().copied()).is_some();
+            // A single emperor on a winning line sounds too.
+            let emperor = wins.iter().any(|&(line, count)| {
+                paylines.get(line as usize).is_some_and(|rows| {
+                    (0..count).any(|reel| {
+                        rows.0.get(reel as usize).is_some_and(|&row| {
+                            labels
+                                .iter()
+                                .any(|(l, t)| l.reel == reel && l.row == row && t.0 == "emperor")
+                        })
+                    })
+                })
             });
-            if let Some(height) = stacks.on_lines(&sim.game.model().paylines, wins) {
-                feature.begin_wild(height);
+            if stack || emperor {
+                feature.begin_wild(stack);
             }
         }
         // A respin spinning or the coins being counted hold what follows.

@@ -2516,6 +2516,9 @@ pub struct FeatureShow {
     fg_flags: bool,
     /// Seconds since a stack on a winning line began to stand (its win waits).
     pub wild: Option<f32>,
+    /// A wild sound has played this game, and how many have played.
+    wild_sounded: bool,
+    wild_turn: usize,
     fg_cut: Option<f32>,
     fg_count: Option<(f32, u32)>,
 }
@@ -2527,6 +2530,7 @@ impl FeatureShow {
             Event::SpinStarted { .. } => {
                 self.flares_at = None;
                 self.wild = None;
+                self.wild_sounded = false;
                 self.fg_trigger = None;
                 self.fg_flags = false;
                 self.fg_cut = None;
@@ -2575,6 +2579,9 @@ impl FeatureShow {
                 self.scatter_paid = true;
             }
             Event::FreeGameStarted { number, remaining } => {
+                // Each free game is a game of its own for the wild.
+                self.wild = None;
+                self.wild_sounded = false;
                 self.game_won = false;
                 self.win_lines.clear();
                 self.stage = Stage::FreeGames {
@@ -6002,18 +6009,35 @@ impl FeatureShow {
         self.intro.is_some_and(|t| t >= INTRO_BURST + after)
     }
 
-    /// A stack of `height` emperors on a winning line stands, with its sound;
-    /// the win waits for it. Once a spin.
-    pub fn begin_wild(&mut self, height: u8) {
-        if self.wild.is_some() {
+    /// A win through an emperor sounds one of the wild sounds, once a game;
+    /// a stack of emperors on the winning line also stands, and the win
+    /// waits for it (real game: a stack held the win for the sound's 2.5 s).
+    /// On recordings the variant changes from win to win, the same stack
+    /// sounding different ones; it is not the stack's height. Here the five
+    /// take turns in a scrambled order.
+    pub fn begin_wild(&mut self, stack: bool) {
+        if self.wild_sounded {
             return;
         }
-        self.wild = Some(0.0);
-        self.cues.push(if height >= 3 {
-            "SND_Wild_3"
-        } else {
-            "SND_Wild_2"
-        });
+        self.wild_sounded = true;
+        const WILD_SOUNDS: [&str; 5] = [
+            "SND_Wild_1",
+            "SND_Wild_2",
+            "SND_Wild_3",
+            "SND_Wild_4",
+            "SND_Wild_5",
+        ];
+        self.cues
+            .push(WILD_SOUNDS[(self.wild_turn * 3 + 2) % WILD_SOUNDS.len()]);
+        self.wild_turn += 1;
+        if stack {
+            self.wild = Some(0.0);
+        }
+    }
+
+    /// Whether a wild sound has played this game (the presenter asks once).
+    pub fn wild_sounded(&self) -> bool {
+        self.wild_sounded
     }
 
     /// Begin the free games' trigger sequence, if a base game's flags have

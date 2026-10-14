@@ -91,6 +91,26 @@ results wait for the reels to be still; a spin is refused until then.
 **The app** follows the free games, Hold & Spin and payout sequences above at the measured times,
 with the owner's two changes. It keeps the cabinet's own meters, button deck and gamble (owner).
 
+## The other clips
+
+Every clip of the game's sound bank that the app did not yet play was searched for across the app
+recording and the cabinet footage (waveform and spectral-peak matching against chance, frames
+checked at each hit), and looked up in the game's scene files. Only what footage or the scene files
+show is used here.
+
+| Clip | Where it plays | Label |
+|---|---|---|
+| SND_Wild_1..5 | One of them as a shown win through an emperor (stacked or single) begins to animate; the variant changes from win to win (one 3-high stack sounded Wild_3, Wild_4 and Wild_4 on different spins; a single sounded Wild_3), so it is not the stack's height. On the cabinet the next game cuts it | VERIFIED (12 plays) |
+| SND_Medium_1..5, SND_Credit1/3 | Each family decodes to one identical sound. The cabinet ticks every value coin it collects with Medium (1x-10x the bet) and MINI/MINOR coins, a 20x coin and the GRAND plaque with Credit; the app ticks coins under 5x with SND_Small_5 | VERIFIED |
+| SND_GrandStrike | Also about four times during the cabinet's Grand count; what times it is unknown | STRONG |
+| betbeep1/3_reduced | The cabinet's x1 and x2 bet buttons (G3 and C4 beeps, as the bet changes on screen); x5 and x10 use beeps from the app's shared bank | VERIFIED |
+| GenericButton | The help screen's page buttons (scene file) | VERIFIED (scene; unheard) |
+| SND_Strike, BonusRollupTerm | Never heard in the game's flow | STRONG |
+| Others | anticipation1..5, SND_Pic1..4, SND_LargePrize, SND_GrandBell, SND_JackpotFanfare, SND_DrumRoll_*, SND_WindUp, BonusRollup, SND_Major, SND_Credit2/4/5/Small, the ST_ and reel/whirring clips: no placement shown by footage | UNKNOWN |
+
+Recorded but not followed here: on the cabinet a Grand is shown and counted before the coins; the
+owner chose the coins first, then the Grand.
+
 ## Not known
 
 - The rule choosing the win tune between and beyond the measured win sizes.

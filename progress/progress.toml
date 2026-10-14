@@ -629,7 +629,7 @@ id = "audio"
 name = "Sound and music"
 status = "implemented"
 evidence = "docs/reverse-engineering/GOLDEN_CENTURY_PRESENTATION.md; docs/reverse-engineering/golden-century-sound-cues.md; apps/dragonlink/src/cabinet.rs"
-note = "Each sound the app plays is a game clip placed where recordings show it (waveform-matched); placements not evidenced stay silent. About 55 of the game's clips are not placed yet."
+note = "Each sound the app plays is a game clip placed where recordings show it (waveform-matched); placements not evidenced stay silent. Every unplaced clip was searched for in the footage and the scene files; those without a shown placement stay unplaced (GOLDEN_CENTURY_PRESENTATION.md)."
 
 [[category.item]]
 id = "animation-timing"
