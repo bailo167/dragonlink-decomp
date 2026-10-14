@@ -1394,11 +1394,8 @@ pub fn spin_reels(
 #[derive(Resource, Default)]
 pub struct Sounds {
     clips: std::collections::HashMap<String, (Handle<AudioSource>, f32)>,
-    /// Whether any reel was moving last frame (to catch a spin's start).
+    /// Whether any reel was moving last frame.
     reels_were_moving: bool,
-    spins: u32,
-    /// The roll variant (1 to 6) the last spin played.
-    last_roll: u32,
 }
 
 /// An Ogg Vorbis clip's length in seconds, from its last page's granule
@@ -1451,10 +1448,9 @@ impl Sounds {
     }
 }
 
-/// The reels' sound: the reel-spin roll as a spin starts and each reel's stop
-/// clink as it hits its stop (footage: the clink falls on the hard stop, and
-/// the roll's pitch changes from spin to spin, so the game picks among its six
-/// roll variants rather than cycling them).
+/// The reels' sound: each reel's stop clink as it hits its stop (footage:
+/// the clink falls on the hard stop). Pressing SPIN and the spinning reels
+/// themselves are silent on the machine.
 pub fn reel_audio(
     fidelity: Res<Fidelity>,
     mut commands: Commands,
@@ -1465,14 +1461,6 @@ pub fn reel_audio(
         return;
     }
     let moving = (0..reels.states.len()).any(|r| reels.moving(r as u8));
-    if moving && !sounds.reels_were_moving {
-        // A scrambled pick that never repeats the previous variant.
-        sounds.spins = sounds.spins.wrapping_add(1);
-        let h = sounds.spins.wrapping_mul(2_654_435_761).rotate_right(13);
-        let n = (sounds.last_roll + h % 5) % 6 + 1;
-        sounds.last_roll = n;
-        sounds.play(&mut commands, &format!("reel{n}"));
-    }
     sounds.reels_were_moving = moving;
     let stopped: Vec<usize> = reels.just_stopped().collect();
     for reel in stopped {
