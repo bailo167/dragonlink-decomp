@@ -46,11 +46,12 @@ const JACKPOT_BAR_TOP: f32 = 8.0;
 /// The screen below the reels, measured against cabinet footage (the screen
 /// is 1920 wide; each offset is the footage's, scaled to it).
 const REEL_BOTTOM: f32 = GRID_CENTER.1 + 1.5 * PITCH.1;
-/// The dark meter band: its top, and the centre line of its meters.
-const BAND_TOP: f32 = REEL_BOTTOM + 77.0;
-const METER_Y: f32 = REEL_BOTTOM + 140.0;
-/// "Tap here for player information and promotion".
-const TAP_Y: f32 = REEL_BOTTOM + 214.0;
+/// "Bet Multiplier", the start prompt's top, the dark meter band's top and
+/// the centre line of its meters (cabinet photo, scaled to this screen).
+const MULTIPLIER_Y: f32 = REEL_BOTTOM + 44.0;
+const PROMPT_Y: f32 = REEL_BOTTOM + 84.0;
+const BAND_TOP: f32 = REEL_BOTTOM + 96.0;
+const METER_Y: f32 = REEL_BOTTOM + 176.0;
 const SCREEN_BOTTOM: f32 = REEL_BOTTOM + 248.0;
 /// The button deck under the screen's bezel.
 const DECK_TOP: f32 = SCREEN_BOTTOM + 14.0;
@@ -158,12 +159,11 @@ pub fn window() -> Window {
     }
 }
 
-/// The cabinet screen's three faces: the condensed meter face, the bold sans
-/// of its small captions, and the serif of its promotion line.
+/// The cabinet screen's faces: the condensed meter face and the bold sans of
+/// its small captions.
 pub struct CabFonts {
     pub meter: Handle<Font>,
     pub sans: Handle<Font>,
-    pub serif: Handle<Font>,
 }
 
 /// Load the cabinet's fonts from the operating system, where it has them.
@@ -185,10 +185,6 @@ pub fn load_fonts(fonts: &mut Assets<Font>) -> CabFonts {
         sans: first(&[
             "/System/Library/Fonts/Supplemental/Arial Bold.ttf",
             "C:/Windows/Fonts/arialbd.ttf",
-        ]),
-        serif: first(&[
-            "/System/Library/Fonts/Supplemental/Times New Roman Bold.ttf",
-            "C:/Windows/Fonts/timesbd.ttf",
         ]),
     }
 }
@@ -504,10 +500,11 @@ pub struct StartPrompt {
     which: u8,
 }
 
-/// The screen below the reels: the bet multiplier, the start prompts, the
-/// dark meter band with CREDIT / BET / WIN, the GAME RULES and GAMES MENU tabs,
-/// the denomination box and the promotion line, placed as the cabinet places
-/// them.
+/// The screen below the reels, laid out as the cabinet lays it out: "Bet
+/// Multiplier" under the reels; one dark meter band with the information
+/// button, GAME RULES, the lines box, CREDIT, BET and WIN (its value in a
+/// box of its own, the start prompt above it); GAMES MENU over the
+/// denomination box at the right.
 fn spawn_meter_band(
     c: &mut ChildSpawnerCommands,
     fonts: &CabFonts,
@@ -517,7 +514,9 @@ fn spawn_meter_band(
 ) {
     let font = &fonts.meter;
     let white = Color::srgb(0.97, 0.97, 0.97);
-    let dark = Color::srgba(0.015, 0.01, 0.03, 0.96);
+    let dark = Color::srgba(0.015, 0.01, 0.03, 0.9);
+    let inset = Color::srgba(0.0, 0.0, 0.0, 0.55);
+    let rim = Color::srgb(0.3, 0.3, 0.36);
     let rect = |l: f32, t: f32, w: f32, h: f32| Node {
         position_type: PositionType::Absolute,
         left: Val::Px(l),
@@ -526,18 +525,9 @@ fn spawn_meter_band(
         height: Val::Px(h),
         ..default()
     };
-    // The band, and the promotion row under the denomination box.
+    // The band, across the whole screen.
     c.spawn((
-        rect(0.0, BAND_TOP, 1735.0, SCREEN_BOTTOM - BAND_TOP),
-        BackgroundColor(dark),
-    ));
-    c.spawn((
-        rect(
-            1735.0,
-            METER_Y + 46.0,
-            CANVAS_W - 1735.0,
-            SCREEN_BOTTOM - METER_Y - 46.0,
-        ),
+        rect(0.0, BAND_TOP, CANVAS_W, SCREEN_BOTTOM - BAND_TOP),
         BackgroundColor(dark),
     ));
 
@@ -547,15 +537,15 @@ fn spawn_meter_band(
         label(
             "Bet Multiplier 1",
             &fonts.sans,
-            25.0,
+            27.0,
             white,
-            GRID_CENTER.0 + 31.0,
-            REEL_BOTTOM + 34.0,
+            GRID_CENTER.0,
+            MULTIPLIER_Y,
             700.0,
         ),
     ));
 
-    // The start prompts, right of centre above the band.
+    // The start prompts, at the band's top edge above the WIN box.
     for (which, count, key, text) in [
         (0u8, "3", "pennant", "Start FREE GAMES"),
         (1u8, "6", "orb", "Start HOLD & SPIN FEATURE"),
@@ -564,9 +554,9 @@ fn spawn_meter_band(
             StartPrompt { which },
             Node {
                 position_type: PositionType::Absolute,
-                left: Val::Px(1200.0),
-                top: Val::Px(REEL_BOTTOM + 41.0),
-                width: Val::Px(510.0),
+                left: Val::Px(1180.0),
+                top: Val::Px(PROMPT_Y),
+                width: Val::Px(540.0),
                 height: Val::Px(36.0),
                 flex_direction: FlexDirection::Row,
                 justify_content: JustifyContent::FlexEnd,
@@ -586,7 +576,7 @@ fn spawn_meter_band(
                     Text::new(s),
                     TextFont {
                         font: bevy::text::FontSource::Handle(fonts.sans.clone()),
-                        font_size: FontSize::Px(25.0),
+                        font_size: FontSize::Px(27.0),
                         ..default()
                     },
                     TextColor(white),
@@ -615,102 +605,143 @@ fn spawn_meter_band(
         Text::new(""),
         TextFont {
             font: bevy::text::FontSource::Handle(fonts.sans.clone()),
-            font_size: FontSize::Px(25.0),
+            font_size: FontSize::Px(27.0),
             ..default()
         },
         TextColor(white),
         TextLayout::justify(Justify::Right),
         Node {
             position_type: PositionType::Absolute,
-            left: Val::Px(1200.0),
-            top: Val::Px(REEL_BOTTOM + 43.0),
-            width: Val::Px(510.0),
+            left: Val::Px(1180.0),
+            top: Val::Px(PROMPT_Y + 2.0),
+            width: Val::Px(540.0),
             ..default()
         },
     ));
 
-    // The player-information button at the far left.
+    // The player-information button at the far left: a yellow key with its
+    // three bars.
     c.spawn((
         Node {
             border: UiRect::all(Val::Px(3.0)),
-            border_radius: BorderRadius::all(Val::Px(16.0)),
-            ..rect(10.0, METER_Y - 46.0, 48.0, 92.0)
+            border_radius: BorderRadius::all(Val::Px(18.0)),
+            flex_direction: FlexDirection::Column,
+            justify_content: JustifyContent::Center,
+            align_items: AlignItems::Center,
+            row_gap: Val::Px(9.0),
+            ..rect(16.0, METER_Y - 56.0, 54.0, 112.0)
         },
         BackgroundColor(Color::srgb(0.98, 0.8, 0.14)),
         BorderColor::all(Color::srgb(0.75, 0.45, 0.05)),
-    ));
+    ))
+    .with_children(|b| {
+        for w in [14.0, 22.0, 28.0] {
+            b.spawn((
+                Node {
+                    width: Val::Px(w),
+                    height: Val::Px(5.0),
+                    border_radius: BorderRadius::all(Val::Px(3.0)),
+                    ..default()
+                },
+                BackgroundColor(Color::srgb(0.35, 0.22, 0.04)),
+            ));
+        }
+    });
     pill(
         c,
         &fonts.sans,
         "GAME RULES",
-        152.0,
-        METER_Y + 30.0,
-        164.0,
+        160.0,
+        METER_Y + 26.0,
+        150.0,
         Color::srgb(1.0, 0.95, 0.72),
         Color::srgb(0.2, 0.22, 0.62),
     );
 
-    // CREDIT / BET / WIN and their values.
+    // The lines box: the line count over "LINES".
+    c.spawn((
+        Node {
+            border: UiRect::all(Val::Px(2.0)),
+            border_radius: BorderRadius::all(Val::Px(10.0)),
+            ..rect(250.0, METER_Y - 56.0, 86.0, 112.0)
+        },
+        BackgroundColor(inset),
+        BorderColor::all(rim),
+    ));
+    c.spawn((
+        CabMeter::Lines,
+        label("50", font, 62.0, gold, 293.0, METER_Y - 16.0, 86.0),
+    ));
+    c.spawn(label(
+        "LINES",
+        font,
+        28.0,
+        gold,
+        293.0,
+        METER_Y + 32.0,
+        86.0,
+    ));
+
+    // CREDIT / BET / WIN, their values, WIN's value in its own box.
     for (text, x, w) in [
-        ("CREDIT", 326.0, 240.0),
-        ("BET", 841.0, 140.0),
-        ("WIN", 1280.0, 140.0),
+        ("CREDIT", 450.0, 220.0),
+        ("BET", 880.0, 120.0),
+        ("WIN", 1195.0, 120.0),
     ] {
-        c.spawn(label(text, font, 68.0, gold, x, METER_Y, w));
+        c.spawn(label(text, font, 66.0, gold, x, METER_Y, w));
     }
-    for (meter, x) in [
-        (CabMeter::Credit, 598.0),
-        (CabMeter::Bet, 1045.0),
-        (CabMeter::Win, 1529.0),
+    c.spawn((
+        Node {
+            border: UiRect::all(Val::Px(2.0)),
+            border_radius: BorderRadius::all(Val::Px(10.0)),
+            ..rect(1280.0, METER_Y - 46.0, 440.0, 92.0)
+        },
+        BackgroundColor(inset),
+        BorderColor::all(rim),
+    ));
+    for (meter, x, w) in [
+        (CabMeter::Credit, 680.0, 300.0),
+        (CabMeter::Bet, 1030.0, 220.0),
+        (CabMeter::Win, 1500.0, 420.0),
     ] {
-        c.spawn((meter, label("-", font, 74.0, pale, x, METER_Y, 360.0)));
+        c.spawn((meter, label("-", font, 70.0, pale, x, METER_Y, w)));
     }
 
-    // GAMES MENU and the denomination box at the right.
-    pill(
-        c,
-        &fonts.sans,
-        "GAMES MENU",
-        1827.0,
-        REEL_BOTTOM + 44.0,
-        168.0,
-        Color::srgb(0.99, 0.82, 0.25),
-        Color::srgb(0.24, 0.14, 0.04),
-    );
+    // GAMES MENU over the denomination box at the right.
     c.spawn((
         Node {
             border: UiRect::all(Val::Px(2.0)),
             border_radius: BorderRadius::all(Val::Px(12.0)),
-            ..rect(1745.0, REEL_BOTTOM + 74.0, 168.0, 100.0)
+            ..rect(1745.0, METER_Y - 56.0, 166.0, 120.0)
         },
-        BackgroundColor(Color::srgba(0.07, 0.06, 0.06, 0.92)),
-        BorderColor::all(Color::srgb(0.42, 0.38, 0.3)),
+        BackgroundColor(Color::srgba(0.07, 0.06, 0.06, 0.95)),
+        BorderColor::all(Color::srgb(0.45, 0.42, 0.36)),
     ));
+    pill(
+        c,
+        &fonts.sans,
+        "GAMES MENU",
+        1828.0,
+        METER_Y - 70.0,
+        166.0,
+        Color::srgb(0.99, 0.82, 0.25),
+        Color::srgb(0.24, 0.14, 0.04),
+    );
     c.spawn((
         CabMeter::Denom,
-        label("1¢", font, 74.0, gold, 1829.0, REEL_BOTTOM + 116.0, 168.0),
+        label("1¢", font, 78.0, gold, 1828.0, METER_Y - 2.0, 166.0),
     ));
     c.spawn((
         CabMeter::MinBet,
         label(
             "MIN BET 50",
             &fonts.sans,
-            19.0,
+            18.0,
             white,
-            1829.0,
-            REEL_BOTTOM + 160.0,
-            168.0,
+            1828.0,
+            METER_Y + 46.0,
+            166.0,
         ),
-    ));
-
-    c.spawn(label(
-        "Tap here for player information and promotion",
-        &fonts.serif,
-        27.0,
-        Color::srgb(0.93, 0.2, 0.42),
-        GRID_CENTER.0 + 50.0,
-        TAP_Y,
-        1000.0,
     ));
 }
 
