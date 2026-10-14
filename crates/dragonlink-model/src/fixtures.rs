@@ -478,20 +478,22 @@ pub fn golden_century_synthetic() -> MathModel {
     .collect();
 
     // Free-game reels: like the base reels but with no orbs (so the Hold &
-    // Spin feature does not nest here) and a mystery symbol (`doors`) that,
+    // Spin feature does not nest here) and a mystery symbol (`doors`), in
+    // long stacks so whole reels of doors are common (cabinet footage), that,
     // when it appears, reveals to one drawn symbol across all its positions,
     // as Golden Century's free games do. The scatter stays, so free games can
     // retrigger. Strips, weights and the reveal table are synthetic.
     let free_reel_strips = vec![
         reel(&[
             (NINE, 6),
-            (DOORS, 2),
+            (DOORS, 9),
             (TEN, 5),
             (WARRIORS, 2),
             (JACK, 5),
             (CHEST, 1),
             (QUEEN, 4),
             (PENNANT, 1),
+            (DOORS, 6),
             (KING, 4),
             (VASE, 2),
             (NINE, 5),
@@ -503,11 +505,12 @@ pub fn golden_century_synthetic() -> MathModel {
             (TEN, 5),
             (EMPEROR, 2),
             (NINE, 6),
-            (DOORS, 2),
+            (DOORS, 9),
             (JACK, 5),
             (VASE, 2),
             (QUEEN, 4),
             (PENNANT, 1),
+            (DOORS, 6),
             (KING, 4),
             (CHEST, 1),
             (WARRIORS, 2),
@@ -518,13 +521,14 @@ pub fn golden_century_synthetic() -> MathModel {
         ]),
         reel(&[
             (JACK, 6),
-            (DOORS, 2),
+            (DOORS, 9),
             (NINE, 6),
             (EMPEROR, 2),
             (TEN, 5),
             (WARRIORS, 2),
             (QUEEN, 4),
             (PENNANT, 1),
+            (DOORS, 6),
             (VASE, 2),
             (KING, 4),
             (CHEST, 1),
@@ -535,7 +539,7 @@ pub fn golden_century_synthetic() -> MathModel {
         ]),
         reel(&[
             (NINE, 6),
-            (DOORS, 2),
+            (DOORS, 9),
             (TEN, 5),
             (EMPEROR, 2),
             (JACK, 5),
@@ -543,6 +547,7 @@ pub fn golden_century_synthetic() -> MathModel {
             (QUEEN, 4),
             (VASE, 2),
             (PENNANT, 1),
+            (DOORS, 6),
             (KING, 4),
             (WARRIORS, 2),
             (NINE, 5),
@@ -552,13 +557,14 @@ pub fn golden_century_synthetic() -> MathModel {
         ]),
         reel(&[
             (TEN, 6),
-            (DOORS, 2),
+            (DOORS, 9),
             (NINE, 6),
             (WARRIORS, 2),
             (JACK, 5),
             (VASE, 2),
             (QUEEN, 4),
             (PENNANT, 1),
+            (DOORS, 6),
             (KING, 4),
             (CHEST, 1),
             (TEN, 5),

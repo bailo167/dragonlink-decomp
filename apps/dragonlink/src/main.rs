@@ -1837,6 +1837,7 @@ fn main() -> AppExit {
                 cabinet::wild_talls,
                 cabinet::feature_music,
                 cabinet::feature_cues,
+                cabinet::coin_shower,
             )
                 .chain(),
             (

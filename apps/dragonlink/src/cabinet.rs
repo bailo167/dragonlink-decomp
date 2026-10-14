@@ -394,6 +394,7 @@ pub fn spawn(commands: &mut Commands, model: &MathModel, art: &ArtPack, fonts: &
             spawn_feature_layer(c, art, &fonts.meter);
             spawn_hs_overlays(c, &fonts.meter);
             spawn_win_lines(c, &fonts.sans);
+            spawn_coin_shower(c);
 
             // The jackpots across the top.
             let (bar_w, bar_top) = (JACKPOT_BAR_W, JACKPOT_BAR_TOP);
@@ -4990,7 +4991,18 @@ const WILD_FPS: f32 = 30.0;
 
 /// Emperor stacks landed: reel, top row, height, when (seconds of `Time`).
 #[derive(Resource, Default)]
-pub struct WildStacks(Vec<(u8, u8, u8, f32)>);
+pub struct WildStacks {
+    list: Vec<(u8, u8, u8, f32)>,
+    /// When every reel came to rest (and any doors finished opening).
+    settled: Option<f32>,
+    /// The stacks of this spin have been found.
+    found: bool,
+}
+
+/// Seconds after the reels (and any doors) come to rest before stacked
+/// emperors become the tall emperor (footage: about 0.9 s after the doors
+/// finish opening, with no reveal about 1 s after the last reel stops).
+const STACK_DELAY: f32 = 0.9;
 
 /// The tall emperor drawn over one reel's stack.
 #[derive(Component)]
@@ -5022,32 +5034,53 @@ pub fn wild_stacks(
     fidelity: Res<Fidelity>,
     time: Res<Time>,
     reels: Res<Reels>,
+    show: Res<FeatureShow>,
+    labels: Query<(&CellLabel, &Text)>,
     mut stacks: ResMut<WildStacks>,
 ) {
     if !fidelity.0 {
         return;
     }
-    // A stack goes once its reel spins again (not while it settles).
-    stacks
-        .0
-        .retain(|s| !matches!(reels.states[s.0 as usize].motion, Motion::Spinning { .. }));
-    for reel in reels.just_stopped() {
-        let landing = &reels.states[reel].landing;
+    // A spin clears the stacks; they form only once everything has stopped
+    // (cabinet footage: the emperors stand as heads until the spin is over,
+    // the doors have opened, and a moment more).
+    let moving = (0..reels.states.len()).any(|r| reels.moving(r as u8));
+    if moving {
+        *stacks = WildStacks::default();
+        return;
+    }
+    if show.reveal.is_some() || show.hold_and_spin() {
+        stacks.settled = None;
+        return;
+    }
+    let now = time.elapsed_secs();
+    let since = *stacks.settled.get_or_insert(now);
+    if stacks.found || now - since < STACK_DELAY {
+        return;
+    }
+    stacks.found = true;
+    for reel in 0..reels.states.len() as u8 {
+        let mut column = [false; 3];
+        for (l, text) in &labels {
+            if l.reel == reel && (l.row as usize) < 3 {
+                let (key, dim) = label_symbol(&text.0);
+                column[l.row as usize] = key == "emperor" && !dim;
+            }
+        }
         let mut row = 0;
-        while row < landing.len() {
-            if symbol_of(&landing[row]) != "emperor" {
+        while row < 3 {
+            if !column[row] {
                 row += 1;
                 continue;
             }
             let start = row;
-            while row < landing.len() && symbol_of(&landing[row]) == "emperor" {
+            while row < 3 && column[row] {
                 row += 1;
             }
-            let len = row - start;
-            if len >= 2 {
+            if row - start >= 2 {
                 stacks
-                    .0
-                    .push((reel as u8, start as u8, len as u8, time.elapsed_secs()));
+                    .list
+                    .push((reel, start as u8, (row - start) as u8, now));
             }
         }
     }
@@ -5067,7 +5100,7 @@ pub fn wild_talls(
     // Each tile of the animation fills one reel cell.
     let (sx, sy) = (PITCH.0 * 0.97 / WILD_TILE.0, PITCH.1 / WILD_TILE.1);
     for (tall, mut node, mut image, mut vis) in &mut talls {
-        let stack = stacks.0.iter().find(|s| s.0 == tall.reel);
+        let stack = stacks.list.iter().find(|s| s.0 == tall.reel);
         let frame = stack.and_then(|&(_, _, len, t0)| {
             let n = ((time.elapsed_secs() - t0) * WILD_FPS) as usize;
             let intro = art.anims.get(&format!("wild{len}_intro"))?;
@@ -5168,7 +5201,7 @@ pub fn symbol_fx(
     let t = show.win_t;
     let (cw, ch) = cell_size();
     for (f, mut node, mut image, mut vis) in &mut fx {
-        let on = cells.contains(&(f.reel, f.row)) && !stacks.0.iter().any(|s| s.0 == f.reel);
+        let on = cells.contains(&(f.reel, f.row)) && !stacks.list.iter().any(|s| s.0 == f.reel);
         let key = labels
             .iter()
             .find(|(l, _)| l.reel == f.reel && l.row == f.row)
@@ -5275,5 +5308,106 @@ pub fn feature_cues(
     }
     for name in std::mem::take(&mut show.cues) {
         sounds.play(&mut commands, name);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Coin shower
+// ---------------------------------------------------------------------------
+//
+// Cabinet footage of big free-game wins (34x and 36x the bet): while the win
+// counts up, gold coins (the game's own 25-frame spinning coin, from its
+// CoinShower scene) burst from the top of the screen and rain over it.
+// Smaller wins showed none.
+
+/// Coins in the shower at once.
+const SHOWER_COINS: usize = 56;
+/// A win at least this many times the bet counts up under a coin shower.
+const SHOWER_RATIO: u64 = 20;
+
+/// One coin of the shower.
+#[derive(Component)]
+pub struct ShowerCoin(usize);
+
+/// The shower's coins, hidden until a big win.
+pub fn spawn_coin_shower(c: &mut ChildSpawnerCommands) {
+    for i in 0..SHOWER_COINS {
+        c.spawn((
+            ShowerCoin(i),
+            Node {
+                position_type: PositionType::Absolute,
+                ..default()
+            },
+            ImageNode {
+                image_mode: NodeImageMode::Stretch,
+                ..default()
+            },
+            GlobalZIndex(26),
+            Visibility::Hidden,
+        ));
+    }
+}
+
+/// A stable pseudo-random number in 0..1 for coin `i`, draw `k`.
+fn shower_rand(i: usize, k: u64) -> f32 {
+    let h = (i as u64 * 0x9E37_79B9 + k * 0x85EB_CA6B)
+        .wrapping_mul(0xC2B2_AE3D_27D4_EB4F)
+        .rotate_left(29);
+    (h % 10_000) as f32 / 10_000.0
+}
+
+/// Rain coins while a big win counts up.
+pub fn coin_shower(
+    fidelity: Res<Fidelity>,
+    time: Res<Time>,
+    art: Res<ArtPack>,
+    sim: Res<Sim>,
+    rollup: Res<Rollup>,
+    mut coins: Query<(&ShowerCoin, &mut Node, &mut ImageNode, &mut Visibility)>,
+) {
+    if !fidelity.0 {
+        return;
+    }
+    let bet = sim.game.total_bet().max(1);
+    let on = rollup.active() && rollup.to.saturating_sub(rollup.from) >= SHOWER_RATIO * bet;
+    let frames = art.anims.get("coin_shower");
+    let t = time.elapsed_secs();
+    for (coin, mut node, mut image, mut vis) in &mut coins {
+        let want = if on && frames.is_some() {
+            Visibility::Inherited
+        } else {
+            Visibility::Hidden
+        };
+        if *vis != want {
+            *vis = want;
+        }
+        if want == Visibility::Hidden {
+            continue;
+        }
+        let i = coin.0;
+        // Each coin is thrown from the top, falls across the screen and is
+        // thrown again: its own period and phase.
+        let period = 1.6 + shower_rand(i, 1) * 1.2;
+        let phase = shower_rand(i, 2) * period;
+        let cycle = ((t + phase) / period).floor() as u64;
+        let u = (t + phase) % period;
+        let x0 = shower_rand(i, 10 + cycle) * CANVAS_W;
+        let vx = (shower_rand(i, 20 + cycle) - 0.5) * 500.0;
+        let vy = -250.0 - shower_rand(i, 30 + cycle) * 450.0;
+        let x = x0 + vx * u;
+        let y = 40.0 + vy * u + 0.5 * 1500.0 * u * u;
+        let size = 70.0 + shower_rand(i, 4) * 50.0;
+        node.left = Val::Px(x - size / 2.0);
+        node.top = Val::Px(y - size / 2.0);
+        node.width = Val::Px(size);
+        node.height = Val::Px(size);
+        if let Some(f) = frames {
+            let n = ((t * 30.0) as usize + i * 7) % f.len().max(1);
+            if let Some(h) = f.get(n)
+                && image.image != *h
+            {
+                image.image = h.clone();
+            }
+        }
     }
 }
