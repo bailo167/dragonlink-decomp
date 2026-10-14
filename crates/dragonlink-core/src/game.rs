@@ -133,6 +133,10 @@ pub struct HoldAndSpinState {
     pub total_bet: u64,
     /// What the triggering spin paid before the feature.
     pub base_award: u64,
+    /// Free games the triggering spin also won, played when Hold & Spin
+    /// ends (the owner: Hold & Spin first, then the free games).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub then_free_games: Option<u8>,
 }
 
 impl HoldAndSpinState {
@@ -574,8 +578,8 @@ impl Game {
             next.credits = to;
         }
 
-        // Feature. Hold & Spin takes precedence over free games on a spin
-        // that could start both.
+        // Feature. A spin that starts both plays Hold & Spin first and the
+        // free games after it (the owner's account of the cabinet).
         let orb_count = orbs.iter().flatten().count();
         let scatter_count = self
             .model
@@ -591,7 +595,7 @@ impl Game {
             .model
             .free_games
             .as_ref()
-            .filter(|fg| hs_trigger.is_none() && scatter_count >= fg.trigger_count as usize);
+            .filter(|fg| scatter_count >= fg.trigger_count as usize);
         next.last_grid = Some(grid);
         if let Some(hs) = hs_trigger {
             events.push(Event::FeatureTriggered {
@@ -608,6 +612,7 @@ impl Game {
                 respins_played: 0,
                 total_bet,
                 base_award,
+                then_free_games: fg_trigger.map(|fg| fg.initial_games),
             });
         } else if let Some(fg) = fg_trigger {
             events.push(Event::FeatureTriggered {
@@ -881,11 +886,27 @@ impl Game {
                 });
                 next.credits = to;
             }
-            events.push(Event::SpinCompleted {
-                spin: next.spins,
-                total_award: spin_total,
-            });
-            next.phase = Phase::Idle;
+            if let Some(games) = feature.then_free_games {
+                // The free games the same spin won follow; the spin is
+                // complete when they are.
+                let total_bet = feature.total_bet;
+                events.push(Event::FreeGamesStarted { games });
+                next.phase = Phase::FreeGames(FreeGamesState {
+                    games_left: u32::from(games),
+                    games_played: 0,
+                    total_award: spin_total,
+                    base_award: spin_total,
+                    total_bet,
+                    credits_per_line: self.credits_per_line(),
+                    lines: self.lines(),
+                });
+            } else {
+                events.push(Event::SpinCompleted {
+                    spin: next.spins,
+                    total_award: spin_total,
+                });
+                next.phase = Phase::Idle;
+            }
         }
         Ok(())
     }

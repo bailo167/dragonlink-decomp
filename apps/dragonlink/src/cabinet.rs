@@ -2555,6 +2555,19 @@ impl FeatureShow {
                 self.scatter_paid = true;
             }
             Event::FreeGamesStarted { games } => {
+                // Free games won with Hold & Spin follow it: its board, total
+                // and banner clear first.
+                if matches!(self.stage, Stage::HoldSpinDone) {
+                    self.stage = Stage::Base;
+                    self.grid = false;
+                    self.collected = None;
+                    self.winner = None;
+                    self.flares_at = None;
+                    self.grand = None;
+                    self.jackpots.clear();
+                    self.counter = 0;
+                    self.scatter_paid = false;
+                }
                 // The bell and the flags' sound have played already (the
                 // trigger sequence, before the win was shown).
                 self.games_won = *games;

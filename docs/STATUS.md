@@ -381,8 +381,11 @@ flow with no debug or manual steps:
 
 Steps 1 to 3 below are largely done (art, sound, base screen, features); the remaining work: place
 the unplaced sounds where recordings show them, check every screen side by side with the
-recordings, order both features in one spin (Hold & Spin first), attract/idle, and bring the
-exporter into the repository's importer.
+recordings, rebuild the button deck and the GAMES MENU denomination screen from the cabinet
+footage (research under way: denominations are chosen on a touch-screen "CHOOSE YOUR DENOMINATION"
+panel, and a bet-multiplier button both sets the multiplier and starts the game), attract/idle,
+and bring the exporter into the repository's importer. A spin winning both features now plays
+Hold & Spin first, then the free games (owner).
 
 1. **Runtime asset pack.** Finish the exporter (ETC1 RGB + the second ETC1 block as **alpha**, so
    symbols are cut out; raw RGBA; Ogg audio; fonts) and build the authentic textures/audio into a

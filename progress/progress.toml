@@ -494,7 +494,7 @@ note = "Win tunes chosen by the win's size where measured, counts lasting the tu
 id = "feature-trigger"
 name = "Feature triggering"
 status = "partial"
-note = "Hold & Spin by orb count, free games by scatter count; both in one spin is not yet ordered as the owner describes (Hold & Spin first)."
+note = "Hold & Spin by orb count, free games by scatter count; a spin that wins both plays Hold & Spin first and then the free games, completing (and offering the gamble) only after both (the owner). The trigger counts are evidenced; the chances are synthetic."
 
 [[category.item]]
 id = "hold-and-spin"

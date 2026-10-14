@@ -294,3 +294,59 @@ fn the_synthetic_panda_magic_is_playable() {
     assert!(free > 0, "free games never triggered");
     assert_eq!(reveal, 0, "there is no mystery reveal in this title");
 }
+
+/// A spin that wins both features plays Hold & Spin first, then its free
+/// games, and completes once, after both (the owner's account of the
+/// cabinet). Found by playing a model padded with orbs and scatters.
+#[test]
+fn both_features_from_one_spin_play_hold_and_spin_then_the_free_games() {
+    use dragonlink_core::{DevRng, Event, Game};
+    let mut model = golden_century_synthetic();
+    let id = |key: &str| {
+        model
+            .symbols
+            .iter()
+            .position(|s| s.key == key)
+            .map(|i| dragonlink_model::SymbolId(i as u16))
+            .unwrap()
+    };
+    let (orb, scatter) = (id("orb"), id("pennant"));
+    for strip in &mut model.reel_strips {
+        let mut padded = Vec::new();
+        for (i, &s) in strip.iter().enumerate() {
+            padded.push(s);
+            if i % 2 == 0 {
+                padded.push(orb);
+            }
+            if i % 5 == 0 {
+                padded.push(scatter);
+            }
+        }
+        *strip = padded;
+    }
+    let mut game = Game::new(model, 1_000_000_000).unwrap();
+    let mut rng = DevRng::new(11);
+    let mut both = 0;
+    for _ in 0..4000 {
+        let events = game.play_spin(&mut rng).unwrap();
+        let at = |f: &dyn Fn(&Event) -> bool| events.iter().position(f);
+        let hs_start = at(&|e| matches!(e, Event::HoldAndSpinStarted { .. }));
+        let hs_end = at(&|e| matches!(e, Event::HoldAndSpinCompleted { .. }));
+        let fg_start = at(&|e| matches!(e, Event::FreeGamesStarted { .. }));
+        let fg_end = at(&|e| matches!(e, Event::FreeGamesCompleted { .. }));
+        let completed: Vec<usize> = events
+            .iter()
+            .enumerate()
+            .filter(|(_, e)| matches!(e, Event::SpinCompleted { .. }))
+            .map(|(i, _)| i)
+            .collect();
+        assert_eq!(completed.len(), 1, "one completion a spin");
+        if let (Some(a), Some(b), Some(c), Some(d)) = (hs_start, hs_end, fg_start, fg_end) {
+            both += 1;
+            assert!(a < b && b < c && c < d, "Hold & Spin, then the free games");
+            assert!(completed[0] > d, "the spin completes after both");
+        }
+        assert!(game.is_idle());
+    }
+    assert!(both > 0, "no spin won both features");
+}

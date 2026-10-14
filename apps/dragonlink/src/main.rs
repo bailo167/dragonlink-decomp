@@ -1326,6 +1326,13 @@ fn present(
                 presentation.status = format!("{symbol} x{count} pays {award}");
             }
             Event::FreeGamesStarted { games } => {
+                // Free games after Hold & Spin: its dimmed positions light
+                // again.
+                for (_, mut text) in &mut labels {
+                    if let Some(rest) = text.0.strip_prefix("DIM:") {
+                        text.0 = rest.to_string();
+                    }
+                }
                 presentation.banner = "FREE GAMES".to_string();
                 presentation.banner_timer = BANNER_HOLD;
                 presentation.status = format!("FREE GAMES  -  {games} games won");
