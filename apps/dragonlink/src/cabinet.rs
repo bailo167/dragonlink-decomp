@@ -1694,10 +1694,24 @@ pub fn orb_overlay(
             .find(|(l, _)| l.reel == reel && l.row == row)
             .and_then(|(_, t)| t.0.strip_prefix("ORB\n"))
     };
+    // An orb shown before any game was played (drawn from the strips) has no
+    // drawn prize; it carries the same cosmetic prize it shows on the moving
+    // strip, so every coin on screen is lettered, as on the machine.
+    let resting = |reel: u8, row: u8| -> Option<u64> {
+        if reels.moving(reel) {
+            return None;
+        }
+        let state = reels.states.get(reel as usize)?;
+        labels
+            .iter()
+            .any(|(l, t)| l.reel == reel && l.row == row && t.0 == "orb")
+            .then(|| passing_prize(reel, state.pos.round() as i64 + i64::from(row)))
+    };
     for (g, mut image, mut vis, mut node) in &mut glyphs {
         let text = prize(g.reel, g.row)
             .and_then(|p| p.strip_prefix('x'))
             .and_then(|m| m.parse::<u64>().ok())
+            .or_else(|| resting(g.reel, g.row))
             .map(|m| coin_text(m.saturating_mul(total_bet), cents));
         let glyph = text
             .as_deref()
