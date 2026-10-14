@@ -1624,10 +1624,10 @@ pub fn spin_reels(
             .sizes
             .get(key.as_str())
             .map_or((cw, ch), |s| symbol_size(&key, *s));
-        if let Some(handle) = art.symbols.get(key.as_str())
-            && image.image != *handle
+        if let Some(handle) = symbol_image(&art, &key, time.elapsed_secs())
+            && image.image != handle
         {
-            image.image = handle.clone();
+            image.image = handle;
         }
         node.top = Val::Px(cy - h / 2.0);
         node.height = Val::Px(h);
@@ -1660,16 +1660,28 @@ pub fn spin_reels(
             .sizes
             .get(key.as_str())
             .map_or((cw, ch), |s| symbol_size(&key, *s));
-        if let Some(handle) = art.symbols.get(key.as_str())
-            && image.image != *handle
+        if let Some(handle) = symbol_image(&art, &key, time.elapsed_secs())
+            && image.image != handle
         {
-            image.image = handle.clone();
+            image.image = handle;
         }
         node.top = Val::Px(cy - h / 2.0);
         node.height = Val::Px(h);
         node.width = Val::Px(w);
         node.left = Val::Px((column_width() - w) / 2.0);
     }
+}
+
+/// A symbol's image now: the coin's own burning loop (the game's 29-frame
+/// Corona sequence, on every coin it draws), other symbols' still images.
+pub fn symbol_image(art: &ArtPack, key: &str, t: f32) -> Option<Handle<Image>> {
+    if key == "orb"
+        && let Some(frames) = art.anims.get("coin")
+        && !frames.is_empty()
+    {
+        return frames.get((t * 30.0) as usize % frames.len()).cloned();
+    }
+    art.symbols.get(key).cloned()
 }
 
 /// The motion smear: copies this far (in symbols) from each symbol, and how

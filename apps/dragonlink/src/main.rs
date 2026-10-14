@@ -1463,6 +1463,7 @@ fn load_pngs(
 /// art, or that are spinning on a non-symbol, keep the placeholder.
 #[allow(clippy::type_complexity)]
 fn render_symbols(
+    time: Res<Time>,
     art: Res<ArtPack>,
     fidelity: Res<cabinet::Fidelity>,
     reels: Res<cabinet::Reels>,
@@ -1494,8 +1495,15 @@ fn render_symbols(
         }
         match key.and_then(|k| art.symbols.get(k).map(|h| (k, h))) {
             Some((k, handle)) => {
-                if image.image != *handle {
-                    image.image = handle.clone();
+                // The coin burns: its frames loop.
+                let handle = if fidelity.0 {
+                    cabinet::symbol_image(&art, k, time.elapsed_secs())
+                        .unwrap_or_else(|| handle.clone())
+                } else {
+                    handle.clone()
+                };
+                if image.image != handle {
+                    image.image = handle;
                 }
                 if fidelity.0 {
                     // The game draws each symbol at its own size, centred on
