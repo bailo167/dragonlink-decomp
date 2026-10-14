@@ -140,8 +140,6 @@ const EVENT_INTERVAL: f32 = 0.12;
 const SMOKE_FRAME_SECONDS: f32 = 1.0 / 60.0;
 /// Frames between automatic key presses in smoke mode.
 const SMOKE_PRESS_EVERY: u32 = 12;
-/// Seconds a feature waits between its steps when they play by themselves.
-const FEATURE_STEP_PAUSE: f32 = 0.5;
 /// Seconds between symbol changes while a reel is spinning. Presentation only.
 const REEL_CYCLE_SECONDS: f32 = 0.05;
 /// Background of a cell on a winning line, and of a feature banner.
@@ -1100,11 +1098,11 @@ fn drive_features(
     // The cabinet waits for START FEATURE, for SPIN between respins, and for
     // a free game's win to count up before the next game.
     if feature.awaiting.is_some() || feature.blocks() || rollup.active() {
-        presentation.step_timer = FEATURE_STEP_PAUSE;
+        presentation.step_timer = feature.step_pause();
         return;
     }
     if !presentation.queue.is_empty() {
-        presentation.step_timer = FEATURE_STEP_PAUSE;
+        presentation.step_timer = feature.step_pause();
         return;
     }
     if sim.game.is_idle() {
@@ -1115,7 +1113,7 @@ fn drive_features(
     if presentation.step_timer > 0.0 {
         return;
     }
-    presentation.step_timer = FEATURE_STEP_PAUSE;
+    presentation.step_timer = feature.step_pause();
     let Sim { game, rng } = &mut *sim;
     if let Ok(events) = game.apply(Command::Advance, rng) {
         presentation.queue.extend(schedule_with(events, &timing));

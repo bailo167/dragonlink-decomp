@@ -1257,13 +1257,14 @@ pub fn clear_buttons(mut input: ResMut<CabinetInput>) {
 // Reel motion
 // ---------------------------------------------------------------------------
 
-/// The game's pace, measured frame by frame on the real game (17 base-game
+/// The game's pace, measured frame by frame on the real game (base-game
 /// spins at 30 fps, every one the same): the reels start the frame after the
-/// press; the first reel lands 26 frames (0.867 s) after the press and each
-/// further reel 14 frames (0.467 s) after the one before. A reel's stop is
-/// presented here, and it runs on about 3.5 symbols (~0.25 s) to land.
+/// press; reel 1 is deepest past its stop 24 frames after the press, snaps
+/// back the next frame and is still 9 frames later; each further reel 14
+/// frames (0.467 s) after the one before. A reel's stop is presented here,
+/// and it runs on about 3.5 symbols to its stop and on past it.
 pub const TIMING: Timing = Timing {
-    lead_in: 26.0 / 30.0 - RUN_ON,
+    lead_in: 24.0 / 30.0 - RUN_ON,
     reel_interval: 14.0 / 30.0,
     event_interval: 0.14,
 };
@@ -1271,15 +1272,19 @@ pub const TIMING: Timing = Timing {
 /// Reel speed in symbols per second while spinning (real game: half a symbol
 /// a frame, reached at once, constant to the stop).
 const SPIN_SPEED: f32 = 15.0;
-/// How far a stopping reel lands past its rest position, in symbols (real
-/// game: 31-34 px of an 84 px symbol, a hard stop at full speed).
-const OVERSHOOT: f32 = 0.38;
-/// How long the slide back to rest takes, in seconds (real game: 9-10 frames
-/// at a constant speed).
-const SETTLE_SECONDS: f32 = 0.32;
-/// Seconds from a reel's presented stop to its landing: the run-on of 3 to 4
-/// symbols, at a speed adjusted a little so every reel lands on the beat.
-const RUN_ON: f32 = (3.5 + OVERSHOOT) / SPIN_SPEED;
+/// A stopping reel runs on at full speed past its stop, up to a whole
+/// symbol (real game: +84 to +87 px of an 86 px symbol on most landings),
+/// shows there for a frame, snaps back to 0.36 of a symbol past its stop and
+/// slides home in a straight line in 9 frames. The clink is at the snap.
+const DEEP: f32 = 1.0;
+const OVERSHOOT: f32 = 0.36;
+const SETTLE_SECONDS: f32 = 9.0 / 30.0;
+/// The frame the reel shows at its deepest before the snap.
+const DEEP_HOLD: f32 = 1.0 / 30.0;
+/// Seconds from a reel's presented stop to its deepest point: the run-on of
+/// 3 to 4 symbols and one more, at a speed adjusted a little so every reel
+/// lands on the beat.
+const RUN_ON: f32 = (3.5 + DEEP) / SPIN_SPEED;
 /// Images per reel strip: one above the window, three in it, one below.
 const STRIP_SLOTS: usize = 5;
 
@@ -1588,7 +1593,7 @@ pub fn spin_reels(
                 let target = state.pos.floor() - 3.0;
                 state.landing = landing;
                 state.landing_at = target as i64;
-                let speed = (state.pos - (target - OVERSHOOT)) / RUN_ON;
+                let speed = (state.pos - (target - DEEP)) / RUN_ON;
                 state.motion = Motion::Stopping {
                     target,
                     speed,
@@ -1607,13 +1612,14 @@ pub fn spin_reels(
                 bounce: None,
             } => {
                 state.pos -= speed * dt;
-                if state.pos <= target - OVERSHOOT {
-                    state.pos = target - OVERSHOOT;
-                    state.stopped_now = true;
+                if state.pos <= target - DEEP {
+                    // At its deepest for a frame (the bounce clock counts
+                    // from here, negative until the snap).
+                    state.pos = target - DEEP;
                     state.motion = Motion::Stopping {
                         target,
                         speed,
-                        bounce: Some(0.0),
+                        bounce: Some(-DEEP_HOLD),
                     };
                 }
             }
@@ -1622,10 +1628,19 @@ pub fn spin_reels(
                 speed,
                 bounce: Some(b),
             } => {
+                let b0 = b;
                 let b = b + dt;
-                let k = (b / SETTLE_SECONDS).min(1.0);
+                if b0 < 0.0 && b >= 0.0 {
+                    // The snap back, and the clink.
+                    state.stopped_now = true;
+                }
+                let k = (b / SETTLE_SECONDS).clamp(0.0, 1.0);
                 // A steady slide back (real game: linear, frame by frame).
-                state.pos = target - OVERSHOOT * (1.0 - k);
+                state.pos = if b < 0.0 {
+                    target - DEEP
+                } else {
+                    target - OVERSHOOT * (1.0 - k)
+                };
                 state.motion = if k >= 1.0 {
                     state.pos = target;
                     Motion::Idle
@@ -2572,7 +2587,12 @@ impl FeatureShow {
                     *total = *number + remaining;
                 }
             }
-            Event::FreeGamesCompleted { .. } => self.stage = Stage::FreeGamesDone,
+            Event::FreeGamesCompleted { .. } => {
+                // Real game: "FEATURE COMPLETED" with SND_Fea_End, the music
+                // cut at the same moment.
+                self.cues.push("SND_Fea_End");
+                self.stage = Stage::FreeGamesDone;
+            }
             Event::HoldAndSpinStarted { respins, .. } => {
                 self.jackpots.clear();
                 self.stage = Stage::HoldSpin {
@@ -5224,9 +5244,18 @@ pub fn gamble_screen(
 // quarters of a second in each second), each winning line in turn, and the
 // message at the right reads "Line 1 wins 2".
 
-/// Seconds each winning line shows, and the part of that it is lit.
-const WIN_LINE_SECONDS: f32 = 1.0;
-const WIN_LINE_LIT: f32 = 0.75;
+/// Seconds each winning line shows (real game: 43-45 frames, each line in
+/// turn, round and round until the next game). Within it the line's badges
+/// light twice, and its winning symbols that do not animate blink out twice,
+/// in between (measured frame by frame).
+const WIN_LINE_SECONDS: f32 = 1.45;
+const WIN_LINE_LIT: [(f32, f32); 2] = [(0.0, 0.33), (0.70, 0.93)];
+const WIN_LINE_BLINK: [(f32, f32); 2] = [(0.33, 0.63), (0.97, 1.37)];
+
+/// Whether `phase` (seconds into a line's showing) falls in one of `spans`.
+fn in_spans(phase: f32, spans: &[(f32, f32)]) -> bool {
+    spans.iter().any(|&(a, b)| phase >= a && phase < b)
+}
 /// The badge and dash sizes on the canvas (footage, scaled).
 const LINE_BADGE: (f32, f32) = (104.0, 80.0);
 const LINE_DASH: (f32, f32) = (52.0, 26.0);
@@ -5357,7 +5386,7 @@ pub fn win_lines(
         };
         format!("Line {} wins {shown}", line + 1)
     });
-    let lit = current.filter(|_| show.win_t % WIN_LINE_SECONDS < WIN_LINE_LIT);
+    let lit = current.filter(|_| in_spans(show.win_t % WIN_LINE_SECONDS, &WIN_LINE_LIT));
     let rows = lit.and_then(|(line, _, _)| sim.game.model().paylines.get(line as usize));
     let set = |vis: &mut Visibility, on: bool| {
         let want = if on {
@@ -5459,7 +5488,7 @@ pub fn win_lines(
 const WILD_TILE: (f32, f32) = (130.0, 118.0);
 const WILD_TILE_AT: (f32, f32) = (43.0, 39.0);
 /// Frames per second of the stack animations.
-const WILD_FPS: f32 = 30.0;
+const WILD_FPS: f32 = 20.0;
 
 /// Emperor stacks: those standing tall (reel, top row, height, since when in
 /// seconds of `Time`), and those landed (reel, top row, height).
@@ -5696,6 +5725,7 @@ pub fn symbol_fx(
             }
         }
     }
+    let line_cells = cells.clone();
     if show.scatter_shown {
         for (l, t) in &labels {
             if t.0 == "pennant" {
@@ -5751,8 +5781,12 @@ pub fn symbol_fx(
         if *vis != want {
             *vis = want;
         }
-        // The still symbol gives way to its animation.
-        if playing {
+        // The still symbol gives way to its animation; a winning symbol that
+        // does not animate blinks out with its line (real game).
+        let blink = !playing
+            && line_cells.contains(&(f.reel, f.row))
+            && in_spans(show.win_t % WIN_LINE_SECONDS, &WIN_LINE_BLINK);
+        if playing || blink {
             for (ci, mut v) in &mut images {
                 if ci.reel == f.reel && ci.row == f.row && *v != Visibility::Hidden {
                     *v = Visibility::Hidden;
@@ -5951,6 +5985,17 @@ const FG_CUT: f32 = 1.07;
 const FG_TICK: f32 = 4.0 / 30.0;
 
 impl FeatureShow {
+    /// Seconds before a feature's next step (real game): a free game starts
+    /// 1.25 s after its win has counted, or, with no win, about 2.5 s after
+    /// its doors opened (0.85 s after the reveal's end); a respin's step 0.5 s.
+    pub fn step_pause(&self) -> f32 {
+        match self.stage {
+            Stage::FreeGames { .. } if self.game_won => 1.25,
+            Stage::FreeGames { .. } => 0.85,
+            _ => 0.5,
+        }
+    }
+
     /// The trigger sequence is at least `after` seconds past the coins'
     /// burst.
     fn since_burst(&self, after: f32) -> bool {
