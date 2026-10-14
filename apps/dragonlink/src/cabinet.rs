@@ -1800,9 +1800,6 @@ pub fn reel_audio(
             .landing
             .iter()
             .any(|l| l.starts_with("ORB"));
-        if reels.states[reel].landing.iter().any(|l| l == "pennant") {
-            sounds.play(&mut commands, "SND_Scatter");
-        }
         if coins {
             sounds.coin_reels += 1;
             let n = sounds.coin_reels.min(5);
