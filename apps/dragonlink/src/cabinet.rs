@@ -1255,25 +1255,29 @@ pub fn clear_buttons(mut input: ResMut<CabinetInput>) {
 // Reel motion
 // ---------------------------------------------------------------------------
 
-/// The machine's pace, measured frame by frame on cabinet footage (base-game
-/// spins at 30 fps): the first reel lands about 0.71 s after the reels start
-/// (its stop is presented here, then it runs on about 3.4 symbols, ~0.19 s),
-/// and each further reel lands 0.45 s after the one before.
+/// The game's pace, measured frame by frame on the real game (17 base-game
+/// spins at 30 fps, every one the same): the reels start the frame after the
+/// press; the first reel lands 26 frames (0.867 s) after the press and each
+/// further reel 14 frames (0.467 s) after the one before. A reel's stop is
+/// presented here, and it runs on about 3.5 symbols (~0.25 s) to land.
 pub const TIMING: Timing = Timing {
-    lead_in: 0.52,
-    reel_interval: 0.45,
+    lead_in: 26.0 / 30.0 - RUN_ON,
+    reel_interval: 14.0 / 30.0,
     event_interval: 0.14,
 };
 
-/// Reel speed in symbols per second while spinning (footage: 20, reached
-/// within the first frame, with no visible kick).
-const SPIN_SPEED: f32 = 20.0;
-/// How far a stopping reel runs past its rest position, in symbols (footage:
-/// about 0.35, a hard stop at full speed).
-const OVERSHOOT: f32 = 0.35;
-/// How long the slide back to rest takes, in seconds (footage: about 0.24,
-/// at a near-constant speed).
-const SETTLE_SECONDS: f32 = 0.24;
+/// Reel speed in symbols per second while spinning (real game: half a symbol
+/// a frame, reached at once, constant to the stop).
+const SPIN_SPEED: f32 = 15.0;
+/// How far a stopping reel lands past its rest position, in symbols (real
+/// game: 31-34 px of an 84 px symbol, a hard stop at full speed).
+const OVERSHOOT: f32 = 0.38;
+/// How long the slide back to rest takes, in seconds (real game: 9-10 frames
+/// at a constant speed).
+const SETTLE_SECONDS: f32 = 0.32;
+/// Seconds from a reel's presented stop to its landing: the run-on of 3 to 4
+/// symbols, at a speed adjusted a little so every reel lands on the beat.
+const RUN_ON: f32 = (3.5 + OVERSHOOT) / SPIN_SPEED;
 /// Images per reel strip: one above the window, three in it, one below.
 const STRIP_SLOTS: usize = 5;
 
@@ -1283,8 +1287,13 @@ enum Motion {
     Idle,
     /// Spinning, `t` seconds since the start.
     Spinning { t: f32 },
-    /// Running on to `target` (an integer position), then bouncing back.
-    Stopping { target: f32, bounce: Option<f32> },
+    /// Running on to `target` (an integer position) at `speed`, then
+    /// bouncing back.
+    Stopping {
+        target: f32,
+        speed: f32,
+        bounce: Option<f32>,
+    },
 }
 
 /// One reel's scroll state. `pos` is the strip index at the top visible row,
@@ -1306,7 +1315,15 @@ pub struct Reels {
     states: Vec<ReelState>,
     /// The symbol keys the reels scroll through while spinning.
     strips: Vec<Vec<String>>,
+    /// Seconds since every reel came to rest.
+    rested: f32,
 }
+
+/// The real game shows a spin's result 5 frames (0.17 s) after the last reel
+/// is still, and takes the next spin 3 frames (0.1 s) after it (measured on
+/// every base-game spin and win of the real game's session).
+pub const RESULT_AFTER_REST: f32 = 0.17;
+pub const SPIN_AFTER_REST: f32 = 0.1;
 
 impl Reels {
     /// Whether a reel is moving (so its landed cells are hidden).
@@ -1322,6 +1339,11 @@ impl Reels {
     /// settles, some 0.4 s), so this is later than the game's stop.
     pub fn any_moving(&self) -> bool {
         self.states.iter().any(|s| s.motion != Motion::Idle)
+    }
+
+    /// Seconds every reel has been at rest on screen (0 while any moves).
+    pub fn rested_for(&self) -> f32 {
+        if self.any_moving() { 0.0 } else { self.rested }
     }
 
     /// Reels that hit their stop this frame.
@@ -1410,7 +1432,11 @@ pub fn reel_strips(model: &MathModel) -> Reels {
             ..default()
         })
         .collect();
-    Reels { states, strips }
+    Reels {
+        states,
+        strips,
+        rested: SPIN_AFTER_REST,
+    }
 }
 
 /// The reel strips: a clipped column per reel over the panel, shown only
@@ -1513,10 +1539,6 @@ pub fn spawn_strips(c: &mut ChildSpawnerCommands, reels: u8) {
     }
 }
 
-fn ease_out(t: f32) -> f32 {
-    1.0 - (1.0 - t) * (1.0 - t)
-}
-
 /// Run the reels: start them when a spin starts, stop each on its landing
 /// symbols when its stop is presented, with the machine's overshoot and
 /// bounce, and draw the strips while they move.
@@ -1564,8 +1586,10 @@ pub fn spin_reels(
                 let target = state.pos.floor() - 3.0;
                 state.landing = landing;
                 state.landing_at = target as i64;
+                let speed = (state.pos - (target - OVERSHOOT)) / RUN_ON;
                 state.motion = Motion::Stopping {
                     target,
+                    speed,
                     bounce: None,
                 };
             }
@@ -1577,38 +1601,47 @@ pub fn spin_reels(
             }
             Motion::Stopping {
                 target,
+                speed,
                 bounce: None,
             } => {
-                state.pos -= SPIN_SPEED * dt;
+                state.pos -= speed * dt;
                 if state.pos <= target - OVERSHOOT {
                     state.pos = target - OVERSHOOT;
                     state.stopped_now = true;
                     state.motion = Motion::Stopping {
                         target,
+                        speed,
                         bounce: Some(0.0),
                     };
                 }
             }
             Motion::Stopping {
                 target,
+                speed,
                 bounce: Some(b),
             } => {
                 let b = b + dt;
                 let k = (b / SETTLE_SECONDS).min(1.0);
-                // A steady slide back, easing only at the very end.
-                let back = 0.85 * k + 0.15 * ease_out(k);
-                state.pos = target - OVERSHOOT * (1.0 - back);
+                // A steady slide back (real game: linear, frame by frame).
+                state.pos = target - OVERSHOOT * (1.0 - k);
                 state.motion = if k >= 1.0 {
                     state.pos = target;
                     Motion::Idle
                 } else {
                     Motion::Stopping {
                         target,
+                        speed,
                         bounce: Some(b),
                     }
                 };
             }
         }
+    }
+
+    if reels.any_moving() {
+        reels.rested = 0.0;
+    } else {
+        reels.rested += dt;
     }
 
     // Draw.
@@ -2973,11 +3006,28 @@ const INTRO_END: f32 = 6.6;
 /// pause before the first respin.
 const COUNT_STEP: f32 = 0.14;
 const COUNT_HOLD: f32 = 0.6;
-/// A respin: seconds before the first open position stops, and between stops.
-const RESPIN_FIRST_STOP: f32 = 0.9;
-const RESPIN_STOP_GAP: f32 = 0.12;
-/// Symbols per second an open position scrolls at while it respins.
-const RESPIN_SPEED: f32 = 11.0;
+/// A respin, from the real game (9 position stops measured frame by frame):
+/// every open position of a reel stops together. The first reel passes its
+/// stop 16 frames (0.53 s) after the press and each further reel 14 frames
+/// (0.467 s) later, whether or not it has open positions; so a respin always
+/// takes the same time.
+const RESPIN_FIRST_PASS: f32 = 16.0 / 30.0;
+const RESPIN_REEL_GAP: f32 = 14.0 / 30.0;
+/// Positions per second a respinning position runs at (about half a cell a
+/// frame), to the stop with no slowing.
+const RESPIN_SPEED: f32 = 15.3;
+/// How far past its stop a respinning position is, in cells, each frame
+/// (30 fps) from the moment it passes the stop: a hard overshoot of half a
+/// cell, then back over 11 frames (measured).
+const RESPIN_BOUNCE: [f32; 12] = [
+    0.0, 0.512, 0.36, 0.326, 0.285, 0.244, 0.209, 0.163, 0.116, 0.081, 0.047, 0.0,
+];
+const RESPIN_SETTLE: f32 = 11.0 / 30.0;
+/// A coin that lands bursts into flame, and the counter goes back to three,
+/// 7 frames after it passes its stop (measured).
+const RESPIN_FLARE: f32 = 7.0 / 30.0;
+/// The respin is over 4 to 5 frames after the last position settles.
+const RESPIN_DONE: f32 = 4.5 / 30.0;
 /// The count at the end: seconds per coin, and the hold after the last.
 const COLLECT_STEP: f32 = 1.2;
 const COLLECT_HOLD: f32 = 2.0;
@@ -3008,6 +3058,8 @@ pub struct RespinAnim {
     /// Stops already made, and coins landed so far in this respin.
     done: usize,
     coins: u32,
+    /// Landed coins still to burst into flame: when, and where.
+    flares: Vec<(f32, u8, u8)>,
 }
 
 /// The coins being counted into the WINNER total.
@@ -3257,24 +3309,23 @@ impl RespinAnim {
             .stops
             .iter()
             .find(|s| s.0 == reel && s.1 == row)
-            .filter(|s| self.t < s.2)?;
+            .filter(|s| self.t < s.2 + RESPIN_SETTLE)?;
         let end = self.end_of(at);
-        // Full speed to the stop, run a little past it, slide back: the same
-        // stop as the main reels (footage), no slowing beforehand.
-        let hard = at - SETTLE_SECONDS;
-        let pos = if self.t < hard {
-            end as f32 + OVERSHOOT - (hard - self.t) * RESPIN_SPEED
+        // Full speed to the stop, past it by half a cell, and back.
+        let pos = if self.t < at {
+            end as f32 - (at - self.t) * RESPIN_SPEED
         } else {
-            let k = ((self.t - hard) / SETTLE_SECONDS).min(1.0);
-            let back = 0.85 * k + 0.15 * ease_out(k);
-            end as f32 + OVERSHOOT * (1.0 - back)
+            let f = (self.t - at) * 30.0;
+            let i = (f as usize).min(RESPIN_BOUNCE.len() - 1);
+            let next = RESPIN_BOUNCE[(i + 1).min(RESPIN_BOUNCE.len() - 1)];
+            end as f32 + RESPIN_BOUNCE[i] + (next - RESPIN_BOUNCE[i]) * f.fract()
         };
         Some((pos, end, coin))
     }
 
-    /// Symbols a position runs through before a stop at `at` seconds.
+    /// Symbols a position runs through before it passes its stop at `at`.
     fn travel(at: f32) -> i64 {
-        (((at - SETTLE_SECONDS) * RESPIN_SPEED).round() as i64).max(3)
+        ((at * RESPIN_SPEED).round() as i64).max(3)
     }
 
     /// The strip index a position stopping at `at` comes to rest on.
@@ -3793,8 +3844,8 @@ pub fn hold_and_spin_motion(
             for row in 0..rows {
                 let new = landed.contains(&(reel, row));
                 if new || open(&label_of(&labels, reel, row)) {
-                    let k = stops.len() as f32;
-                    stops.push((reel, row, RESPIN_FIRST_STOP + k * RESPIN_STOP_GAP, new));
+                    let pass = RESPIN_FIRST_PASS + f32::from(reel) * RESPIN_REEL_GAP;
+                    stops.push((reel, row, pass, new));
                 }
             }
         }
@@ -3819,7 +3870,7 @@ pub fn hold_and_spin_motion(
                     &mut commands,
                     &format!("SND_HandSDoonk{}", anim.coins.min(5)),
                 );
-                show.bursts.push((reel, row, clock));
+                anim.flares.push((at + RESPIN_FLARE, reel, row));
             } else {
                 // The position comes to rest on the strip's landing symbol.
                 let end = anim.end_of(at);
@@ -3831,7 +3882,27 @@ pub fn hold_and_spin_motion(
             }
             anim.done += 1;
         }
-        if anim.done >= anim.stops.len() {
+        // A landed coin bursts into flame and the counter is back at three
+        // at once, while the respin is still settling (real game).
+        let now = anim.t;
+        let due: Vec<(u8, u8)> = anim
+            .flares
+            .iter()
+            .filter(|f| f.0 <= now)
+            .map(|f| (f.1, f.2))
+            .collect();
+        if !due.is_empty() {
+            anim.flares.retain(|f| f.0 > now);
+            for (reel, row) in due {
+                show.bursts.push((reel, row, clock));
+            }
+            show.counter = show.counter.max(show.pending_left);
+        }
+        let last = anim.stops.iter().map(|s| s.2).fold(0.0, f32::max);
+        if anim.done >= anim.stops.len()
+            && anim.flares.is_empty()
+            && anim.t >= last + RESPIN_SETTLE + RESPIN_DONE
+        {
             finished = true;
         } else {
             show.respin = Some(anim);

@@ -926,7 +926,7 @@ fn input(
     let at_rest = sim.game.is_idle()
         && presentation.queue.is_empty()
         && !gamble.active
-        && !reels.any_moving();
+        && reels.rested_for() >= cabinet::SPIN_AFTER_REST;
     if keys.just_pressed(KeyCode::KeyD) && at_rest {
         denom.index = (denom.index + 1) % DENOM_CENTS.len();
     }
@@ -972,7 +972,7 @@ fn input(
         && sim.game.is_idle()
         // A feature still on screen (its count, its banner) finishes first.
         && presentation.queue.is_empty()
-        && !reels.any_moving()
+        && reels.rested_for() >= cabinet::SPIN_AFTER_REST
         && feature.awaiting.is_none()
         && !feature.blocks()
         && !gamble.active;
@@ -1153,7 +1153,7 @@ fn present(
         // presented as it starts to run on to its stop, and it overshoots
         // and settles after that.
         if fidelity.0
-            && reels_motion.any_moving()
+            && reels_motion.rested_for() < cabinet::RESULT_AFTER_REST
             && presentation
                 .queue
                 .front()
