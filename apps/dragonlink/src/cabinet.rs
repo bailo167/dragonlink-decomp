@@ -118,8 +118,6 @@ pub enum CabMeter {
     MinBet,
     /// "Bet Multiplier 5" above the strip.
     Multiplier,
-    /// "50" in a payline tab.
-    Lines,
 }
 
 /// Everything the pack must hold for this model, or the list of what is missing.
@@ -338,25 +336,6 @@ pub fn spawn(commands: &mut Commands, model: &MathModel, art: &ArtPack, fonts: &
                 sprite(ui("white"), gx, gy, 5.0 * PITCH.0, 3.0 * PITCH.1),
                 Visibility::Hidden,
             ));
-            for side in [-1.0f32, 1.0] {
-                let x = gx + side * (2.0 * PITCH.0 + 196.0);
-                // The tabs stand in front of the reels: a coin on an outer
-                // reel overhangs its reel and must not cover them.
-                c.spawn((
-                    sprite(ui("payline_tab"), x, gy, 134.0, 272.0),
-                    GlobalZIndex(3),
-                ));
-                c.spawn((
-                    CabMeter::Lines,
-                    label("50", font, 64.0, gold, x, gy - 34.0, 134.0),
-                    GlobalZIndex(4),
-                ));
-                c.spawn((
-                    label("LINES", font, 34.0, gold, x, gy + 34.0, 134.0),
-                    GlobalZIndex(4),
-                ));
-            }
-
             // The reels: one cell per window position.
             let (cw, ch) = cell_size();
             for reel in 0..model.grid.reels {
@@ -1227,7 +1206,6 @@ pub fn update_meters(
             CabMeter::Multiplier => show
                 .caption(time.elapsed_secs())
                 .unwrap_or_else(|| format!("Bet Multiplier {}", sim.game.credits_per_line())),
-            CabMeter::Lines => sim.game.lines().to_string(),
         };
         if text.0 != value {
             text.0 = value;
@@ -1767,6 +1745,19 @@ impl Sounds {
         )
     }
 
+    /// Play a clip on a loop at `volume`; returns the playing entity.
+    pub fn play_loop(&self, commands: &mut Commands, name: &str, volume: f32) -> Option<Entity> {
+        let (clip, _) = self.clips.get(name)?;
+        Some(
+            commands
+                .spawn((
+                    AudioPlayer::new(clip.clone()),
+                    PlaybackSettings::LOOP.with_volume(bevy::audio::Volume::Linear(volume)),
+                ))
+                .id(),
+        )
+    }
+
     fn seconds(&self, name: &str) -> Option<f32> {
         self.clips.get(name).map(|(_, s)| *s)
     }
@@ -1797,6 +1788,9 @@ pub fn reel_audio(
             .landing
             .iter()
             .any(|l| l.starts_with("ORB"));
+        if reels.states[reel].landing.iter().any(|l| l == "pennant") {
+            sounds.play(&mut commands, "SND_Scatter");
+        }
         if coins {
             sounds.coin_reels += 1;
             let n = sounds.coin_reels.min(5);
@@ -2344,6 +2338,10 @@ pub struct FeatureShow {
     transition_at: Option<f32>,
     /// The WINNER total while the coins are counted.
     pub winner: Option<u64>,
+    /// Respins run so far (each starts a fresh stretch of strip).
+    respins_run: i64,
+    /// The whir playing under a respin.
+    whir: Option<Entity>,
     /// The bolt in flight (its coin, its start on `clock`), and the last
     /// splash on the WINNER box.
     bolt: Option<(u8, u8, f32)>,
@@ -2913,6 +2911,10 @@ const HS_VEIL: Color = Color::srgba(0.24, 0.21, 0.30, 0.74);
 #[derive(Clone, Debug, Default)]
 pub struct RespinAnim {
     t: f32,
+    /// Where on the strips this respin starts: each respin runs a fresh
+    /// stretch of strip, so a position does not keep landing on the same
+    /// symbol.
+    base: i64,
     /// Positions spinning, with the time each stops and whether a coin lands.
     stops: Vec<(u8, u8, f32, bool)>,
     /// Stops already made.
@@ -3104,8 +3106,26 @@ impl RespinAnim {
             .iter()
             .find(|s| s.0 == reel && s.1 == row)
             .filter(|s| self.t < s.2)?;
-        let end = ((at * RESPIN_SPEED).round() as i64).max(2);
-        Some((self.t * end as f32 / at, end, coin))
+        let travel = Self::travel(at);
+        // Easing into the stop: the last symbols, a landing coin among
+        // them, slow down and come into view before it stops.
+        let u = (self.t / at).clamp(0.0, 1.0);
+        let eased = 1.0 - (1.0 - u) * (1.0 - u);
+        Some((
+            self.base as f32 + travel as f32 * eased,
+            self.base + travel,
+            coin,
+        ))
+    }
+
+    /// Symbols a position runs through before a stop at `at` seconds.
+    fn travel(at: f32) -> i64 {
+        ((at * RESPIN_SPEED * 0.6).round() as i64).max(3)
+    }
+
+    /// The strip index a position stopping at `at` comes to rest on.
+    fn end_of(&self, at: f32) -> i64 {
+        self.base + Self::travel(at)
     }
 }
 
@@ -3621,7 +3641,16 @@ pub fn hold_and_spin_motion(
                 }
             }
         }
-        show.respin = Some(RespinAnim { stops, ..default() });
+        show.respins_run += 1;
+        if let Some(id) = show.whir.take() {
+            commands.entity(id).try_despawn();
+        }
+        show.whir = sounds.play_loop(&mut commands, "SND_ST_Whir_Loop", 0.7);
+        show.respin = Some(RespinAnim {
+            stops,
+            base: show.respins_run * 1009,
+            ..default()
+        });
     }
     let mut finished = false;
     if let Some(mut anim) = show.respin.take() {
@@ -3637,8 +3666,9 @@ pub fn hold_and_spin_motion(
                 );
                 show.bursts.push((reel, row, clock));
             } else {
+                sounds.play(&mut commands, "reel_clink1");
                 // The position comes to rest on the strip's landing symbol.
-                let end = ((at * RESPIN_SPEED).round() as i64).max(2);
+                let end = anim.end_of(at);
                 for (l, mut text) in &mut labels {
                     if l.reel == reel && l.row == row && open(&text.0) {
                         text.0 = format!("{DIM}{}", respin_key(reel, row, end, end, false));
@@ -3652,6 +3682,9 @@ pub fn hold_and_spin_motion(
         } else {
             show.respin = Some(anim);
         }
+    }
+    if finished && let Some(id) = show.whir.take() {
+        commands.entity(id).try_despawn();
     }
     if finished {
         if show.pending_left > show.counter {
@@ -4429,10 +4462,24 @@ pub fn spawn_gamble_screen(c: &mut ChildSpawnerCommands, art: &ArtPack, fonts: &
             ImageNode {
                 image: ui("feature_background"),
                 image_mode: NodeImageMode::Stretch,
+                // Dusk, as the cabinet shows it.
+                color: Color::srgb(0.55, 0.5, 0.52),
                 ..default()
             },
         ));
-        let (lx, cx, rx) = (w * 0.5 - 470.0, w * 0.5, w * 0.5 + 470.0);
+        // The gold rule joining the two tabs.
+        g.spawn((
+            Node {
+                position_type: PositionType::Absolute,
+                left: Val::Px(w * 0.5 - 490.0),
+                top: Val::Px(173.0),
+                width: Val::Px(980.0),
+                height: Val::Px(4.0),
+                ..default()
+            },
+            BackgroundColor(Color::srgb(0.92, 0.7, 0.25)),
+        ));
+        let (lx, cx, rx) = (w * 0.5 - 490.0, w * 0.5, w * 0.5 + 490.0);
         let pill = |g: &mut ChildSpawnerCommands, x: f32, y: f32, pw: f32, s: &str| {
             g.spawn((
                 at(x, y, pw, 50.0),
@@ -4447,21 +4494,21 @@ pub fn spawn_gamble_screen(c: &mut ChildSpawnerCommands, art: &ArtPack, fonts: &
             });
         };
         // Left: the tab, the amount, RED and the red suits.
-        pill(g, lx, 92.0, 330.0, "Full Gamble Selected");
-        g.spawn((at(lx, 210.0, 460.0, 170.0),)).with_children(|t| {
+        pill(g, lx, 175.0, 400.0, "Full Gamble Selected");
+        g.spawn((at(lx, 290.0, 460.0, 170.0),)).with_children(|t| {
             t.spawn((GambleText::Amount, gamble_text("", italic, 30.0)));
         });
-        gamble_button(g, art, GamblePick::Red, lx, 360.0, 330.0, 76.0);
-        gamble_button(g, art, GamblePick::Hearts, lx - 84.0, 460.0, 150.0, 86.0);
-        gamble_button(g, art, GamblePick::Diamonds, lx + 84.0, 460.0, 150.0, 86.0);
+        gamble_button(g, art, GamblePick::Red, lx, 440.0, 420.0, 88.0);
+        gamble_button(g, art, GamblePick::Hearts, lx - 106.0, 548.0, 190.0, 96.0);
+        gamble_button(g, art, GamblePick::Diamonds, lx + 106.0, 548.0, 190.0, 96.0);
 
         // Middle: "Gamble Win" over the card, "WIN" across it.
-        g.spawn((at(cx, 92.0, 400.0, 130.0),)).with_children(|t| {
+        g.spawn((at(cx, 118.0, 400.0, 130.0),)).with_children(|t| {
             t.spawn((GambleText::GambleWin, gamble_text("", italic, 30.0)));
         });
         g.spawn((
             GambleCard,
-            at(cx, 345.0, 240.0, 336.0),
+            at(cx, 435.0, 300.0, 420.0),
             ImageNode {
                 image: ui("card_back"),
                 image_mode: NodeImageMode::Stretch,
@@ -4470,7 +4517,7 @@ pub fn spawn_gamble_screen(c: &mut ChildSpawnerCommands, art: &ArtPack, fonts: &
         ));
         g.spawn((
             GambleStamp,
-            at(cx, 410.0, 420.0, 170.0),
+            at(cx, 500.0, 420.0, 170.0),
             ImageNode {
                 image: ui("win_stamp"),
                 image_mode: NodeImageMode::Stretch,
@@ -4484,9 +4531,9 @@ pub fn spawn_gamble_screen(c: &mut ChildSpawnerCommands, art: &ArtPack, fonts: &
         g.spawn((
             Node {
                 column_gap: Val::Px(6.0),
-                padding: UiRect::horizontal(Val::Px(22.0)),
+                padding: UiRect::horizontal(Val::Px(56.0)),
                 justify_content: JustifyContent::FlexStart,
-                ..at(rx, 92.0, 420.0, 50.0)
+                ..at(rx, 175.0, 440.0, 50.0)
             },
             ImageNode {
                 image: ui("pill"),
@@ -4509,21 +4556,20 @@ pub fn spawn_gamble_screen(c: &mut ChildSpawnerCommands, art: &ArtPack, fonts: &
                 ));
             }
         });
-        g.spawn((at(rx, 210.0, 460.0, 170.0),)).with_children(|t| {
+        g.spawn((at(rx, 290.0, 460.0, 170.0),)).with_children(|t| {
             t.spawn((GambleText::ToWin, gamble_text("", italic, 30.0)));
         });
-        gamble_button(g, art, GamblePick::Black, rx, 360.0, 330.0, 76.0);
-        gamble_button(g, art, GamblePick::Clubs, rx - 84.0, 460.0, 150.0, 86.0);
-        gamble_button(g, art, GamblePick::Spades, rx + 84.0, 460.0, 150.0, 86.0);
+        gamble_button(g, art, GamblePick::Black, rx, 440.0, 420.0, 88.0);
+        gamble_button(g, art, GamblePick::Clubs, rx - 106.0, 548.0, 190.0, 96.0);
+        gamble_button(g, art, GamblePick::Spades, rx + 106.0, 548.0, 190.0, 96.0);
 
-        g.spawn((at(cx, h - 34.0, 900.0, 50.0),))
-            .with_children(|t| {
-                t.spawn(gamble_text(
-                    "Select a SUIT, RED/BLACK or TAKE WIN",
-                    italic,
-                    26.0,
-                ));
-            });
+        g.spawn((at(cx, 690.0, 900.0, 50.0),)).with_children(|t| {
+            t.spawn(gamble_text(
+                "Select a SUIT, RED/BLACK or TAKE WIN",
+                italic,
+                26.0,
+            ));
+        });
     });
 }
 
@@ -5142,5 +5188,45 @@ pub fn symbol_fx(
                 }
             }
         }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Feature music
+// ---------------------------------------------------------------------------
+
+/// The feature music playing: its clip and entity.
+#[derive(Resource, Default)]
+pub struct Music(Option<(&'static str, Entity)>);
+
+/// Play the feature's music while it runs: the game's own looped tracks from
+/// its global sound cues (`GlobalSounds.mercury`), told apart on cabinet
+/// footage: SND_Fea_BGM under the free games, SND_FreeSpin_BGM under Hold &
+/// Spin (its banner counts "free spins").
+pub fn feature_music(
+    fidelity: Res<Fidelity>,
+    show: Res<FeatureShow>,
+    sounds: Res<Sounds>,
+    mut music: ResMut<Music>,
+    mut commands: Commands,
+) {
+    if !fidelity.0 {
+        return;
+    }
+    let want = match show.stage {
+        Stage::FreeGames { .. } => Some("SND_Fea_BGM"),
+        Stage::HoldSpin { .. } if show.started => Some("SND_FreeSpin_BGM"),
+        _ => None,
+    };
+    if music.0.map(|(n, _)| n) == want {
+        return;
+    }
+    if let Some((_, id)) = music.0.take() {
+        commands.entity(id).try_despawn();
+    }
+    if let Some(name) = want
+        && let Some(id) = sounds.play_loop(&mut commands, name, 0.75)
+    {
+        music.0 = Some((name, id));
     }
 }

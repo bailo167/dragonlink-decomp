@@ -1504,6 +1504,14 @@ fn render_symbols(
                         .sizes
                         .get(k)
                         .map_or((cw, ch), |s| cabinet::symbol_size(k, *s));
+                    // A dimmed symbol on an open Hold & Spin position stays
+                    // inside its position (large ones otherwise overhang).
+                    let (w, h) = if dim {
+                        let k = (cw / w).min(ch / h).min(1.0) * 0.96;
+                        (w * k, h * k)
+                    } else {
+                        (w, h)
+                    };
                     if node.width != Val::Px(w) || node.height != Val::Px(h) {
                         node.left = Val::Px((cw - w) / 2.0);
                         node.top = Val::Px((ch - h) / 2.0);
@@ -1750,6 +1758,7 @@ fn main() -> AppExit {
     .insert_resource(cabinet::FeatureShow::default())
     .insert_resource(cabinet::GambleShow::default())
     .insert_resource(cabinet::WildStacks::default())
+    .insert_resource(cabinet::Music::default())
     .insert_resource(if fidelity {
         cabinet::reel_strips(&cli.game.model())
     } else {
@@ -1809,6 +1818,7 @@ fn main() -> AppExit {
                 cabinet::win_lines,
                 cabinet::wild_stacks,
                 cabinet::wild_talls,
+                cabinet::feature_music,
             )
                 .chain(),
             (
