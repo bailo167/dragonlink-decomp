@@ -773,7 +773,7 @@ fn banner(
 #[allow(clippy::too_many_arguments)]
 fn input(
     keys: Res<ButtonInput<KeyCode>>,
-    smoke: Res<Smoke>,
+    mut smoke: ResMut<Smoke>,
     mut sim: ResMut<Sim>,
     mut presentation: ResMut<Presentation>,
     mut denom: ResMut<Denom>,
@@ -802,7 +802,13 @@ fn input(
         || keys.just_pressed(KeyCode::Space)
         || keys.just_pressed(KeyCode::Enter)
         || cabinet_input.spin)
+        && !cabinet_input.skip_spin
         && sim.game.is_idle();
+    // In the cabinet build an unattended run pauses between games, so each
+    // result and win can be seen (and captured) at rest.
+    if go && auto && timing.lead_in > SPIN_LEAD_IN {
+        smoke.hold = 330;
+    }
     let bets = sim.game.model().bet.credits_per_line_options.len();
     let bet_index = sim.game.state().bet_index;
     let line_counts = sim.game.model().line_counts();
@@ -1573,6 +1579,7 @@ fn main() -> AppExit {
     })
     .insert_resource(cabinet::CabinetInput::default())
     .insert_resource(cabinet::Sounds::default())
+    .insert_resource(cabinet::Rollup::default())
     .insert_resource(if fidelity {
         cabinet::reel_strips(&cli.game.model())
     } else {
@@ -1603,6 +1610,7 @@ fn main() -> AppExit {
         Update,
         (
             smoke,
+            cabinet::rollup_skip,
             input,
             cabinet::clear_buttons,
             drive_features,
@@ -1612,7 +1620,9 @@ fn main() -> AppExit {
             banner,
             cabinet::spin_reels,
             cabinet::reel_audio,
+            cabinet::win_rollup,
             render_symbols,
+            cabinet::orb_overlay,
             cabinet::clear_cells,
             cabinet::update_meters,
             cabinet::fit,

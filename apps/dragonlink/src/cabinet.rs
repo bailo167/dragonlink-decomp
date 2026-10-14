@@ -32,12 +32,12 @@ const SLOT_POS: (f32, f32) = (840.0, 554.0);
 const SLOT_SCALE: (f32, f32) = (1.1, 1.08);
 /// The symbol templates' own scale on the reels.
 const SYMBOL_SCALE: (f32, f32) = (0.894, 0.909);
-/// The jackpot-meter container.
-const METERS_POS: (f32, f32) = (841.0, 602.5);
-const METERS_SCALE: (f32, f32) = (1.1, 0.872);
+/// The jackpot bar across the top of the screen: its width and top edge.
+const JACKPOT_BAR_W: f32 = 1640.0;
+const JACKPOT_BAR_TOP: f32 = 6.0;
 
 /// UI images the cabinet screen needs from the pack (`ui/<name>.png`).
-pub const REQUIRED_UI: [&str; 10] = [
+pub const REQUIRED_UI: [&str; 13] = [
     "background",
     "reel_background",
     "payline_tab",
@@ -48,6 +48,9 @@ pub const REQUIRED_UI: [&str; 10] = [
     "btn_plus",
     "btn_maxbet",
     "btn_spin_normal",
+    "orb_mini",
+    "orb_minor",
+    "orb_major",
 ];
 
 /// The fidelity build: an authentic pack is configured and complete.
@@ -129,13 +132,6 @@ fn slot(x: f32, y: f32) -> (f32, f32) {
     (
         SLOT_POS.0 + SLOT_SCALE.0 * (x - 840.0),
         SLOT_POS.1 + SLOT_SCALE.1 * (y - 525.0),
-    )
-}
-
-fn meters(x: f32, y: f32) -> (f32, f32) {
-    (
-        METERS_POS.0 + METERS_SCALE.0 * (x - 840.0),
-        METERS_POS.1 + METERS_SCALE.1 * (y - 525.0),
     )
 }
 
@@ -295,6 +291,7 @@ pub fn spawn(commands: &mut Commands, model: &MathModel, art: &ArtPack, font: &H
                             },
                             Visibility::Hidden,
                         ));
+                        spawn_orb_overlay(cell, reel, row, font);
                     });
                 }
             }
@@ -302,26 +299,37 @@ pub fn spawn(commands: &mut Commands, model: &MathModel, art: &ArtPack, font: &H
             // The moving reels, drawn over the landed cells while they spin.
             spawn_strips(c, model.grid.reels);
 
-            // The jackpot meter bar, directly above the reel panel.
-            let (x, y) = meters(840.0, 53.0);
+            // The jackpots across the top of the screen, as on the machine:
+            // the game's jackpot bar spanning the full width.
+            let (bar_w, bar_top) = (JACKPOT_BAR_W, JACKPOT_BAR_TOP);
+            let bar_h = bar_w * 104.0 / 1225.0;
             c.spawn(sprite(
                 ui("jackpot_bar"),
-                x,
-                y,
-                1235.0 * METERS_SCALE.0,
-                105.0 * METERS_SCALE.1,
+                840.0,
+                bar_top + bar_h / 2.0,
+                bar_w,
+                bar_h,
             ));
-            // Amounts sit in each tier's black display window.
+            // Amounts sit in each tier's black display window (the window
+            // centres in the bar image, in its own pixels).
+            let k = bar_w / 1225.0;
             for (tier, bar_x) in [
                 (JackpotTier::Grand, 171.0),
                 (JackpotTier::Major, 487.0),
                 (JackpotTier::Minor, 776.0),
                 (JackpotTier::Mini, 1034.0),
             ] {
-                let (x, y) = meters(222.5 + bar_x * 1235.0 / 1225.0, 70.0);
                 c.spawn((
                     JackpotMeter { tier },
-                    label("-", font, 40.0, white, x, y, 300.0),
+                    label(
+                        "-",
+                        font,
+                        56.0,
+                        white,
+                        840.0 - bar_w / 2.0 + bar_x * k,
+                        bar_top + 70.0 * k,
+                        420.0,
+                    ),
                 ));
             }
 
@@ -460,17 +468,20 @@ pub fn update_meters(
     sim: Res<Sim>,
     presentation: Res<Presentation>,
     denom: Res<Denom>,
+    rollup: Res<Rollup>,
     mut meters: Query<(&CabMeter, &mut Text)>,
 ) {
     if !fidelity.0 {
         return;
     }
     let cents = denom.cents();
+    // Credits count up with the win meter.
+    let pending = rollup.to.saturating_sub(rollup.shown());
     for (meter, mut text) in &mut meters {
         let value = match meter {
-            CabMeter::Credit => money(presentation.shown_credits, cents),
+            CabMeter::Credit => money(presentation.shown_credits.saturating_sub(pending), cents),
             CabMeter::Bet => money(sim.game.total_bet(), cents),
-            CabMeter::Win => money(presentation.shown_win, cents),
+            CabMeter::Win => money(rollup.shown(), cents),
         };
         if text.0 != value {
             text.0 = value;
@@ -498,6 +509,8 @@ pub struct CabinetInput {
     pub max_bet: bool,
     pub bet_up: bool,
     pub bet_down: bool,
+    /// A SPIN press that completed a win rollup rather than start a game.
+    pub skip_spin: bool,
 }
 
 /// Presses are set by the buttons' pointer observers (before `Update`) and
@@ -519,7 +532,7 @@ pub const TIMING: Timing = Timing {
 };
 
 /// Reel speed in symbols per second while spinning.
-const SPIN_SPEED: f32 = 17.0;
+const SPIN_SPEED: f32 = 12.0;
 /// How far a stopping reel runs past its rest position, in symbols.
 const OVERSHOOT: f32 = 0.16;
 /// How long the bounce back to rest takes, in seconds.
@@ -827,12 +840,24 @@ pub fn spin_reels(
 // Sound
 // ---------------------------------------------------------------------------
 
-/// The game's own sound clips from the pack (`audio/<name>.ogg`), by name.
+/// The game's own sound clips from the pack (`audio/<name>.ogg`), by name,
+/// with each clip's length.
 #[derive(Resource, Default)]
 pub struct Sounds {
-    clips: std::collections::HashMap<String, Handle<AudioSource>>,
-    /// The reel-spin loop while it plays.
-    spin_loop: Option<Entity>,
+    clips: std::collections::HashMap<String, (Handle<AudioSource>, f32)>,
+    /// Whether any reel was moving last frame (to catch a spin's start).
+    reels_were_moving: bool,
+    spins: u32,
+}
+
+/// An Ogg Vorbis clip's length in seconds, from its last page's granule
+/// position and the identification header's sample rate.
+fn ogg_seconds(bytes: &[u8]) -> Option<f32> {
+    let id = bytes.windows(7).position(|w| w == b"\x01vorbis")?;
+    let rate = u32::from_le_bytes(bytes.get(id + 12..id + 16)?.try_into().ok()?);
+    let last = bytes.windows(4).rposition(|w| w == b"OggS")?;
+    let granule = i64::from_le_bytes(bytes.get(last + 6..last + 14)?.try_into().ok()?);
+    (rate > 0 && granule > 0).then(|| granule as f32 / rate as f32)
 }
 
 impl Sounds {
@@ -846,29 +871,37 @@ impl Sounds {
                     continue;
                 }
                 if let Some(stem) = path.file_stem().and_then(|s| s.to_str()) {
+                    let seconds = std::fs::read(&path)
+                        .ok()
+                        .and_then(|b| ogg_seconds(&b))
+                        .unwrap_or(1.0);
                     clips.insert(
                         stem.to_string(),
-                        asset_server.load(format!("audio/{stem}.ogg")),
+                        (asset_server.load(format!("audio/{stem}.ogg")), seconds),
                     );
                 }
             }
         }
-        Sounds {
-            clips,
-            spin_loop: None,
-        }
+        Sounds { clips, ..default() }
     }
 
-    /// Play a clip once.
-    pub fn play(&self, commands: &mut Commands, name: &str) {
-        if let Some(clip) = self.clips.get(name) {
-            commands.spawn((AudioPlayer::new(clip.clone()), PlaybackSettings::DESPAWN));
-        }
+    /// Play a clip once; returns the playing entity.
+    pub fn play(&self, commands: &mut Commands, name: &str) -> Option<Entity> {
+        let (clip, _) = self.clips.get(name)?;
+        Some(
+            commands
+                .spawn((AudioPlayer::new(clip.clone()), PlaybackSettings::DESPAWN))
+                .id(),
+        )
+    }
+
+    fn seconds(&self, name: &str) -> Option<f32> {
+        self.clips.get(name).map(|(_, s)| *s)
     }
 }
 
-/// The reels' sound: the spin whirr while any reel moves, and each reel's
-/// own stop sound as it lands.
+/// The reels' sound: the reel-spin roll as a spin starts (the game has six
+/// variants) and each reel's stop clink as it lands.
 pub fn reel_audio(
     fidelity: Res<Fidelity>,
     mut commands: Commands,
@@ -878,26 +911,276 @@ pub fn reel_audio(
     if !fidelity.0 || sounds.clips.is_empty() {
         return;
     }
-    let spinning = reels
-        .states
-        .iter()
-        .any(|s| matches!(s.motion, Motion::Spinning { .. }));
-    if spinning
-        && sounds.spin_loop.is_none()
-        && let Some(clip) = sounds.clips.get("whirring_reel")
-    {
-        let id = commands
-            .spawn((AudioPlayer::new(clip.clone()), PlaybackSettings::LOOP))
-            .id();
-        sounds.spin_loop = Some(id);
+    let moving = (0..reels.states.len()).any(|r| reels.moving(r as u8));
+    if moving && !sounds.reels_were_moving {
+        let n = sounds.spins % 6 + 1;
+        sounds.spins = sounds.spins.wrapping_add(1);
+        sounds.play(&mut commands, &format!("reel{n}"));
     }
+    sounds.reels_were_moving = moving;
     let stopped: Vec<usize> = reels.just_stopped().collect();
-    for reel in &stopped {
-        let name = format!("reel{}", (reel + 1).min(5));
-        sounds.play(&mut commands, &name);
+    for reel in stopped {
+        sounds.play(&mut commands, &format!("reel_clink{}", (reel + 1).min(5)));
     }
-    // The whirr ends as the last reel starts to land.
-    if !spinning && let Some(id) = sounds.spin_loop.take() {
-        commands.entity(id).despawn();
+}
+
+// ---------------------------------------------------------------------------
+// Win rollup
+// ---------------------------------------------------------------------------
+
+/// The win meter counting up to a win while the game's win tune plays, as on
+/// the machine. A press of SPIN during the count completes it.
+#[derive(Resource, Default)]
+pub struct Rollup {
+    from: u64,
+    to: u64,
+    t: f32,
+    duration: f32,
+    /// The win total last seen from the presentation.
+    seen: u64,
+    tune: Option<Entity>,
+}
+
+impl Rollup {
+    pub fn active(&self) -> bool {
+        self.t < self.duration
+    }
+
+    /// The win shown on the meter now.
+    pub fn shown(&self) -> u64 {
+        if self.duration <= 0.0 {
+            return self.to;
+        }
+        let k = (self.t / self.duration).clamp(0.0, 1.0);
+        self.from + ((self.to - self.from) as f32 * k).round() as u64
+    }
+}
+
+/// Which win tune a win plays: the game's 32 tunes rise with the win's size
+/// against the bet, from a short sting to the long big-win music.
+pub fn win_tune(win: u64, total_bet: u64) -> u32 {
+    if total_bet == 0 {
+        return 1;
+    }
+    let ratio = win as f32 / total_bet as f32;
+    let idx = 1.0 + (ratio * 4.0 + 1.0).log2() * 3.4;
+    (idx.floor() as u32).clamp(1, 32)
+}
+
+/// Start, advance and finish the win rollup; count credits up alongside it.
+#[allow(clippy::too_many_arguments)]
+pub fn win_rollup(
+    fidelity: Res<Fidelity>,
+    time: Res<Time>,
+    smoke: Res<Smoke>,
+    sim: Res<Sim>,
+    presentation: Res<Presentation>,
+    mut rollup: ResMut<Rollup>,
+    sounds: Res<Sounds>,
+    mut commands: Commands,
+) {
+    if !fidelity.0 {
+        return;
+    }
+    let target = presentation.shown_win;
+    if target < rollup.seen {
+        // A new game: the meter starts from nothing and any tune stops.
+        if let Some(id) = rollup.tune.take() {
+            commands.entity(id).try_despawn();
+        }
+        *rollup = Rollup::default();
+    }
+    if target > rollup.seen {
+        let from = rollup.shown();
+        let tune = win_tune(target, sim.game.total_bet());
+        let name = format!("wintune{tune:02}");
+        if let Some(id) = rollup.tune.take() {
+            commands.entity(id).try_despawn();
+        }
+        rollup.tune = sounds.play(&mut commands, &name);
+        rollup.duration = sounds.seconds(&name).unwrap_or(1.5).max(0.3);
+        rollup.from = from;
+        rollup.to = target;
+        rollup.t = 0.0;
+    }
+    rollup.seen = target;
+    if rollup.active() {
+        rollup.t += if smoke.frames_left.is_some() {
+            SMOKE_FRAME_SECONDS
+        } else {
+            time.delta_secs()
+        };
+    }
+}
+
+/// A SPIN press during a rollup completes it (and silences the tune) instead
+/// of starting a game.
+pub fn rollup_skip(
+    fidelity: Res<Fidelity>,
+    keys: Res<ButtonInput<KeyCode>>,
+    mut input: ResMut<CabinetInput>,
+    mut rollup: ResMut<Rollup>,
+    mut commands: Commands,
+) {
+    if !fidelity.0 || !rollup.active() {
+        return;
+    }
+    let pressed =
+        input.spin || keys.just_pressed(KeyCode::Space) || keys.just_pressed(KeyCode::Enter);
+    if pressed {
+        rollup.t = rollup.duration;
+        if let Some(id) = rollup.tune.take() {
+            commands.entity(id).try_despawn();
+        }
+        input.skip_spin = true;
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Orb prizes
+// ---------------------------------------------------------------------------
+
+/// The prize shown on an orb: its credit value, red with a gold rim.
+#[derive(Component)]
+pub struct OrbText {
+    reel: u8,
+    row: u8,
+}
+
+/// A jackpot-tier label (MINI / MINOR / MAJOR) drawn over an orb.
+#[derive(Component)]
+pub struct OrbTier {
+    reel: u8,
+    row: u8,
+}
+
+const ORB_RED: Color = Color::srgb(0.78, 0.04, 0.04);
+const ORB_RIM: Color = Color::srgb(1.0, 0.86, 0.25);
+const ORB_FONT_PX: f32 = 58.0;
+
+/// Money as the meters on the machine show it: whole dollars without cents.
+pub fn money_short(credits: u64, cents: u64) -> String {
+    let total = credits.saturating_mul(cents);
+    if total.is_multiple_of(100) {
+        format!("${}", total / 100)
+    } else {
+        format!("${}.{:02}", total / 100, total % 100)
+    }
+}
+
+/// The orb prize overlay of one cell: a tier label image, then the value
+/// text drawn eight times in gold around a red face (an outline).
+pub fn spawn_orb_overlay(cell: &mut ChildSpawnerCommands, reel: u8, row: u8, font: &Handle<Font>) {
+    let (cw, ch) = cell_size();
+    cell.spawn((
+        OrbTier { reel, row },
+        Node {
+            position_type: PositionType::Absolute,
+            width: Val::Px(cw),
+            height: Val::Px(ch),
+            ..default()
+        },
+        ImageNode {
+            image_mode: NodeImageMode::Stretch,
+            ..default()
+        },
+        Visibility::Hidden,
+    ));
+    let offsets = [
+        (-3.0, 0.0),
+        (3.0, 0.0),
+        (0.0, -3.0),
+        (0.0, 3.0),
+        (-2.0, -2.0),
+        (2.0, -2.0),
+        (-2.0, 2.0),
+        (2.0, 2.0),
+        (0.0, 0.0),
+    ];
+    for (i, (dx, dy)) in offsets.into_iter().enumerate() {
+        let colour = if i == offsets.len() - 1 {
+            ORB_RED
+        } else {
+            ORB_RIM
+        };
+        cell.spawn((
+            OrbText { reel, row },
+            Text::new(""),
+            TextFont {
+                font: bevy::text::FontSource::Handle(font.clone()),
+                font_size: FontSize::Px(ORB_FONT_PX),
+                ..default()
+            },
+            TextColor(colour),
+            TextLayout::justify(Justify::Center),
+            Node {
+                position_type: PositionType::Absolute,
+                left: Val::Px(dx),
+                top: Val::Px(ch / 2.0 - ORB_FONT_PX * 0.62 + dy),
+                width: Val::Px(cw),
+                ..default()
+            },
+            Visibility::Hidden,
+        ));
+    }
+}
+
+/// Show each landed orb's prize: its credit value, or its jackpot tier.
+#[allow(clippy::type_complexity, clippy::too_many_arguments)]
+pub fn orb_overlay(
+    fidelity: Res<Fidelity>,
+    sim: Res<Sim>,
+    denom: Res<Denom>,
+    art: Res<ArtPack>,
+    reels: Res<Reels>,
+    labels: Query<(&CellLabel, &Text), (Without<OrbText>, Without<OrbTier>)>,
+    mut texts: Query<(&OrbText, &mut Text, &mut Visibility), Without<OrbTier>>,
+    mut tiers: Query<(&OrbTier, &mut ImageNode, &mut Visibility), Without<OrbText>>,
+) {
+    if !fidelity.0 {
+        return;
+    }
+    let total_bet = sim.game.total_bet();
+    let cents = denom.cents();
+    let prize = |reel: u8, row: u8| -> Option<&str> {
+        if reels.moving(reel) {
+            return None;
+        }
+        labels
+            .iter()
+            .find(|(l, _)| l.reel == reel && l.row == row)
+            .and_then(|(_, t)| t.0.strip_prefix("ORB\n"))
+    };
+    for (o, mut text, mut vis) in &mut texts {
+        let value = prize(o.reel, o.row)
+            .and_then(|p| p.strip_prefix('x'))
+            .and_then(|m| m.parse::<u64>().ok())
+            .map(|m| money_short(m.saturating_mul(total_bet), cents));
+        match value {
+            Some(v) => {
+                if text.0 != v {
+                    text.0 = v;
+                }
+                *vis = Visibility::Visible;
+            }
+            None => *vis = Visibility::Hidden,
+        }
+    }
+    for (o, mut image, mut vis) in &mut tiers {
+        let tier = match prize(o.reel, o.row) {
+            Some("Mini") => "orb_mini",
+            Some("Minor") => "orb_minor",
+            Some("Major") => "orb_major",
+            _ => {
+                *vis = Visibility::Hidden;
+                continue;
+            }
+        };
+        if let Some(h) = art.ui.get(tier) {
+            if image.image != *h {
+                image.image = h.clone();
+            }
+            *vis = Visibility::Visible;
+        }
     }
 }
