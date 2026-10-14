@@ -48,10 +48,10 @@ mod cabinet;
 
 /// Testing only (`DRAGONLINK_FEATURE_TEST`): one orb inserted after every this
 /// many stops of each base reel, and one scatter after every this many, so a
-/// feature starts about one game in five. Synthetic either way; never a
+/// feature starts about one game in three. Synthetic either way; never a
 /// claim about the original.
-const FEATURE_TEST_ORB: usize = 4;
-const FEATURE_TEST_SCATTER: usize = 9;
+const FEATURE_TEST_ORB: usize = 3;
+const FEATURE_TEST_SCATTER: usize = 6;
 
 /// The model with extra orbs and scatters spread through its base reels (see
 /// [`FEATURE_TEST_ORB`]).
@@ -396,6 +396,8 @@ struct ArtPack {
     ui: std::collections::HashMap<String, Handle<Image>>,
     /// Pixel size of each symbol image, for drawing it at its own size.
     sizes: std::collections::HashMap<String, (f32, f32)>,
+    /// The game's animations, as frame sequences (`anim/<name>/NNNN.png`).
+    anims: std::collections::HashMap<String, Vec<Handle<Image>>>,
     /// Whether the pack has been read (loading happens once, on first use).
     loaded: bool,
 }
@@ -835,6 +837,7 @@ fn input(
     mut exit: MessageWriter<AppExit>,
     timing: Res<Timing>,
     cabinet_input: Res<cabinet::CabinetInput>,
+    feature: Res<cabinet::FeatureShow>,
 ) {
     // Denomination (display only) cycles with D, while idle.
     let at_rest = sim.game.is_idle() && presentation.queue.is_empty();
@@ -879,7 +882,11 @@ fn input(
         || keys.just_pressed(KeyCode::Enter)
         || cabinet_input.spin)
         && !cabinet_input.skip_spin
-        && sim.game.is_idle();
+        && sim.game.is_idle()
+        // A feature still on screen (its count, its banner) finishes first.
+        && presentation.queue.is_empty()
+        && feature.awaiting.is_none()
+        && !feature.blocks();
     // In the cabinet build an unattended run pauses between games, so each
     // result and win can be seen (and captured) at rest.
     if go && auto && timing.lead_in > SPIN_LEAD_IN {
@@ -1168,10 +1175,13 @@ fn present(
                     format!("FREE GAMES complete: {games_played} games paid {total_award}");
             }
             Event::HoldAndSpinStarted { respins, locked } => {
-                // Everything that is not a held orb is cleared for the feature.
-                for reel in 0..model.grid.reels {
-                    for row in 0..model.grid.rows {
-                        set_cell(reel, row, String::new(), Color::srgb(0.07, 0.07, 0.09));
+                // Everything that is not a held orb is cleared for the feature
+                // (the cabinet dims it during its trigger sequence instead).
+                if !fidelity.0 {
+                    for reel in 0..model.grid.reels {
+                        for row in 0..model.grid.rows {
+                            set_cell(reel, row, String::new(), Color::srgb(0.07, 0.07, 0.09));
+                        }
                     }
                 }
                 for orb in locked {
@@ -1358,11 +1368,42 @@ fn load_art(asset_server: &AssetServer, pack: &mut ArtPack) {
         let root = std::path::Path::new(&dir);
         load_pngs(asset_server, &root.join("symbols"), "symbols", pack, true);
         load_pngs(asset_server, &root.join("ui"), "ui", pack, false);
+        load_anims(asset_server, &root.join("anim"), pack);
         eprintln!(
             "authentic art: {} symbols, {} ui images from {dir}",
             pack.symbols.len(),
             pack.ui.len()
         );
+    }
+}
+
+/// Load each animation folder under `dir` as an ordered frame sequence.
+fn load_anims(asset_server: &AssetServer, dir: &std::path::Path, pack: &mut ArtPack) {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let Some(name) = entry.file_name().to_str().map(str::to_string) else {
+            continue;
+        };
+        let Ok(files) = std::fs::read_dir(entry.path()) else {
+            continue;
+        };
+        let mut stems: Vec<String> = files
+            .flatten()
+            .filter_map(|f| {
+                let p = f.path();
+                (p.extension().and_then(|e| e.to_str()) == Some("png"))
+                    .then(|| p.file_stem().and_then(|s| s.to_str()).map(str::to_string))
+                    .flatten()
+            })
+            .collect();
+        stems.sort();
+        let frames = stems
+            .iter()
+            .map(|stem| asset_server.load(format!("anim/{name}/{stem}.png")))
+            .collect();
+        pack.anims.insert(name, frames);
     }
 }
 
@@ -1422,7 +1463,15 @@ fn render_symbols(
             .find(|(l, _)| l.reel == cell.reel && l.row == cell.row)
             .map(|(_, text)| text.0.as_str());
         // A prize symbol's label carries its value ("ORB\nx4"); it is an orb.
-        let key = key.map(|k| if k.starts_with("ORB") { "orb" } else { k });
+        // An open Hold & Spin position shows its symbol dimmed ("DIM:K").
+        let (key, dim) = key.map_or((None, false), |k| {
+            let (k, dim) = cabinet::label_symbol(k);
+            (Some(k), dim)
+        });
+        let tint = if dim { cabinet::DIM_TINT } else { Color::WHITE };
+        if image.color != tint {
+            image.color = tint;
+        }
         match key.and_then(|k| art.symbols.get(k).map(|h| (k, h))) {
             Some((k, handle)) => {
                 if image.image != *handle {
@@ -1728,6 +1777,9 @@ fn main() -> AppExit {
                 cabinet::strip_tiers,
                 cabinet::reel_audio,
                 cabinet::hold_and_spin_motion,
+                cabinet::hold_and_spin_draw,
+                cabinet::door_reveal,
+                cabinet::door_draw,
                 cabinet::win_rollup,
                 render_symbols,
                 cabinet::orb_overlay,
@@ -1823,7 +1875,7 @@ mod tests {
     }
 
     #[test]
-    fn the_feature_test_model_starts_a_feature_about_one_game_in_five() {
+    fn the_feature_test_model_starts_a_feature_about_one_game_in_three() {
         let model = feature_test(
             golden_century_synthetic(),
             FEATURE_TEST_ORB,
@@ -1848,7 +1900,7 @@ mod tests {
             "feature test: free {free}, hold {hold}, rate 1 in {:.1}",
             1.0 / rate
         );
-        assert!((0.14..0.27).contains(&rate), "rate {rate}");
+        assert!((0.25..0.45).contains(&rate), "rate {rate}");
     }
 
     #[test]
