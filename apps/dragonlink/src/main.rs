@@ -1788,6 +1788,7 @@ fn main() -> AppExit {
                 cabinet::hold_and_spin_motion,
                 cabinet::hold_and_spin_draw,
                 cabinet::winner_plate,
+                cabinet::hs_backdrop,
                 cabinet::door_reveal,
                 cabinet::door_draw,
                 cabinet::win_rollup,
@@ -1883,6 +1884,13 @@ mod tests {
         assert!(parse_args(&args(&["--seed", "x"])).is_err());
         assert!(parse_args(&args(&["--fullscreen"])).is_err());
         assert!(parse_args(&args(&["--help"])).is_err());
+    }
+
+    #[test]
+    fn coins_are_lettered_in_credits_at_cents_and_dollars_at_a_dollar() {
+        assert_eq!(cabinet::coin_text(20, 1), "20");
+        assert_eq!(cabinet::coin_text(20, 100), "$20");
+        assert_eq!(cabinet::coin_text(10, 200), "$20");
     }
 
     #[test]

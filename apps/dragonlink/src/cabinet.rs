@@ -325,6 +325,13 @@ pub fn spawn(commands: &mut Commands, model: &MathModel, art: &ArtPack, fonts: &
                 1240.0 * PANEL_SCALE.0,
                 629.0 * PANEL_SCALE.1,
             ));
+            // Hold & Spin: the whole grid goes dark slate (footage); the
+            // coins sit on it, open positions show their symbol faintly.
+            c.spawn((
+                HsBackdrop,
+                sprite(ui("white"), gx, gy, 5.0 * PITCH.0, 3.0 * PITCH.1),
+                Visibility::Hidden,
+            ));
             for side in [-1.0f32, 1.0] {
                 let x = gx + side * (2.0 * PITCH.0 + 196.0);
                 // The tabs stand in front of the reels: a coin on an outer
@@ -640,8 +647,7 @@ fn spawn_meter_band(
         },
     ));
 
-    // The player-information button at the far left: a yellow key with its
-    // three bars.
+    // The menu key at the far left: a yellow key with its three bars.
     c.spawn((
         Node {
             border: UiRect::all(Val::Px(3.0)),
@@ -668,46 +674,36 @@ fn spawn_meter_band(
             ));
         }
     });
-    pill(
-        c,
-        &fonts.sans,
-        "GAME RULES",
-        160.0,
-        METER_Y + 26.0,
-        150.0,
-        Color::srgb(1.0, 0.95, 0.72),
-        Color::srgb(0.2, 0.22, 0.62),
-    );
 
     // The lines box: the line count over "LINES".
     c.spawn((
         Node {
             border: UiRect::all(Val::Px(2.0)),
             border_radius: BorderRadius::all(Val::Px(10.0)),
-            ..rect(250.0, METER_Y - 56.0, 86.0, 112.0)
+            ..rect(86.0, METER_Y - 56.0, 86.0, 112.0)
         },
         BackgroundColor(inset),
         BorderColor::all(rim),
     ));
     c.spawn((
         CabMeter::Lines,
-        label("50", font, 62.0, gold, 293.0, METER_Y - 16.0, 86.0),
+        label("50", font, 62.0, gold, 129.0, METER_Y - 16.0, 86.0),
     ));
     c.spawn(label(
         "LINES",
         font,
         28.0,
         gold,
-        293.0,
+        129.0,
         METER_Y + 32.0,
         86.0,
     ));
 
     // CREDIT / BET / WIN, their values, WIN's value in its own box.
     for (text, x, w) in [
-        ("CREDIT", 450.0, 220.0),
-        ("BET", 880.0, 120.0),
-        ("WIN", 1195.0, 120.0),
+        ("CREDIT", 300.0, 220.0),
+        ("BET", 850.0, 120.0),
+        ("WIN", 1205.0, 120.0),
     ] {
         c.spawn(label(text, font, 66.0, gold, x, METER_Y, w));
     }
@@ -721,8 +717,8 @@ fn spawn_meter_band(
         BorderColor::all(rim),
     ));
     for (meter, x, w) in [
-        (CabMeter::Credit, 680.0, 300.0),
-        (CabMeter::Bet, 1030.0, 220.0),
+        (CabMeter::Credit, 590.0, 360.0),
+        (CabMeter::Bet, 1030.0, 240.0),
         (CabMeter::Win, 1500.0, 420.0),
     ] {
         c.spawn((meter, label("-", font, 70.0, pale, x, METER_Y, w)));
@@ -1195,7 +1191,18 @@ pub fn update_meters(
                     .saturating_sub(presentation.shown_win),
                 cents,
             ),
-            CabMeter::Credit => money(presentation.shown_credits.saturating_sub(pending), cents),
+            CabMeter::Credit => {
+                let at_rest = sim.game.is_idle() && presentation.queue.is_empty();
+                let held = if at_rest && (sim.game.can_gamble() || gamble.active) {
+                    sim.game.state().gamble_stake
+                } else {
+                    0
+                };
+                money(
+                    presentation.shown_credits.saturating_sub(pending.max(held)),
+                    cents,
+                )
+            }
             CabMeter::Bet => money(sim.game.total_bet(), cents),
             CabMeter::Win if gamble.active => money(gamble.stake, cents),
             CabMeter::Win => match gamble.result {
@@ -1865,7 +1872,7 @@ fn coin_digit_scale(text: &str, art: &ArtPack, digit_h: f32) -> f32 {
     let scale = digit_h / 73.0;
     let width: f32 = text
         .chars()
-        .filter_map(|c| art.sizes.get(&format!("coin_{c}")))
+        .filter_map(|c| art.sizes.get(&coin_key(c)))
         .map(|(w, _)| w * scale)
         .sum();
     let (cw, ch) = cell_size();
@@ -1886,12 +1893,21 @@ fn coin_digit_scale(text: &str, art: &ArtPack, digit_h: f32) -> f32 {
 const COIN_TEXT_WIDTH: f32 = 0.74;
 
 /// An orb's prize as the machine letters it: credits at cent denominations,
-/// whole dollars at a dollar or more.
+/// dollars ("$20") at a dollar or more.
 pub fn coin_text(credits: u64, cents: u64) -> String {
     if cents >= 100 {
-        (credits * cents / 100).to_string()
+        format!("${}", credits * cents / 100)
     } else {
         credits.to_string()
+    }
+}
+
+/// The pack image of a coin character.
+fn coin_key(c: char) -> String {
+    match c {
+        '$' => "coin_dollar".to_string(),
+        ':' => "coin_colon".to_string(),
+        d => format!("coin_{d}"),
     }
 }
 
@@ -1899,8 +1915,10 @@ pub fn coin_text(credits: u64, cents: u64) -> String {
 /// digit images in the game's own coin face.
 pub fn spawn_orb_overlay(cell: &mut ChildSpawnerCommands, reel: u8, row: u8) {
     let (cw, ch) = cell_size();
+    // The plate and digits stand in front of the coin's fire ring.
     cell.spawn((
         OrbTier { reel, row },
+        ZIndex(1),
         Node {
             position_type: PositionType::Absolute,
             width: Val::Px(cw),
@@ -1913,15 +1931,18 @@ pub fn spawn_orb_overlay(cell: &mut ChildSpawnerCommands, reel: u8, row: u8) {
         },
         Visibility::Hidden,
     ));
-    cell.spawn(Node {
-        position_type: PositionType::Absolute,
-        width: Val::Px(cw),
-        height: Val::Px(ch),
-        flex_direction: FlexDirection::Row,
-        justify_content: JustifyContent::Center,
-        align_items: AlignItems::Center,
-        ..default()
-    })
+    cell.spawn((
+        ZIndex(1),
+        Node {
+            position_type: PositionType::Absolute,
+            width: Val::Px(cw),
+            height: Val::Px(ch),
+            flex_direction: FlexDirection::Row,
+            justify_content: JustifyContent::Center,
+            align_items: AlignItems::Center,
+            ..default()
+        },
+    ))
     .with_children(|row_node| {
         for index in 0..COIN_SLOTS {
             row_node.spawn((
@@ -1986,7 +2007,7 @@ pub fn orb_overlay(
             .as_deref()
             .and_then(|t| t.chars().nth(g.index as usize))
             .and_then(|c| {
-                let key = format!("coin_{c}");
+                let key = coin_key(c);
                 art.ui.get(&key).zip(art.sizes.get(&key))
             });
         match glyph {
@@ -2149,7 +2170,7 @@ pub fn strip_coins(
             .as_deref()
             .and_then(|t| t.chars().nth(d.index as usize))
             .and_then(|c| {
-                let key = format!("coin_{c}");
+                let key = coin_key(c);
                 art.ui.get(&key).cloned().zip(art.sizes.get(&key).copied())
             });
         match glyph {
@@ -2633,6 +2654,8 @@ pub fn feature_screen(
     let text = match (show.awaiting, show.stage) {
         (_, Stage::FreeGames { .. }) if game_win.is_some() => Some("banner_win".to_string()),
         (_, Stage::HoldSpin { .. }) if show.intro.is_some() => None,
+        // The WINNER total takes the top of the screen while it shows.
+        _ if show.winner.is_some() => None,
         (Some(Await::Start(_)), _) => Some("banner_start_feature".to_string()),
         (_, Stage::FreeGames { .. }) => Some("banner_free_game".to_string()),
         (_, Stage::FreeGamesDone) => Some("banner_feature_completed".to_string()),
@@ -2768,8 +2791,10 @@ const RESPIN_SYMBOLS: [&str; 12] = [
 ];
 /// The tint of a dimmed symbol on an open Hold & Spin position.
 pub const DIM_TINT: Color = Color::srgb(0.62, 0.62, 0.68);
+/// The slate under the whole Hold & Spin grid.
+const HS_BACKDROP: Color = Color::srgb(0.17, 0.16, 0.23);
 /// The veil over an open Hold & Spin position.
-const HS_VEIL: Color = Color::srgba(0.17, 0.19, 0.26, 0.72);
+const HS_VEIL: Color = Color::srgba(0.24, 0.21, 0.30, 0.74);
 /// An open position while it respins: the veiled reel face, and the tint of
 /// the symbols passing through it.
 const HS_SPIN_FACE: Color = Color::srgb(0.13, 0.15, 0.24);
@@ -2824,7 +2849,39 @@ fn bolt_for(reel: u8, row: u8) -> (usize, f32, f32) {
 }
 
 /// The top of the WINNER total's flame box.
-const WINNER_TOP: f32 = 52.0;
+const WINNER_TOP: f32 = 46.0;
+
+/// The WINNER plate's height: the jackpot bar's band, clear of the reels.
+const WINNER_PLATE_H: f32 = 148.0;
+
+/// The slate under the Hold & Spin grid.
+#[derive(Component)]
+pub struct HsBackdrop;
+
+/// Show the slate under the Hold & Spin grid.
+pub fn hs_backdrop(
+    fidelity: Res<Fidelity>,
+    show: Res<FeatureShow>,
+    mut q: Query<(&mut Visibility, &mut ImageNode), With<HsBackdrop>>,
+) {
+    if !fidelity.0 {
+        return;
+    }
+    let on = show.grid && show.hold_and_spin();
+    for (mut v, mut image) in &mut q {
+        let want = if on {
+            Visibility::Inherited
+        } else {
+            Visibility::Hidden
+        };
+        if *v != want {
+            *v = want;
+        }
+        if image.color != HS_BACKDROP {
+            image.color = HS_BACKDROP;
+        }
+    }
+}
 
 /// The plate behind the WINNER display.
 #[derive(Component)]
@@ -2939,6 +2996,8 @@ pub fn spawn_hs_spin(cell: &mut ChildSpawnerCommands, art: &ArtPack, reel: u8, r
     };
     cell.spawn((
         HsSpin { reel, row },
+        // A respinning position covers the coin about to land on it.
+        ZIndex(2),
         Node {
             position_type: PositionType::Absolute,
             width: Val::Px(cw),
@@ -3035,7 +3094,7 @@ pub fn spawn_hs_overlays(c: &mut ChildSpawnerCommands, font: &Handle<Font>) {
             left: Val::Px(960.0 - JACKPOT_BAR_W / 2.0),
             top: Val::Px(0.0),
             width: Val::Px(JACKPOT_BAR_W),
-            height: Val::Px(GRID_CENTER.1 - 1.5 * PITCH.1 + 10.0),
+            height: Val::Px(WINNER_PLATE_H),
             border: UiRect::all(Val::Px(4.0)),
             border_radius: BorderRadius::bottom(Val::Px(14.0)),
             justify_content: JustifyContent::Center,
@@ -3051,7 +3110,7 @@ pub fn spawn_hs_overlays(c: &mut ChildSpawnerCommands, font: &Handle<Font>) {
             Text::new("WINNER"),
             TextFont {
                 font: bevy::text::FontSource::Handle(font.clone()),
-                font_size: FontSize::Px(64.0),
+                font_size: FontSize::Px(44.0),
                 ..default()
             },
             TextColor(Color::srgb(0.95, 0.32, 0.12)),
@@ -3062,7 +3121,7 @@ pub fn spawn_hs_overlays(c: &mut ChildSpawnerCommands, font: &Handle<Font>) {
             },
         ));
     });
-    let (w, h) = (980.0, 150.0);
+    let (w, h) = (860.0, 96.0);
     c.spawn((
         WinnerSplash,
         Node {
@@ -3105,7 +3164,7 @@ pub fn spawn_hs_overlays(c: &mut ChildSpawnerCommands, font: &Handle<Font>) {
             Text::new(""),
             TextFont {
                 font: bevy::text::FontSource::Handle(font.clone()),
-                font_size: FontSize::Px(96.0),
+                font_size: FontSize::Px(78.0),
                 ..default()
             },
             TextColor(Color::srgb(0.86, 0.93, 0.36)),
@@ -3114,6 +3173,17 @@ pub fn spawn_hs_overlays(c: &mut ChildSpawnerCommands, font: &Handle<Font>) {
 }
 
 impl FeatureShow {
+    /// Whether a coin's fire has gone to the WINNER total (its bolt has
+    /// left), or the count is over.
+    fn fire_taken(&self, reel: u8, row: u8) -> bool {
+        match &self.collect {
+            Some(c) => c.coins[..c.launched]
+                .iter()
+                .any(|(r, w, _)| *r == reel && *w == row),
+            None => self.winner.is_some(),
+        }
+    }
+
     /// The presentation holds its next event while the trigger sequence,
     /// the counter, a respin or the count is playing.
     pub fn blocks(&self) -> bool {
@@ -3485,6 +3555,7 @@ pub fn hold_and_spin_draw(
     let hs = show.grid && show.hold_and_spin();
     for (r, mut image, mut vis) in &mut rings {
         let held = hs
+            && !show.fire_taken(r.reel, r.row)
             && !open(label(r.reel, r.row))
             && spinning(r.reel, r.row).is_none()
             && !label(r.reel, r.row).is_empty();
