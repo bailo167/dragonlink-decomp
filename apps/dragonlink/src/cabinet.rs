@@ -1035,23 +1035,25 @@ pub fn clear_buttons(mut input: ResMut<CabinetInput>) {
 // Reel motion
 // ---------------------------------------------------------------------------
 
-/// The machine's pace: the first reel stops a second after the spin starts,
-/// the rest follow one by one.
+/// The machine's pace, measured frame by frame on cabinet footage (base-game
+/// spins at 30 fps): the first reel lands about 0.71 s after the reels start
+/// (its stop is presented here, then it runs on about 3.4 symbols, ~0.19 s),
+/// and each further reel lands 0.45 s after the one before.
 pub const TIMING: Timing = Timing {
-    lead_in: 1.0,
-    reel_interval: 0.28,
+    lead_in: 0.52,
+    reel_interval: 0.45,
     event_interval: 0.14,
 };
 
-/// Reel speed in symbols per second while spinning.
-const SPIN_SPEED: f32 = 12.0;
-/// How far a stopping reel runs past its rest position, in symbols.
-const OVERSHOOT: f32 = 0.16;
-/// How long the bounce back to rest takes, in seconds.
-const SETTLE_SECONDS: f32 = 0.13;
-/// The upward kick a reel gives as it starts, in symbols, and its duration.
-const KICK: f32 = 0.14;
-const KICK_SECONDS: f32 = 0.09;
+/// Reel speed in symbols per second while spinning (footage: 20, reached
+/// within the first frame, with no visible kick).
+const SPIN_SPEED: f32 = 20.0;
+/// How far a stopping reel runs past its rest position, in symbols (footage:
+/// about 0.35, a hard stop at full speed).
+const OVERSHOOT: f32 = 0.35;
+/// How long the slide back to rest takes, in seconds (footage: about 0.24,
+/// at a near-constant speed).
+const SETTLE_SECONDS: f32 = 0.24;
 /// Images per reel strip: one above the window, three in it, one below.
 const STRIP_SLOTS: usize = 5;
 
@@ -1266,11 +1268,7 @@ pub fn spin_reels(
     if !fidelity.0 || reels.states.is_empty() {
         return;
     }
-    let dt = if smoke.frames_left.is_some() {
-        SMOKE_FRAME_SECONDS
-    } else {
-        time.delta_secs().min(0.05)
-    };
+    let dt = smoke.dt(&time).min(0.05);
     for reel in 0..reels.states.len() {
         let spinning = anim.spinning.get(reel).copied().unwrap_or(false);
         let state = &mut reels.states[reel];
@@ -1302,14 +1300,8 @@ pub fn spin_reels(
             }
             Motion::Spinning { t } => {
                 let t = t + dt;
-                // A short upward kick, then full speed.
-                let v = if t < KICK_SECONDS {
-                    -KICK / KICK_SECONDS
-                } else {
-                    let ramp = ((t - KICK_SECONDS) / 0.12).min(1.0);
-                    SPIN_SPEED * ramp.max(0.25)
-                };
-                state.pos -= v * dt;
+                // Full speed from the first frame, as on the machine.
+                state.pos -= SPIN_SPEED * dt;
                 state.motion = Motion::Spinning { t };
             }
             Motion::Stopping {
@@ -1332,7 +1324,9 @@ pub fn spin_reels(
             } => {
                 let b = b + dt;
                 let k = (b / SETTLE_SECONDS).min(1.0);
-                state.pos = target - OVERSHOOT * (1.0 - ease_out(k));
+                // A steady slide back, easing only at the very end.
+                let back = 0.85 * k + 0.15 * ease_out(k);
+                state.pos = target - OVERSHOOT * (1.0 - back);
                 state.motion = if k >= 1.0 {
                     state.pos = target;
                     Motion::Idle
@@ -1397,6 +1391,8 @@ pub struct Sounds {
     /// Whether any reel was moving last frame (to catch a spin's start).
     reels_were_moving: bool,
     spins: u32,
+    /// The roll variant (1 to 6) the last spin played.
+    last_roll: u32,
 }
 
 /// An Ogg Vorbis clip's length in seconds, from its last page's granule
@@ -1449,8 +1445,10 @@ impl Sounds {
     }
 }
 
-/// The reels' sound: the reel-spin roll as a spin starts (the game has six
-/// variants) and each reel's stop clink as it lands.
+/// The reels' sound: the reel-spin roll as a spin starts and each reel's stop
+/// clink as it hits its stop (footage: the clink falls on the hard stop, and
+/// the roll's pitch changes from spin to spin, so the game picks among its six
+/// roll variants rather than cycling them).
 pub fn reel_audio(
     fidelity: Res<Fidelity>,
     mut commands: Commands,
@@ -1462,8 +1460,11 @@ pub fn reel_audio(
     }
     let moving = (0..reels.states.len()).any(|r| reels.moving(r as u8));
     if moving && !sounds.reels_were_moving {
-        let n = sounds.spins % 6 + 1;
+        // A scrambled pick that never repeats the previous variant.
         sounds.spins = sounds.spins.wrapping_add(1);
+        let h = sounds.spins.wrapping_mul(2_654_435_761).rotate_right(13);
+        let n = (sounds.last_roll + h % 5) % 6 + 1;
+        sounds.last_roll = n;
         sounds.play(&mut commands, &format!("reel{n}"));
     }
     sounds.reels_were_moving = moving;
@@ -1554,11 +1555,7 @@ pub fn win_rollup(
     }
     rollup.seen = target;
     if rollup.active() {
-        rollup.t += if smoke.frames_left.is_some() {
-            SMOKE_FRAME_SECONDS
-        } else {
-            time.delta_secs()
-        };
+        rollup.t += smoke.dt(&time);
     }
 }
 
@@ -1709,9 +1706,14 @@ pub fn orb_overlay(
                 let scale = digit_h / 73.0;
                 node.width = Val::Px(w * scale);
                 node.height = Val::Px(h * scale);
+                node.display = Display::Flex;
                 *vis = Visibility::Visible;
             }
-            None => *vis = Visibility::Hidden,
+            // An unused digit takes no room, so the prize stays centred.
+            None => {
+                node.display = Display::None;
+                *vis = Visibility::Hidden;
+            }
         }
     }
     for (o, mut image, mut vis) in &mut tiers {
@@ -1798,9 +1800,13 @@ pub fn strip_coins(
                 let scale = digit_h / 73.0;
                 node.width = Val::Px(w * scale);
                 node.height = Val::Px(h * scale);
+                node.display = Display::Flex;
                 *vis = Visibility::Inherited;
             }
-            None => *vis = Visibility::Hidden,
+            None => {
+                node.display = Display::None;
+                *vis = Visibility::Hidden;
+            }
         }
     }
 }

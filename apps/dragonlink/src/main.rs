@@ -349,6 +349,20 @@ struct Smoke {
     frame: u32,
     /// Frames for which the automatic key press is withheld.
     hold: u32,
+    /// Run on the clock rather than a fixed step (the cabinet build, so an
+    /// unattended run keeps the machine's real pace for recording).
+    real_time: bool,
+}
+
+impl Smoke {
+    /// Seconds this frame counts for.
+    fn dt(&self, time: &Time) -> f32 {
+        if self.frames_left.is_some() && !self.real_time {
+            SMOKE_FRAME_SECONDS
+        } else {
+            time.delta_secs()
+        }
+    }
 }
 
 /// One position of the reel window.
@@ -794,11 +808,7 @@ fn banner(
     mut banners: Query<(&mut Text, &mut TextColor), With<FeatureBanner>>,
 ) {
     if presentation.banner_timer > 0.0 {
-        presentation.banner_timer -= if smoke.frames_left.is_some() {
-            SMOKE_FRAME_SECONDS
-        } else {
-            time.delta_secs()
-        };
+        presentation.banner_timer -= smoke.dt(&time);
     }
     let showing = presentation.banner_timer > 0.0 && !presentation.banner.is_empty();
     // Fade out over the last part of the hold.
@@ -930,11 +940,7 @@ fn animate_reels(
     if fidelity.0 || reels_spin.spinning.iter().all(|s| !*s) {
         return;
     }
-    let dt = if smoke.frames_left.is_some() {
-        SMOKE_FRAME_SECONDS
-    } else {
-        time.delta_secs()
-    };
+    let dt = smoke.dt(&time);
     reels_spin.timer -= dt;
     if reels_spin.timer > 0.0 {
         return;
@@ -995,11 +1001,7 @@ fn drive_features(
     if sim.game.is_idle() {
         return;
     }
-    let dt = if smoke.frames_left.is_some() {
-        SMOKE_FRAME_SECONDS
-    } else {
-        time.delta_secs()
-    };
+    let dt = smoke.dt(&time);
     presentation.step_timer -= dt;
     if presentation.step_timer > 0.0 {
         return;
@@ -1026,11 +1028,7 @@ fn present(
     if reels_spin.spinning.len() != reels {
         reels_spin.spinning = vec![false; reels];
     }
-    presentation.wait -= if smoke.frames_left.is_some() {
-        SMOKE_FRAME_SECONDS
-    } else {
-        time.delta_secs()
-    };
+    presentation.wait -= smoke.dt(&time);
     while presentation.wait <= 0.0 {
         let Some((_, event)) = presentation.queue.pop_front() else {
             presentation.wait = 0.0;
@@ -1677,6 +1675,7 @@ fn main() -> AppExit {
         screenshot: cli.screenshot,
         frame: 0,
         hold: 0,
+        real_time: fidelity,
     })
     .add_systems(Startup, spawn_camera)
     .add_systems(OnEnter(Screen::Menu), menu_setup)
