@@ -44,6 +44,8 @@ use dragonlink_model::fixtures::{
 };
 use dragonlink_model::{JackpotTier, OrbValue, SymbolKind};
 
+mod cabinet;
+
 /// Seconds between one reel stopping and the next. Presentation only; ours.
 const REEL_STOP_INTERVAL: f32 = 0.18;
 /// Seconds before the first reel stops. Presentation only; ours.
@@ -334,6 +336,10 @@ struct CellImage {
 struct ArtPack {
     symbols: std::collections::HashMap<String, Handle<Image>>,
     ui: std::collections::HashMap<String, Handle<Image>>,
+    /// Pixel size of each symbol image, for drawing it at its own size.
+    sizes: std::collections::HashMap<String, (f32, f32)>,
+    /// Whether the pack has been read (loading happens once, on first use).
+    loaded: bool,
 }
 
 #[derive(Component)]
@@ -409,8 +415,24 @@ fn cell_color(kind: Option<SymbolKind>, key: &str) -> Color {
     }
 }
 
-fn setup(mut commands: Commands, sim: Res<Sim>, art: Res<ArtPack>) {
+fn setup(
+    mut commands: Commands,
+    sim: Res<Sim>,
+    asset_server: Res<AssetServer>,
+    mut art: ResMut<ArtPack>,
+    fidelity: Res<cabinet::Fidelity>,
+    mut fonts: ResMut<Assets<Font>>,
+) {
+    // The initial state's OnEnter runs before Startup systems, so the pack is
+    // read here, on first use.
+    load_art(&asset_server, &mut art);
     let model = sim.game.model();
+    if fidelity.0 {
+        let font = cabinet::load_font(&mut fonts);
+        cabinet::spawn(&mut commands, model, &art, &font);
+        return;
+    }
+    let art = &*art;
     let title = if model.id.starts_with("golden-century") {
         "GOLDEN CENTURY"
     } else if model.id.starts_with("autumn-moon") {
@@ -1179,16 +1201,15 @@ fn spawn_camera(mut commands: Commands) {
 /// Only files that exist are loaded; a symbol with no file keeps its
 /// placeholder tile. Nothing proprietary ships in the repository: the pack is
 /// a local, git-ignored set built from the owner's own source material.
-fn load_art(asset_server: Res<AssetServer>, mut pack: ResMut<ArtPack>) {
+fn load_art(asset_server: &AssetServer, pack: &mut ArtPack) {
+    if pack.loaded {
+        return;
+    }
+    pack.loaded = true;
     if let Ok(dir) = std::env::var("DRAGONLINK_ART") {
         let root = std::path::Path::new(&dir);
-        load_pngs(
-            &asset_server,
-            &root.join("symbols"),
-            "symbols",
-            &mut pack.symbols,
-        );
-        load_pngs(&asset_server, &root.join("ui"), "ui", &mut pack.ui);
+        load_pngs(asset_server, &root.join("symbols"), "symbols", pack, true);
+        load_pngs(asset_server, &root.join("ui"), "ui", pack, false);
         eprintln!(
             "authentic art: {} symbols, {} ui images from {dir}",
             pack.symbols.len(),
@@ -1197,13 +1218,14 @@ fn load_art(asset_server: Res<AssetServer>, mut pack: ResMut<ArtPack>) {
     }
 }
 
-/// Load every `*.png` in `dir` into `map`, keyed by file stem, through the
-/// asset server at `<sub>/<stem>.png`.
+/// Load every `*.png` in `dir`, keyed by file stem, through the asset server
+/// at `<sub>/<stem>.png`; symbol images also record their pixel size.
 fn load_pngs(
     asset_server: &AssetServer,
     dir: &std::path::Path,
     sub: &str,
-    map: &mut std::collections::HashMap<String, Handle<Image>>,
+    pack: &mut ArtPack,
+    symbols: bool,
 ) {
     if let Ok(entries) = std::fs::read_dir(dir) {
         for entry in entries.flatten() {
@@ -1212,10 +1234,15 @@ fn load_pngs(
                 continue;
             }
             if let Some(stem) = path.file_stem().and_then(|s| s.to_str()) {
-                map.insert(
-                    stem.to_string(),
-                    asset_server.load(format!("{sub}/{stem}.png")),
-                );
+                let handle = asset_server.load(format!("{sub}/{stem}.png"));
+                if symbols {
+                    if let Some(size) = cabinet::png_size(&path) {
+                        pack.sizes.insert(stem.to_string(), size);
+                    }
+                    pack.symbols.insert(stem.to_string(), handle);
+                } else {
+                    pack.ui.insert(stem.to_string(), handle);
+                }
             }
         }
     }
@@ -1228,21 +1255,39 @@ fn load_pngs(
 #[allow(clippy::type_complexity)]
 fn render_symbols(
     art: Res<ArtPack>,
+    fidelity: Res<cabinet::Fidelity>,
     labels: Query<(&CellLabel, &Text)>,
-    mut images: Query<(&CellImage, &mut ImageNode, &mut Visibility)>,
+    mut images: Query<(&CellImage, &mut ImageNode, &mut Visibility, &mut Node)>,
 ) {
     if art.symbols.is_empty() {
         return;
     }
-    for (cell, mut image, mut visibility) in &mut images {
+    let (cw, ch) = cabinet::cell_size();
+    for (cell, mut image, mut visibility, mut node) in &mut images {
         let key = labels
             .iter()
             .find(|(l, _)| l.reel == cell.reel && l.row == cell.row)
             .map(|(_, text)| text.0.as_str());
-        match key.and_then(|k| art.symbols.get(k)) {
-            Some(handle) => {
+        // A prize symbol's label carries its value ("ORB\nx4"); it is an orb.
+        let key = key.map(|k| if k.starts_with("ORB") { "orb" } else { k });
+        match key.and_then(|k| art.symbols.get(k).map(|h| (k, h))) {
+            Some((k, handle)) => {
                 if image.image != *handle {
                     image.image = handle.clone();
+                }
+                if fidelity.0 {
+                    // The game draws each symbol at its own size, centred on
+                    // the cell; large symbols overhang their neighbours.
+                    let (w, h) = art
+                        .sizes
+                        .get(k)
+                        .map_or((cw, ch), |s| cabinet::symbol_size(*s));
+                    if node.width != Val::Px(w) || node.height != Val::Px(h) {
+                        node.left = Val::Px((cw - w) / 2.0);
+                        node.top = Val::Px((ch - h) / 2.0);
+                        node.width = Val::Px(w);
+                        node.height = Val::Px(h);
+                    }
                 }
                 *visibility = Visibility::Visible;
             }
@@ -1408,8 +1453,28 @@ fn main() -> AppExit {
     // flag or a smoke run boots straight into the game, so every automated
     // path (the gate, the tests) stays on the direct path and never waits on a
     // menu.
+    // The fidelity build: an authentic pack is configured. It is Golden
+    // Century only, boots straight into the game, and refuses to start on an
+    // incomplete pack rather than fall back to placeholder tiles.
+    let art_dir = std::env::var("DRAGONLINK_ART")
+        .ok()
+        .filter(|d| !d.is_empty());
+    let fidelity = art_dir.is_some();
+    if let Some(dir) = &art_dir {
+        if cli.game != GameChoice::GoldenCentury {
+            eprintln!("the authentic pack is Golden Century's; run with --game golden-century");
+            return AppExit::error();
+        }
+        if let Err(missing) = cabinet::check_pack(dir, &cli.game.model()) {
+            eprintln!("authentic pack at {dir} is incomplete; missing:");
+            for m in missing {
+                eprintln!("  {m}");
+            }
+            return AppExit::error();
+        }
+    }
     let explicit_game = args.iter().any(|a| a == "--game");
-    let direct_boot = explicit_game || cli.smoke_frames.is_some();
+    let direct_boot = fidelity || explicit_game || cli.smoke_frames.is_some();
     let direct_sim = if direct_boot {
         match Game::new(cli.game.model(), cli.credits) {
             Ok(game) => Some(Sim {
@@ -1427,7 +1492,11 @@ fn main() -> AppExit {
 
     let mut app = App::new();
     let plugins = DefaultPlugins.set(WindowPlugin {
-        primary_window: Some(primary_window()),
+        primary_window: Some(if fidelity {
+            cabinet::window()
+        } else {
+            primary_window()
+        }),
         ..default()
     });
     // When an authentic asset pack is configured, point the asset server at it
@@ -1442,43 +1511,51 @@ fn main() -> AppExit {
     app.add_plugins(plugins);
     #[cfg(target_arch = "wasm32")]
     app.add_systems(Startup, announce_placeholder_mode);
-    app.insert_resource(ClearColor(Color::srgb(0.03, 0.03, 0.05)))
-        .insert_resource(Presentation {
-            shown_credits: cli.credits,
-            ..default()
-        })
-        .insert_resource(Denom::default())
-        .insert_resource(ArtPack::default())
-        .insert_resource(ReelAnim::default())
-        .insert_resource(Smoke {
-            frames_left: cli.smoke_frames,
-            screenshot: cli.screenshot,
-            frame: 0,
-            hold: 0,
-        })
-        .add_systems(Startup, (spawn_camera, load_art))
-        .add_systems(OnEnter(Screen::Menu), menu_setup)
-        .add_systems(OnExit(Screen::Menu), menu_teardown)
-        .add_systems(
-            Update,
-            (menu_input, menu_highlight).run_if(in_state(Screen::Menu)),
+    app.insert_resource(ClearColor(if fidelity {
+        Color::BLACK
+    } else {
+        Color::srgb(0.03, 0.03, 0.05)
+    }))
+    .insert_resource(cabinet::Fidelity(fidelity))
+    .insert_resource(Presentation {
+        shown_credits: cli.credits,
+        ..default()
+    })
+    .insert_resource(Denom::default())
+    .insert_resource(ArtPack::default())
+    .insert_resource(ReelAnim::default())
+    .insert_resource(Smoke {
+        frames_left: cli.smoke_frames,
+        screenshot: cli.screenshot,
+        frame: 0,
+        hold: 0,
+    })
+    .add_systems(Startup, spawn_camera)
+    .add_systems(OnEnter(Screen::Menu), menu_setup)
+    .add_systems(OnExit(Screen::Menu), menu_teardown)
+    .add_systems(
+        Update,
+        (menu_input, menu_highlight).run_if(in_state(Screen::Menu)),
+    )
+    .add_systems(OnEnter(Screen::Playing), setup)
+    .add_systems(
+        Update,
+        (
+            smoke,
+            input,
+            drive_features,
+            present,
+            animate_reels,
+            hud,
+            banner,
+            render_symbols,
+            cabinet::clear_cells,
+            cabinet::update_meters,
+            cabinet::fit,
         )
-        .add_systems(OnEnter(Screen::Playing), setup)
-        .add_systems(
-            Update,
-            (
-                smoke,
-                input,
-                drive_features,
-                present,
-                animate_reels,
-                hud,
-                banner,
-                render_symbols,
-            )
-                .chain()
-                .run_if(in_state(Screen::Playing)),
-        );
+            .chain()
+            .run_if(in_state(Screen::Playing)),
+    );
 
     match direct_sim {
         Some(sim) => {
