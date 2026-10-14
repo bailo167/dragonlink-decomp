@@ -1173,7 +1173,10 @@ pub fn update_meters(
     };
     for (meter, mut text) in &mut meters {
         let value = match meter {
-            CabMeter::Credit if show.in_feature() => amount(
+            // A feature under way, from its trigger spin on (the game is in it
+            // before the screen shows it): CREDIT holds still while the
+            // trigger's win counts on WIN (cabinet footage).
+            CabMeter::Credit if show.in_feature() || !sim.game.is_idle() => amount(
                 presentation
                     .shown_credits
                     .saturating_sub(presentation.shown_win),
@@ -2566,10 +2569,10 @@ impl FeatureShow {
         if let Some(note) = &self.win_note {
             return Some(note.clone());
         }
-        let free_games = matches!(self.awaiting, Some(Await::Start(Feature::FreeGames)))
-            || matches!(self.stage, Stage::FreeGames { .. });
-        (free_games && self.scatter_award > 0)
-            .then(|| format!("Scatter wins {}", self.scatter_award))
+        // Footage: "Scatter wins N" from the flags' wave until START
+        // FEATURE is pressed; blank through the free games.
+        let waiting = matches!(self.awaiting, Some(Await::Start(Feature::FreeGames)));
+        (waiting && self.scatter_award > 0).then(|| format!("Scatter wins {}", self.scatter_award))
     }
 }
 
@@ -2584,6 +2587,7 @@ pub fn feature_press(
     mut input: ResMut<CabinetInput>,
     mut show: ResMut<FeatureShow>,
     mut presentation: ResMut<Presentation>,
+    mut rollup: ResMut<Rollup>,
 ) {
     if !fidelity.0 || show.awaiting.is_none() || show.blocks() {
         return;
@@ -2594,6 +2598,19 @@ pub fn feature_press(
         || keys.just_pressed(KeyCode::Enter);
     let auto = smoke.frames_left.is_some() && show.waited > 2.5;
     if pressed || auto {
+        // START FEATURE goes straight into the free games (cabinet footage:
+        // the banner reads FREE GAME 1 OF n as the first game spins; the base
+        // screen does not come back in between).
+        if matches!(show.awaiting, Some(Await::Start(Feature::FreeGames))) {
+            show.stage = Stage::FreeGames {
+                number: 1,
+                total: u32::from(show.games_won),
+            };
+            // The trigger's win, still counting, jumps to its total, and the
+            // flags snap back to the still flag (footage: within a frame).
+            rollup.t = rollup.duration;
+            show.scatter_paid = false;
+        }
         show.awaiting = None;
         input.skip_spin = true;
         // The press plays the next step at once.
