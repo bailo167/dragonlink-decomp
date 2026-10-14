@@ -67,6 +67,13 @@ fn feature_test(mut model: MathModel, orb_every: usize, scatter_every: usize) ->
     let (Some(orb), Some(scatter)) = (id("orb"), id("pennant")) else {
         return model;
     };
+    // Testing (`DRAGONLINK_GRAND_TEST`): coins land on most respins, so the
+    // grid usually fills and the Grand is won.
+    if std::env::var_os("DRAGONLINK_GRAND_TEST").is_some()
+        && let Some(hs) = model.hold_and_spin.as_mut()
+    {
+        hs.orb_land_chance = dragonlink_model::Ratio { num: 2, den: 3 };
+    }
     for strip in &mut model.reel_strips {
         let mut padded = Vec::with_capacity(strip.len() * 2);
         for (i, &s) in strip.iter().enumerate() {
@@ -1838,6 +1845,7 @@ fn main() -> AppExit {
                 cabinet::feature_music,
                 cabinet::feature_cues,
                 cabinet::coin_shower,
+                cabinet::collect_coin,
             )
                 .chain(),
             (
