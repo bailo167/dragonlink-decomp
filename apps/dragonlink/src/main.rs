@@ -216,7 +216,20 @@ impl Denom {
 /// `credits` of play money as dollars, given cents per credit.
 fn money(credits: u64, cents: u64) -> String {
     let total = credits.saturating_mul(cents);
-    format!("${}.{:02}", total / 100, total % 100)
+    format!("${}.{:02}", grouped(total / 100), total % 100)
+}
+
+/// A whole number with thousands separators, as the cabinet's meters show it.
+fn grouped(n: u64) -> String {
+    let digits = n.to_string();
+    let mut out = String::with_capacity(digits.len() + digits.len() / 3);
+    for (i, ch) in digits.chars().enumerate() {
+        if i > 0 && (digits.len() - i).is_multiple_of(3) {
+            out.push(',');
+        }
+        out.push(ch);
+    }
+    out
 }
 /// Frames before the end of a smoke run at which the screenshot is taken.
 const SCREENSHOT_FRAMES_BEFORE_END: u32 = 20;
@@ -1787,10 +1800,14 @@ fn main() -> AppExit {
                 cabinet::reel_audio,
                 cabinet::hold_and_spin_motion,
                 cabinet::hold_and_spin_draw,
+                cabinet::hs_spin_digits,
                 cabinet::winner_plate,
                 cabinet::hs_backdrop,
                 cabinet::door_reveal,
                 cabinet::door_draw,
+            )
+                .chain(),
+            (
                 cabinet::win_rollup,
                 render_symbols,
                 cabinet::orb_overlay,
@@ -1884,6 +1901,14 @@ mod tests {
         assert!(parse_args(&args(&["--seed", "x"])).is_err());
         assert!(parse_args(&args(&["--fullscreen"])).is_err());
         assert!(parse_args(&args(&["--help"])).is_err());
+    }
+
+    #[test]
+    fn meters_group_thousands() {
+        assert_eq!(money(102_150, 10), "$10,215.00");
+        assert_eq!(money(585, 200), "$1,170.00");
+        assert_eq!(money(5, 1), "$0.05");
+        assert_eq!(grouped(1_234_567), "1,234,567");
     }
 
     #[test]

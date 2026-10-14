@@ -767,13 +767,14 @@ pub fn start_prompts(
     fidelity: Res<Fidelity>,
     time: Res<Time>,
     show: Res<FeatureShow>,
+    gamble: Res<GambleShow>,
     mut prompts: Query<(&StartPrompt, &mut Visibility)>,
 ) {
     if !fidelity.0 {
         return;
     }
     let shown = ((time.elapsed_secs() / 3.0) as u32 % 2) as u8;
-    let quiet = show.message().is_some() || show.stage != Stage::Base;
+    let quiet = show.message().is_some() || show.stage != Stage::Base || gamble.active;
     for (p, mut vis) in &mut prompts {
         let want = if p.which == shown && !quiet {
             Visibility::Inherited
@@ -909,6 +910,14 @@ fn role_text(role: Role) -> String {
         Role::Pick(p) => pick_text(p).into(),
         Role::Off => String::new(),
     }
+}
+
+/// Whether a gamble choice is a red one (red, hearts, diamonds).
+fn is_red(p: GamblePick) -> bool {
+    matches!(
+        p,
+        GamblePick::Red | GamblePick::Hearts | GamblePick::Diamonds
+    )
 }
 
 /// A gamble choice as its button reads.
@@ -1050,16 +1059,17 @@ pub fn light_deck(
         match (cap, role(cap, gambling)) {
             (CabButton::Spin, _) if gambling || idle || waiting => ("spin_lit", glow),
             (CabButton::Spin, _) => ("spin_dim", 1.0),
+            // The top row glows red, the bottom row blue (cabinet footage).
             (_, Role::Denom(i)) if DECK_DENOMS[i] == cents => ("key_white", 1.0),
-            (_, Role::Denom(_)) => ("key_blue", 1.0),
+            (_, Role::Denom(_)) => ("key_red", 1.0),
             (_, Role::Lines(n)) if n > max_lines(cents) => ("key_dark", 1.0),
             (_, Role::Lines(n)) if n == lines => ("key_white", 1.0),
             (_, Role::Lines(_)) => ("key_blue", 1.0),
             (_, Role::Gamble) if can_gamble => ("key_gold", glow),
-            (_, Role::Gamble) => ("key_dark", 1.0),
+            (_, Role::Gamble) => ("key_red", 0.55),
             (_, Role::Respin) => ("key_blue", 1.0),
             (_, Role::TakeWin) => ("key_gold", glow),
-            (_, Role::Pick(p)) if p.wins(0) => ("key_red", 1.0),
+            (_, Role::Pick(p)) if is_red(p) => ("key_red", 1.0),
             (_, Role::Pick(_)) => ("key_blue", 1.0),
             (_, Role::Off) => ("key_dark", 1.0),
         }
@@ -1183,9 +1193,21 @@ pub fn update_meters(
     let cents = denom.cents();
     // Credits count up with the win meter.
     let pending = rollup.to.saturating_sub(rollup.shown());
+    // During a win, a feature or the gamble the meters alternate between
+    // dollars and credits, as the cabinet's do.
+    let busy =
+        gamble.active || show.in_feature() || rollup.to > 0 || gamble.result.is_some_and(|w| w > 0);
+    let in_credits = busy && ((time.elapsed_secs() / 2.5) as u32 % 2 == 1);
+    let amount = |credits: u64, cents: u64| {
+        if in_credits {
+            grouped(credits)
+        } else {
+            money(credits, cents)
+        }
+    };
     for (meter, mut text) in &mut meters {
         let value = match meter {
-            CabMeter::Credit if show.in_feature() => money(
+            CabMeter::Credit if show.in_feature() => amount(
                 presentation
                     .shown_credits
                     .saturating_sub(presentation.shown_win),
@@ -1198,16 +1220,16 @@ pub fn update_meters(
                 } else {
                     0
                 };
-                money(
+                amount(
                     presentation.shown_credits.saturating_sub(pending.max(held)),
                     cents,
                 )
             }
-            CabMeter::Bet => money(sim.game.total_bet(), cents),
-            CabMeter::Win if gamble.active => money(gamble.stake, cents),
+            CabMeter::Bet => amount(sim.game.total_bet(), cents),
+            CabMeter::Win if gamble.active => amount(gamble.stake, cents),
             CabMeter::Win => match gamble.result {
-                Some(w) => money(w, cents),
-                None => money(rollup.shown(), cents),
+                Some(w) => amount(w, cents),
+                None => amount(rollup.shown(), cents),
             },
             CabMeter::Denom => {
                 if cents >= 100 {
@@ -2823,10 +2845,10 @@ pub struct Collect {
 
 /// Seconds a collection bolt takes from its coin to the WINNER box.
 const BOLT_FLIGHT: f32 = 0.55;
-/// The bolt animations cover the whole reel window: their frame (464 x 288)
-/// spans the grid at this many canvas pixels per frame pixel, and each one
-/// starts its fire ring on the position it is named for (frame pixels).
-const BOLT_SCALE: (f32, f32) = (PITCH.0 / 78.5, PITCH.1 / 65.5);
+/// The game's collection bolts (frames 464 x 288): each starts its fire ring
+/// at a point of its frame and ends at the frame's top centre (measured on
+/// the frames), the point the game sends every bolt to.
+const BOLT_FRAME: (f32, f32) = (464.0, 288.0);
 const BOLT_RINGS: [(f32, f32); 5] = [
     (75.0, 134.0),
     (74.0, 201.0),
@@ -2834,22 +2856,59 @@ const BOLT_RINGS: [(f32, f32); 5] = [
     (309.0, 201.0),
     (153.0, 201.0),
 ];
+const BOLT_ENDS: [f32; 5] = [228.0, 209.0, 233.0, 194.0, 268.0];
 
-/// The bolt animation for a coin, and where its frame's top-left goes so its
-/// ring sits on the coin.
-fn bolt_for(reel: u8, row: u8) -> (usize, f32, f32) {
-    let k = match row {
-        0 => 2,
-        1 => 0,
-        _ => [1, 4, 3][reel as usize % 3],
-    };
+/// A bolt from a coin to the WINNER total: which animation, mirrored or not,
+/// and its frame's rectangle on the canvas, stretched so the ring starts on
+/// the coin and the bolt ends in the middle of the total. Of the five
+/// animations (each either way round) the least stretched is used.
+fn bolt_for(reel: u8, row: u8) -> (usize, bool, f32, f32, f32, f32) {
     let (cx, cy) = cell_center(reel, row);
+    let (tx, ty) = (960.0, WINNER_TOP + WINNER_BOX.1 * 0.5);
+    let mut best = (0, false, 1.0, 1.0, f32::MAX);
+    for (k, (&(ax, ay), &ex)) in BOLT_RINGS.iter().zip(BOLT_ENDS.iter()).enumerate() {
+        for flip in [false, true] {
+            let (ax, ex) = if flip {
+                (BOLT_FRAME.0 - ax, BOLT_FRAME.0 - ex)
+            } else {
+                (ax, ex)
+            };
+            let dx = ex - ax;
+            let sy = (cy - ty) / ay;
+            let sx = if (tx - cx).abs() < 1.0 {
+                sy * 0.4
+            } else {
+                (tx - cx) / dx
+            };
+            if sx <= 0.0 || sy <= 0.0 {
+                continue;
+            }
+            let distortion = (sx / sy).ln().abs();
+            if distortion < best.4 {
+                best = (k, flip, sx, sy, distortion);
+            }
+        }
+    }
+    let (k, flip, sx, sy, _) = best;
     let (ax, ay) = BOLT_RINGS[k];
-    (k, cx - ax * BOLT_SCALE.0, cy - ay * BOLT_SCALE.1)
+    let ax = if flip { BOLT_FRAME.0 - ax } else { ax };
+    (
+        k,
+        flip,
+        cx - ax * sx,
+        cy - ay * sy,
+        BOLT_FRAME.0 * sx,
+        BOLT_FRAME.1 * sy,
+    )
 }
 
 /// The top of the WINNER total's flame box.
-const WINNER_TOP: f32 = 46.0;
+const WINNER_TOP: f32 = 42.0;
+/// The WINNER total's flame box.
+const WINNER_BOX: (f32, f32) = (560.0, 104.0);
+/// Where the splash animation (512 x 256) draws its box: x 40..472,
+/// y 145..223 (measured on its frames).
+const SPLASH_BOX: (f32, f32, f32, f32) = (40.0, 145.0, 432.0, 78.0);
 
 /// The WINNER plate's height: the jackpot bar's band, clear of the reels.
 const WINNER_PLATE_H: f32 = 148.0;
@@ -2958,6 +3017,88 @@ pub struct HsSpin {
 pub struct HsSpinImage {
     index: u8,
 }
+/// A digit of a coin passing on a respinning position.
+#[derive(Component)]
+pub struct HsSpinDigit {
+    index: u8,
+}
+
+/// Letter the coins passing on respinning positions, as the machine does.
+#[allow(clippy::type_complexity, clippy::too_many_arguments)]
+pub fn hs_spin_digits(
+    fidelity: Res<Fidelity>,
+    show: Res<FeatureShow>,
+    art: Res<ArtPack>,
+    sim: Res<Sim>,
+    denom: Res<Denom>,
+    spins: Query<(&HsSpin, &Children)>,
+    images: Query<(&HsSpinImage, &Children)>,
+    mut digits: Query<(&HsSpinDigit, &mut ImageNode, &mut Node)>,
+) {
+    if !fidelity.0 {
+        return;
+    }
+    let Some(anim) = show.respin.as_ref() else {
+        return;
+    };
+    let total_bet = sim.game.total_bet();
+    let cents = denom.cents();
+    let ch = cell_size().1;
+    let pos = anim.t * RESPIN_SPEED;
+    let base = pos.floor() as i64;
+    for (spin, spin_children) in &spins {
+        for image_entity in spin_children.iter() {
+            let Ok((img, children)) = images.get(image_entity) else {
+                continue;
+            };
+            let n = base + i64::from(img.index);
+            let text = (respin_symbol(spin.reel, spin.row, n) == "orb").then(|| {
+                // Passing coins carry bet multiples, never a tier plate.
+                let face = passing_face(spin.reel, n * 3 + i64::from(spin.row));
+                let face = if tier_image(face).is_some() {
+                    "x2"
+                } else {
+                    face
+                };
+                face_credits(face, total_bet).map(|c| coin_text(c, cents))
+            });
+            let text = text.flatten();
+            // The coin is drawn shrunk to fit the position; so are its digits.
+            let fit = art
+                .sizes
+                .get("orb")
+                .map_or(1.0, |s| (ch * 0.96 / symbol_size("orb", *s).1).min(1.0));
+            let digit_h = ch * COIN_DIGIT_SHARE * fit;
+            let scale = text
+                .as_deref()
+                .map_or(1.0, |t| coin_digit_scale(t, &art, digit_h));
+            for child in children.iter() {
+                let Ok((d, mut image, mut node)) = digits.get_mut(child) else {
+                    continue;
+                };
+                let glyph = text
+                    .as_deref()
+                    .and_then(|t| t.chars().nth(d.index as usize))
+                    .and_then(|c| {
+                        let key = coin_key(c);
+                        art.ui.get(&key).cloned().zip(art.sizes.get(&key).copied())
+                    });
+                match glyph {
+                    Some((h, (w, gh))) => {
+                        if image.image != h {
+                            image.image = h;
+                        }
+                        node.width = Val::Px(w * scale);
+                        node.height = Val::Px(gh * scale);
+                        node.display = Display::Flex;
+                    }
+                    None => node.display = Display::None,
+                }
+            }
+        }
+    }
+}
+
 /// The fire ring round a held coin.
 #[derive(Component)]
 pub struct HsRing {
@@ -3020,13 +3161,32 @@ pub fn spawn_hs_spin(cell: &mut ChildSpawnerCommands, art: &ArtPack, reel: u8, r
                 HsSpinImage { index },
                 Node {
                     position_type: PositionType::Absolute,
+                    flex_direction: FlexDirection::Row,
+                    justify_content: JustifyContent::Center,
+                    align_items: AlignItems::Center,
                     ..default()
                 },
                 ImageNode {
                     image_mode: NodeImageMode::Stretch,
                     ..default()
                 },
-            ));
+            ))
+            .with_children(|img| {
+                // A passing coin's prize.
+                for digit in 0..COIN_SLOTS {
+                    img.spawn((
+                        HsSpinDigit { index: digit },
+                        Node {
+                            display: Display::None,
+                            ..default()
+                        },
+                        ImageNode {
+                            image_mode: NodeImageMode::Stretch,
+                            ..default()
+                        },
+                    ));
+                }
+            });
         }
     });
     cell.spawn((
@@ -3073,8 +3233,8 @@ pub fn spawn_hs_overlays(c: &mut ChildSpawnerCommands, font: &Handle<Font>) {
         HsBolt,
         Node {
             position_type: PositionType::Absolute,
-            width: Val::Px(464.0 * BOLT_SCALE.0),
-            height: Val::Px(288.0 * BOLT_SCALE.1),
+            width: Val::Px(BOLT_FRAME.0),
+            height: Val::Px(BOLT_FRAME.1),
             ..default()
         },
         ImageNode {
@@ -3110,7 +3270,7 @@ pub fn spawn_hs_overlays(c: &mut ChildSpawnerCommands, font: &Handle<Font>) {
             Text::new("WINNER"),
             TextFont {
                 font: bevy::text::FontSource::Handle(font.clone()),
-                font_size: FontSize::Px(44.0),
+                font_size: FontSize::Px(40.0),
                 ..default()
             },
             TextColor(Color::srgb(0.95, 0.32, 0.12)),
@@ -3121,15 +3281,16 @@ pub fn spawn_hs_overlays(c: &mut ChildSpawnerCommands, font: &Handle<Font>) {
             },
         ));
     });
-    let (w, h) = (860.0, 96.0);
+    let (w, h) = WINNER_BOX;
+    let (sx, sy) = (w / SPLASH_BOX.2, h / SPLASH_BOX.3);
     c.spawn((
         WinnerSplash,
         Node {
             position_type: PositionType::Absolute,
-            left: Val::Px(960.0 - w * 0.6),
-            top: Val::Px(WINNER_TOP - h * 0.1),
-            width: Val::Px(w * 1.2),
-            height: Val::Px(h * 1.2),
+            left: Val::Px(960.0 - w / 2.0 - SPLASH_BOX.0 * sx),
+            top: Val::Px(WINNER_TOP - SPLASH_BOX.1 * sy),
+            width: Val::Px(512.0 * sx),
+            height: Val::Px(256.0 * sy),
             ..default()
         },
         ImageNode {
@@ -3164,7 +3325,7 @@ pub fn spawn_hs_overlays(c: &mut ChildSpawnerCommands, font: &Handle<Font>) {
             Text::new(""),
             TextFont {
                 font: bevy::text::FontSource::Handle(font.clone()),
-                font_size: FontSize::Px(78.0),
+                font_size: FontSize::Px(70.0),
                 ..default()
             },
             TextColor(Color::srgb(0.86, 0.93, 0.36)),
@@ -3612,16 +3773,19 @@ pub fn hold_and_spin_draw(
     // The collection bolt and the splash it makes on the WINNER box.
     for (mut image, mut vis, mut node) in &mut bolt {
         let f = show.bolt.and_then(|(reel, row, s)| {
-            let (k, left, top) = bolt_for(reel, row);
-            frame(&format!("bolt{k}"), clock - s, false).map(|h| (h, left, top))
+            let (k, flip, left, top, w, h) = bolt_for(reel, row);
+            frame(&format!("bolt{k}"), clock - s, false).map(|f| (f, flip, left, top, w, h))
         });
         match f {
-            Some((h, left, top)) => {
-                if image.image != h {
-                    image.image = h;
+            Some((f, flip, left, top, w, h)) => {
+                if image.image != f {
+                    image.image = f;
                 }
+                image.flip_x = flip;
                 node.left = Val::Px(left);
                 node.top = Val::Px(top);
+                node.width = Val::Px(w);
+                node.height = Val::Px(h);
                 set(&mut vis, true);
             }
             None => set(&mut vis, false),
@@ -3644,7 +3808,7 @@ pub fn hold_and_spin_draw(
 
     // The WINNER total.
     for (mut image, mut vis) in &mut winner {
-        match show.winner.and(frame("flameborder", clock, true)) {
+        match show.winner.and(frame("flameborder_sm", clock, true)) {
             Some(h) => {
                 if image.image != h {
                     image.image = h;
@@ -4030,9 +4194,10 @@ pub struct GambleHistory(usize);
 
 /// Build the gamble screen over the reel window (hidden until a gamble).
 pub fn spawn_gamble_screen(c: &mut ChildSpawnerCommands, art: &ArtPack, fonts: &CabFonts) {
-    let (gx, gy) = GRID_CENTER;
-    let (w, h) = (5.0 * PITCH.0 + 40.0, 3.0 * PITCH.1 + 20.0);
-    let (left, top) = (gx - w / 2.0, gy - h / 2.0);
+    // The gamble takes the whole screen between the jackpots and the meter
+    // band, as the cabinet's does.
+    let top = JACKPOT_BAR_TOP + JACKPOT_BAR_W * 104.0 / 1225.0 + 4.0;
+    let (left, w, h) = (0.0, CANVAS_W, BAND_TOP - top);
     let white = Color::srgb(0.97, 0.97, 0.97);
     let sans = &fonts.sans;
     let text = |s: &str, size: f32, color: Color| {
@@ -4086,11 +4251,11 @@ pub fn spawn_gamble_screen(c: &mut ChildSpawnerCommands, art: &ArtPack, fonts: &
             ImageNode {
                 image: art.ui.get("background").cloned().unwrap_or_default(),
                 image_mode: NodeImageMode::Stretch,
-                color: Color::srgb(0.62, 0.6, 0.7),
+                color: Color::srgb(0.9, 0.88, 0.92),
                 ..default()
             },
         ));
-        let (lx, cx, rx) = (w * 0.22, w * 0.5, w * 0.78);
+        let (lx, cx, rx) = (w * 0.5 - 500.0, w * 0.5, w * 0.5 + 500.0);
         // Left: the tab, the amount, RED and the red suits.
         g.spawn((
             BackgroundColor(Color::srgb(0.2, 0.26, 0.6)),
@@ -4098,22 +4263,22 @@ pub fn spawn_gamble_screen(c: &mut ChildSpawnerCommands, art: &ArtPack, fonts: &
             Node {
                 border: UiRect::all(Val::Px(3.0)),
                 border_radius: BorderRadius::all(Val::Px(25.0)),
-                ..at(lx, 70.0, 360.0, 50.0)
+                ..at(lx, 110.0, 360.0, 50.0)
             },
         ))
         .with_children(|t| {
             t.spawn(text("Full Gamble Selected", 26.0, white));
         });
-        g.spawn((at(lx, 190.0, 460.0, 170.0),)).with_children(|t| {
+        g.spawn((at(lx, 235.0, 460.0, 170.0),)).with_children(|t| {
             t.spawn((GambleText::Amount, text("", 30.0, white)));
         });
-        gamble_button(g, sans, GamblePick::Red, lx, 330.0, 330.0, 76.0);
+        gamble_button(g, sans, GamblePick::Red, lx, 390.0, 330.0, 76.0);
         gamble_button(
             g,
             &fonts.symbols,
             GamblePick::Hearts,
             lx - 90.0,
-            440.0,
+            500.0,
             150.0,
             86.0,
         );
@@ -4122,13 +4287,13 @@ pub fn spawn_gamble_screen(c: &mut ChildSpawnerCommands, art: &ArtPack, fonts: &
             &fonts.symbols,
             GamblePick::Diamonds,
             lx + 90.0,
-            440.0,
+            500.0,
             150.0,
             86.0,
         );
 
         // Middle: the card, "Gamble Win" over it, "WIN" across it.
-        g.spawn((at(cx, 95.0, 400.0, 150.0),)).with_children(|t| {
+        g.spawn((at(cx, 115.0, 400.0, 150.0),)).with_children(|t| {
             t.spawn((GambleText::GambleWin, text("", 30.0, white)));
         });
         let (cw, ch) = (240.0, 336.0);
@@ -4138,7 +4303,7 @@ pub fn spawn_gamble_screen(c: &mut ChildSpawnerCommands, art: &ArtPack, fonts: &
                 border: UiRect::all(Val::Px(8.0)),
                 border_radius: BorderRadius::all(Val::Px(16.0)),
                 padding: UiRect::all(Val::Px(10.0)),
-                ..at(cx, 340.0, cw, ch)
+                ..at(cx, 390.0, cw, ch)
             },
             BackgroundColor(Color::srgb(0.95, 0.9, 0.92)),
             BorderColor::all(Color::srgb(0.97, 0.95, 0.96)),
@@ -4161,7 +4326,7 @@ pub fn spawn_gamble_screen(c: &mut ChildSpawnerCommands, art: &ArtPack, fonts: &
             Node {
                 border: UiRect::all(Val::Px(3.0)),
                 border_radius: BorderRadius::all(Val::Px(16.0)),
-                ..at(cx, 340.0, cw, ch)
+                ..at(cx, 390.0, cw, ch)
             },
             BackgroundColor(Color::srgb(0.99, 0.99, 0.99)),
             BorderColor::all(Color::srgb(0.75, 0.75, 0.78)),
@@ -4189,7 +4354,7 @@ pub fn spawn_gamble_screen(c: &mut ChildSpawnerCommands, art: &ArtPack, fonts: &
                 TextColor(Color::BLACK),
             ));
         });
-        g.spawn((at(cx, 470.0, 420.0, 130.0), GlobalZIndex(13)))
+        g.spawn((at(cx, 520.0, 420.0, 130.0), GlobalZIndex(13)))
             .with_children(|t| {
                 t.spawn((
                     GambleText::WinStamp,
@@ -4211,7 +4376,7 @@ pub fn spawn_gamble_screen(c: &mut ChildSpawnerCommands, art: &ArtPack, fonts: &
                 column_gap: Val::Px(8.0),
                 padding: UiRect::horizontal(Val::Px(18.0)),
                 justify_content: JustifyContent::FlexStart,
-                ..at(rx, 70.0, 420.0, 50.0)
+                ..at(rx, 110.0, 420.0, 50.0)
             },
             BackgroundColor(Color::srgb(0.2, 0.26, 0.6)),
             BorderColor::all(Color::srgb(0.9, 0.75, 0.4)),
@@ -4231,16 +4396,16 @@ pub fn spawn_gamble_screen(c: &mut ChildSpawnerCommands, art: &ArtPack, fonts: &
                 ));
             }
         });
-        g.spawn((at(rx, 190.0, 460.0, 170.0),)).with_children(|t| {
+        g.spawn((at(rx, 235.0, 460.0, 170.0),)).with_children(|t| {
             t.spawn((GambleText::ToWin, text("", 30.0, white)));
         });
-        gamble_button(g, sans, GamblePick::Black, rx, 330.0, 330.0, 76.0);
+        gamble_button(g, sans, GamblePick::Black, rx, 390.0, 330.0, 76.0);
         gamble_button(
             g,
             &fonts.symbols,
             GamblePick::Clubs,
             rx - 90.0,
-            440.0,
+            500.0,
             150.0,
             86.0,
         );
@@ -4249,12 +4414,12 @@ pub fn spawn_gamble_screen(c: &mut ChildSpawnerCommands, art: &ArtPack, fonts: &
             &fonts.symbols,
             GamblePick::Spades,
             rx + 90.0,
-            440.0,
+            500.0,
             150.0,
             86.0,
         );
 
-        g.spawn((at(cx, h - 50.0, 900.0, 50.0),))
+        g.spawn((at(cx, h - 40.0, 900.0, 50.0),))
             .with_children(|t| {
                 t.spawn(text("Select a SUIT, RED/BLACK or TAKE WIN", 30.0, white));
             });
@@ -4271,7 +4436,7 @@ fn gamble_button(
     w: f32,
     h: f32,
 ) {
-    let ink = if pick.wins(0) {
+    let ink = if is_red(pick) {
         Color::srgb(0.85, 0.08, 0.08)
     } else {
         Color::srgb(0.06, 0.12, 0.45)
