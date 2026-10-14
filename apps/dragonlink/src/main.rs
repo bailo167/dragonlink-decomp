@@ -1134,6 +1134,7 @@ fn present(
     mut presentation: ResMut<Presentation>,
     mut reels_spin: ResMut<ReelAnim>,
     reels_motion: Res<cabinet::Reels>,
+    rollup: Res<cabinet::Rollup>,
     mut cells: Query<(&Cell, &mut BackgroundColor)>,
     mut labels: Query<(&CellLabel, &mut Text)>,
 ) {
@@ -1143,6 +1144,35 @@ fn present(
     }
     presentation.wait -= smoke.dt(&time);
     while presentation.wait <= 0.0 {
+        // Flags that won the free games play their sequence (the bell, the
+        // flags waving) before their win is shown; the feature then waits
+        // for that win's count (real game).
+        if fidelity.0
+            && reels_motion.rested_for() >= cabinet::RESULT_AFTER_REST
+            && matches!(
+                presentation.queue.front(),
+                Some((_, Event::ScatterWin { .. }))
+            )
+            && presentation
+                .queue
+                .iter()
+                .any(|(_, e)| matches!(e, Event::FreeGamesStarted { .. }))
+        {
+            feature.begin_free_games_trigger();
+        }
+        if fidelity.0
+            && rollup.active()
+            && matches!(
+                presentation.queue.front(),
+                Some((
+                    _,
+                    Event::FeatureTriggered { .. } | Event::FreeGamesStarted { .. }
+                ))
+            )
+        {
+            presentation.wait = 0.0;
+            break;
+        }
         // A respin spinning or the coins being counted hold what follows.
         if fidelity.0 && feature.blocks() {
             presentation.wait = 0.0;
@@ -1152,8 +1182,13 @@ fn present(
         // until the reels are at rest on screen: the last reel's stop is
         // presented as it starts to run on to its stop, and it overshoots
         // and settles after that.
+        // The doors open sooner than a result shows (real game).
+        let after_rest = match presentation.queue.front() {
+            Some((_, Event::MysteryRevealed { .. })) => cabinet::REVEAL_AFTER_REST,
+            _ => cabinet::RESULT_AFTER_REST,
+        };
         if fidelity.0
-            && reels_motion.rested_for() < cabinet::RESULT_AFTER_REST
+            && reels_motion.rested_for() < after_rest
             && presentation
                 .queue
                 .front()
@@ -1898,6 +1933,7 @@ fn main() -> AppExit {
                 smoke,
                 cabinet::rollup_skip,
                 cabinet::feature_press,
+                cabinet::free_games_trigger,
                 cabinet::gamble_control,
                 input,
                 cabinet::clear_buttons,

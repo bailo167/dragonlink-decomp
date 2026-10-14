@@ -2454,6 +2454,14 @@ pub struct FeatureShow {
     win_current: Option<(u16, u8)>,
     scatter_shown: bool,
     scatter_paid: bool,
+    /// The free games' trigger sequence: seconds since it began (see
+    /// `free_games_trigger`), the flags waving, the time since START FEATURE
+    /// was pressed (until the cut to the free games), and the banner's total
+    /// counting up after the cut (seconds, total shown).
+    fg_trigger: Option<f32>,
+    fg_flags: bool,
+    fg_cut: Option<f32>,
+    fg_count: Option<(f32, u32)>,
 }
 
 impl FeatureShow {
@@ -2461,6 +2469,9 @@ impl FeatureShow {
     pub fn on_event(&mut self, event: &Event) {
         match event {
             Event::SpinStarted { .. } => {
+                self.fg_trigger = None;
+                self.fg_flags = false;
+                self.fg_cut = None;
                 self.grand = None;
                 self.grand_done = false;
                 self.win_lines.clear();
@@ -2475,16 +2486,15 @@ impl FeatureShow {
             Event::JackpotAwarded { tier, award } => self.jackpots.push((*tier, *award)),
             Event::ScatterWin { award, .. } if !matches!(self.stage, Stage::FreeGames { .. }) => {
                 self.scatter_award = *award;
-                if self.win_lines.is_empty() {
+                // The flags already wave when a trigger's win is shown.
+                if self.win_lines.is_empty() && !self.fg_flags {
                     self.win_t = 0.0;
                 }
                 self.scatter_paid = true;
             }
             Event::FreeGamesStarted { games } => {
-                // Footage: the feature bell after the last reel, the scatter
-                // sound as the flags wave and "FREE GAMES WON" shows.
-                self.cues.push("feature_bell");
-                self.cues.push("SND_Scatter");
+                // The bell and the flags' sound have played already (the
+                // trigger sequence, before the win was shown).
                 self.games_won = *games;
                 self.wait_for(Await::Start(Feature::FreeGames));
             }
@@ -2598,9 +2608,10 @@ impl FeatureShow {
             }
             (Some(Await::Start(_)), _) => Some("Press START FEATURE button".into()),
             (Some(Await::Respin), _) => Some("Press SPIN button".into()),
-            (_, Stage::FreeGames { number, total }) => {
-                Some(format!("Free Game {number} of {total}"))
-            }
+            (_, Stage::FreeGames { number, total }) => Some(format!(
+                "Free Game {number} of {}",
+                self.counter_total(total)
+            )),
             _ => None,
         }
     }
@@ -2643,14 +2654,10 @@ pub fn feature_press(
         // the banner reads FREE GAME 1 OF n as the first game spins; the base
         // screen does not come back in between).
         if matches!(show.awaiting, Some(Await::Start(Feature::FreeGames))) {
-            show.stage = Stage::FreeGames {
-                number: 1,
-                total: u32::from(show.games_won),
-            };
-            // The trigger's win, still counting, jumps to its total, and the
-            // flags snap back to the still flag (footage: within a frame).
+            // The press is silent; the flags wave on until the cut to the
+            // free games (real game: about a second later).
             rollup.t = rollup.duration;
-            show.scatter_paid = false;
+            show.fg_cut = Some(0.0);
         }
         show.awaiting = None;
         input.skip_spin = true;
@@ -2918,7 +2925,7 @@ pub fn feature_screen(
     // The counter's numbers, in the banner's own gold digits.
     let counter = match (show.awaiting, show.stage) {
         (None | Some(Await::Respin), Stage::FreeGames { number, total }) if game_win.is_none() => {
-            Some([number.to_string(), total.to_string()])
+            Some([number.to_string(), show.counter_total(total).to_string()])
         }
         _ => None,
     };
@@ -3734,6 +3741,8 @@ impl FeatureShow {
     /// the counter, a respin or the count is playing.
     pub fn blocks(&self) -> bool {
         self.intro.is_some()
+            || self.fg_trigger.is_some_and(|t| t < FG_COUNT)
+            || self.fg_cut.is_some()
             || self.completed_wait.is_some()
             || self.pay.is_some()
             || self.reveal.is_some()
@@ -4372,15 +4381,21 @@ pub fn hold_and_spin_draw(
 // Free games: the doors reveal and the win banner
 // ---------------------------------------------------------------------------
 //
-// Footage: the doors land with the reels; about 1.2 s after the last reel
-// stops every door swings open together (the game's own 42-frame sequence,
-// about 0.7 s) on the symbol they reveal; then the game's wins show, and the
-// banner reads "WIN $x WIN" while the free game's win counts up.
+// Real game (all six free games of a recorded feature, frame by frame and
+// with sound): the doors land with the reels; 3 frames after the last reel is
+// still every door swings open together (the game's own 42-frame sequence at
+// 30 fps, 1.4 s) on the symbol they reveal, to SND_EndMask; the game's wins
+// show 47 frames after the doors begin to open (or FEATURE COMPLETED, after
+// the last game).
 
-/// Seconds after the reveal is presented that the doors open, and their
-/// frame rate.
-const REVEAL_OPEN: f32 = 1.2;
-const REVEAL_FPS: f32 = 60.0;
+/// Seconds after the reveal is presented that the doors open (it is
+/// presented when they open), their frame rate, and the seconds from their
+/// opening to the game's wins.
+const REVEAL_OPEN: f32 = 0.0;
+const REVEAL_FPS: f32 = 30.0;
+const REVEAL_WINS: f32 = 47.0 / 30.0;
+/// The reveal is presented this long after the last reel is still.
+pub const REVEAL_AFTER_REST: f32 = 3.0 / 30.0;
 
 /// The doors opening on one position.
 #[derive(Component)]
@@ -4447,6 +4462,8 @@ pub fn door_reveal(
     time: Res<Time>,
     smoke: Res<Smoke>,
     mut show: ResMut<FeatureShow>,
+    sounds: Res<Sounds>,
+    mut commands: Commands,
     mut labels: Query<(&CellLabel, &mut Text)>,
 ) {
     if !fidelity.0 {
@@ -4467,15 +4484,16 @@ pub fn door_reveal(
     } else {
         cells
     };
-    if t0 < REVEAL_OPEN && t >= REVEAL_OPEN {
+    if t0 <= REVEAL_OPEN && t > REVEAL_OPEN {
+        sounds.play(&mut commands, "SND_EndMask");
         for (l, mut text) in &mut labels {
             if cells.contains(&(l.reel, l.row)) {
                 text.0 = symbol.clone();
             }
         }
     }
-    let frames = 42.0;
-    if t < REVEAL_OPEN + frames / REVEAL_FPS {
+    // The doors open, then the wins follow (the reveal holds them).
+    if t < REVEAL_OPEN + REVEAL_WINS {
         show.reveal = Some((t, symbol, cells));
     }
 }
@@ -5185,7 +5203,7 @@ pub fn win_lines(
     // The flags keep waving while the free games wait for START FEATURE
     // (cabinet footage: they wave until the feature starts).
     let flags_wait = matches!(show.awaiting, Some(Await::Start(Feature::FreeGames)));
-    show.scatter_shown = show.scatter_paid
+    show.scatter_shown = (show.scatter_paid || show.fg_flags)
         && !gamble.active
         && (show.awaiting.is_none() || flags_wait)
         && !show.hold_and_spin()
@@ -5519,7 +5537,13 @@ pub fn symbol_fx(
             .unwrap_or_default();
         let frame = on
             .then(|| {
-                let n = (t * SYMBOL_FX_FPS) as usize;
+                // The flags wave at 20 frames a second (real game).
+                let fps = if key == "pennant" {
+                    20.0
+                } else {
+                    SYMBOL_FX_FPS
+                };
+                let n = (t * fps) as usize;
                 let intro = art.anims.get(&format!("{key}_intro"));
                 let lp = art.anims.get(&format!("{key}_loop"))?;
                 match intro {
@@ -5721,5 +5745,108 @@ pub fn coin_shower(
                 image.image = h.clone();
             }
         }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// The free games' trigger
+// ---------------------------------------------------------------------------
+//
+// Real game (recorded with sound, frame by frame): the flags land with the
+// reels' own clink and nothing else. 0.2 s after the last reel is still the
+// feature bell sounds and plays out (2.55 s); as it ends the flags start
+// waving (the game's own flag animation from its first frame, at 20 fps) with
+// SND_Scatter (4.75 s); as that ends the scatter win counts on WIN to its
+// tune; then SELECT SPIN TO START FEATURE. The press makes no sound; the flags
+// wave on for about a second, then a hard cut to the free games: their music
+// starts from its beginning, the first free game spins at once, and the
+// banner's total counts up from 1, one a tick (SND_Fea_Inc), during that spin.
+
+/// Seconds into the trigger sequence (it begins when the result is shown,
+/// 0.17 s after the last reel is still): the bell, the flags and their sound,
+/// and the win's count.
+const FG_BELL: f32 = 0.045;
+const FG_FLAGS: f32 = FG_BELL + 2.6;
+pub const FG_COUNT: f32 = FG_FLAGS + 4.76;
+/// Seconds from the START FEATURE press to the cut to the free games.
+const FG_CUT: f32 = 1.07;
+/// Seconds per step of the banner's total counting up after the cut.
+const FG_TICK: f32 = 4.0 / 30.0;
+
+impl FeatureShow {
+    /// Begin the free games' trigger sequence, if a base game's flags have
+    /// won the free games and it has not begun; true when it begins.
+    pub fn begin_free_games_trigger(&mut self) -> bool {
+        if self.fg_trigger.is_some() || !matches!(self.stage, Stage::Base) {
+            return false;
+        }
+        self.fg_trigger = Some(0.0);
+        true
+    }
+
+    /// The free games' total as the banner shows it (counting up after the
+    /// cut).
+    fn counter_total(&self, total: u32) -> u32 {
+        self.fg_count.map_or(total, |(_, n)| n.min(total))
+    }
+}
+
+/// Run the free games' trigger sequence and the cut into the free games.
+pub fn free_games_trigger(
+    fidelity: Res<Fidelity>,
+    time: Res<Time>,
+    smoke: Res<Smoke>,
+    mut show: ResMut<FeatureShow>,
+    mut presentation: ResMut<crate::Presentation>,
+    sounds: Res<Sounds>,
+    mut commands: Commands,
+) {
+    if !fidelity.0 {
+        return;
+    }
+    let dt = smoke.dt(&time);
+    let crossed = |a: f32, b: f32, at: f32| a < at && b >= at;
+    if let Some(t0) = show.fg_trigger {
+        let t = t0 + dt;
+        show.fg_trigger = Some(t);
+        if crossed(t0, t, FG_BELL) {
+            sounds.play(&mut commands, "feature_bell");
+        }
+        if crossed(t0, t, FG_FLAGS) {
+            sounds.play(&mut commands, "SND_Scatter");
+            show.fg_flags = true;
+            show.win_t = 0.0;
+        }
+    }
+    if let Some(t0) = show.fg_cut {
+        let t = t0 + dt;
+        if t >= FG_CUT {
+            // The cut: the free games, their music, the first game at once.
+            show.fg_cut = None;
+            show.fg_flags = false;
+            show.scatter_paid = false;
+            show.stage = Stage::FreeGames {
+                number: 1,
+                total: u32::from(show.games_won),
+            };
+            show.fg_count = Some((0.0, 1));
+            presentation.step_timer = 0.0;
+        } else {
+            show.fg_cut = Some(t);
+        }
+    }
+    if let Some((t0, n)) = show.fg_count {
+        let total = match show.stage {
+            Stage::FreeGames { total, .. } => total,
+            _ => 0,
+        };
+        let t = t0 + dt;
+        let mut n = n;
+        // One tick a step, just before the banner's digit changes.
+        while n < total && t >= n as f32 * FG_TICK {
+            n += 1;
+            sounds.play(&mut commands, "SND_Fea_Inc");
+        }
+        show.fg_count = if n >= total { None } else { Some((t, n)) };
     }
 }
