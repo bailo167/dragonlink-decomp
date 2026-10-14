@@ -72,7 +72,15 @@ pub fn max_lines(cents: u64) -> u16 {
 }
 
 /// UI images the cabinet screen needs from the pack (`ui/<name>.png`).
-pub const REQUIRED_UI: [&str; 15] = [
+pub const REQUIRED_UI: [&str; 23] = [
+    "deck_panel",
+    "key_blue",
+    "key_red",
+    "key_white",
+    "key_gold",
+    "key_dark",
+    "spin_lit",
+    "spin_dim",
     "background",
     "reel_background",
     "payline_tab",
@@ -425,7 +433,7 @@ pub fn spawn(commands: &mut Commands, model: &MathModel, art: &ArtPack, fonts: &
 
             spawn_meter_band(c, fonts, art, gold, pale);
 
-            spawn_deck(c, &fonts.sans, &fonts.symbols);
+            spawn_deck(c, art, &fonts.sans, &fonts.symbols);
             spawn_gamble_screen(c, art, fonts);
 
             // The shared presentation systems still expect these; unused here.
@@ -782,11 +790,18 @@ pub fn start_prompts(
     }
 }
 
-/// The pub-style button deck below the screen: two rows of six lit buttons
-/// and the play button. The first column is GAMBLE over RESPIN; the others
-/// are the denominations over the line counts. While gambling the buttons
-/// take the gamble's choices.
-fn spawn_deck(c: &mut ChildSpawnerCommands, font: &Handle<Font>, symbols: &Handle<Font>) {
+/// The button deck below the screen, as on the cabinet: a brushed-silver
+/// panel with a blue light strip, two rows of six square backlit keys in
+/// chrome bezels (GAMBLE over RESPIN, then the denominations over the line
+/// counts) and the blue teardrop play button. While gambling the keys take
+/// the gamble's choices.
+fn spawn_deck(
+    c: &mut ChildSpawnerCommands,
+    art: &ArtPack,
+    font: &Handle<Font>,
+    symbols: &Handle<Font>,
+) {
+    let ui = |k: &str| art.ui.get(k).cloned().unwrap_or_default();
     // The black bezel under the screen, and the deck panel.
     c.spawn((
         Node {
@@ -806,30 +821,19 @@ fn spawn_deck(c: &mut ChildSpawnerCommands, font: &Handle<Font>, symbols: &Handl
             top: Val::Px(DECK_TOP),
             width: Val::Px(CANVAS_W),
             height: Val::Px(CANVAS_H - DECK_TOP),
-            border: UiRect::top(Val::Px(4.0)),
             ..default()
         },
-        BackgroundColor(Color::srgb(0.11, 0.11, 0.12)),
-        BorderColor::all(Color::srgb(0.5, 0.5, 0.53)),
-    ))
-    .with_children(|d| {
-        // The brushed steel's sheen along the panel's top.
-        d.spawn((
-            Node {
-                position_type: PositionType::Absolute,
-                left: Val::Px(0.0),
-                top: Val::Px(0.0),
-                width: Val::Percent(100.0),
-                height: Val::Percent(35.0),
-                ..default()
-            },
-            BackgroundColor(Color::srgba(1.0, 1.0, 1.0, 0.05)),
-        ));
-    });
-    let gap_y = 14.0;
-    let bh = (CANVAS_H - DECK_TOP - 4.0 - 3.0 * gap_y) / 2.0;
-    let row_y = [DECK_TOP + 4.0 + gap_y, DECK_TOP + 4.0 + 2.0 * gap_y + bh];
-    let (bw, gap, left) = (226.0, 18.0, 30.0);
+        ImageNode {
+            image: ui("deck_panel"),
+            image_mode: NodeImageMode::Stretch,
+            ..default()
+        },
+    ));
+    let (kw, kh, gx, gy) = (124.0, 64.0, 18.0, 10.0);
+    let cluster = 6.0 * kw + 5.0 * gx;
+    let (sw, sh) = (226.0, 174.0);
+    let left = (CANVAS_W - (cluster + 70.0 + sw)) / 2.0;
+    let top = DECK_TOP + 18.0;
     for row in 0..2u8 {
         for col in 0..6u8 {
             deck_button(
@@ -837,10 +841,10 @@ fn spawn_deck(c: &mut ChildSpawnerCommands, font: &Handle<Font>, symbols: &Handl
                 font,
                 symbols,
                 CabButton::Slot { row, col },
-                left + f32::from(col) * (bw + gap),
-                row_y[row as usize],
-                bw,
-                bh,
+                left + f32::from(col) * (kw + gx),
+                top + f32::from(row) * (kh + gy),
+                kw,
+                kh,
             );
         }
     }
@@ -849,10 +853,10 @@ fn spawn_deck(c: &mut ChildSpawnerCommands, font: &Handle<Font>, symbols: &Handl
         font,
         symbols,
         CabButton::Spin,
-        1530.0,
-        row_y[0],
-        360.0,
-        row_y[1] + bh - row_y[0],
+        left + cluster + 70.0,
+        DECK_TOP + 2.0,
+        sw,
+        sh,
     );
 }
 
@@ -936,13 +940,20 @@ fn press(role: Role, input: &mut CabinetInput) {
     }
 }
 
-/// The lit cap of a deck button (its colour is set by [`light_deck`]).
+/// The lit cap of a deck button (its image is set by [`light_deck`]).
 #[derive(Component)]
 pub struct DeckCap(pub CabButton);
 
 /// A deck button's caption.
 #[derive(Component)]
 pub struct DeckLabel(pub CabButton);
+
+/// The two faces a deck caption can use: text, or the suit symbols.
+#[derive(Component)]
+pub struct DeckFonts {
+    text: Handle<Font>,
+    symbols: Handle<Font>,
+}
 
 #[allow(clippy::too_many_arguments)]
 fn deck_button(
@@ -955,73 +966,47 @@ fn deck_button(
     w: f32,
     h: f32,
 ) {
-    let radius = if button == CabButton::Spin {
-        60.0
+    // The play button's caption sits in the teardrop's wide upper part.
+    let pad = if button == CabButton::Spin {
+        UiRect::bottom(Val::Px(h * 0.18))
     } else {
-        12.0
+        UiRect::all(Val::Px(4.0))
     };
-    // The chrome bezel, and the backlit cap inside it.
     c.spawn((
         button,
+        DeckCap(button),
         Node {
             position_type: PositionType::Absolute,
             left: Val::Px(left),
             top: Val::Px(top),
             width: Val::Px(w),
             height: Val::Px(h),
-            padding: UiRect::all(Val::Px(6.0)),
-            border: UiRect::all(Val::Px(2.0)),
-            border_radius: BorderRadius::all(Val::Px(radius)),
+            padding: pad,
+            justify_content: JustifyContent::Center,
+            align_items: AlignItems::Center,
             ..default()
         },
-        BackgroundColor(Color::srgb(0.52, 0.53, 0.56)),
-        BorderColor::all(Color::srgb(0.82, 0.83, 0.86)),
+        ImageNode {
+            image_mode: NodeImageMode::Stretch,
+            ..default()
+        },
     ))
     .with_children(|b| {
         b.spawn((
-            DeckCap(button),
-            Node {
-                width: Val::Percent(100.0),
-                height: Val::Percent(100.0),
-                border: UiRect::all(Val::Px(2.0)),
-                border_radius: BorderRadius::all(Val::Px(radius - 4.0)),
-                justify_content: JustifyContent::Center,
-                align_items: AlignItems::Center,
-                overflow: Overflow::clip(),
+            DeckLabel(button),
+            Text::new(role_text(role(button, false))),
+            TextFont {
+                font: bevy::text::FontSource::Handle(font.clone()),
+                font_size: FontSize::Px(20.0),
                 ..default()
             },
-            BackgroundColor(Color::srgb(0.3, 0.3, 0.3)),
-            BorderColor::all(Color::srgba(0.0, 0.0, 0.0, 0.45)),
-        ))
-        .with_children(|cap| {
-            // The light falls brightest on the cap's upper half.
-            cap.spawn((
-                Node {
-                    position_type: PositionType::Absolute,
-                    left: Val::Px(0.0),
-                    top: Val::Px(0.0),
-                    width: Val::Percent(100.0),
-                    height: Val::Percent(46.0),
-                    ..default()
-                },
-                BackgroundColor(Color::srgba(1.0, 1.0, 1.0, 0.3)),
-            ));
-            cap.spawn((
-                DeckLabel(button),
-                Text::new(role_text(role(button, false))),
-                TextFont {
-                    font: bevy::text::FontSource::Handle(font.clone()),
-                    font_size: FontSize::Px(30.0),
-                    ..default()
-                },
-                TextColor(Color::srgb(0.08, 0.07, 0.05)),
-                TextLayout::justify(Justify::Center),
-                DeckFonts {
-                    text: font.clone(),
-                    symbols: symbols.clone(),
-                },
-            ));
-        });
+            TextColor(Color::WHITE),
+            TextLayout::justify(Justify::Center),
+            DeckFonts {
+                text: font.clone(),
+                symbols: symbols.clone(),
+            },
+        ));
     })
     .observe(
         move |_press: On<PointerPress>,
@@ -1030,29 +1015,23 @@ fn deck_button(
     );
 }
 
-/// The two faces a deck caption can use: text, or the suit symbols.
-#[derive(Component)]
-pub struct DeckFonts {
-    text: Handle<Font>,
-    symbols: Handle<Font>,
-}
-
-/// Light the deck and set its captions: the chosen denomination and line
-/// count lit gold, the others lit white, lines above the denomination's
-/// maximum dark, GAMBLE lit while a win can be gambled; while gambling, the
-/// red choices lit red and the black ones blue. The play button glows while
-/// a game can start.
+/// Light the deck and set its captions, as the cabinet lights it: keys glow
+/// blue, the chosen denomination and line count white, lines above the
+/// denomination's maximum dark, GAMBLE gold while a win can be gambled;
+/// while gambling the red choices glow red, the black ones blue and TAKE WIN
+/// gold. The play button glows while it can be pressed.
 #[allow(clippy::too_many_arguments, clippy::type_complexity)]
 pub fn light_deck(
     fidelity: Res<Fidelity>,
     time: Res<Time>,
+    art: Res<ArtPack>,
     sim: Res<Sim>,
     denom: Res<Denom>,
     presentation: Res<Presentation>,
     show: Res<FeatureShow>,
     gamble: Res<GambleShow>,
     rollup: Res<Rollup>,
-    mut caps: Query<(&DeckCap, &mut BackgroundColor)>,
+    mut caps: Query<(&DeckCap, &mut ImageNode)>,
     mut labels: Query<(
         &DeckLabel,
         &DeckFonts,
@@ -1070,49 +1049,50 @@ pub fn light_deck(
     let idle = sim.game.is_idle() && presentation.queue.is_empty();
     let can_gamble = idle && sim.game.can_gamble() && !rollup.active() && !waiting;
     let lines = sim.game.lines();
-    let lit = Color::srgb(0.95, 0.93, 0.84);
-    let chosen = Color::srgb(1.0, 0.8, 0.16);
-    let dark = Color::srgb(0.2, 0.2, 0.2);
-    let red = Color::srgb(0.98, 0.42, 0.3);
-    let blue = Color::srgb(0.42, 0.62, 1.0);
-    let glow = 0.82 + 0.18 * (time.elapsed_secs() * 4.0).sin().abs();
-    let green = Color::srgb(0.2 * glow, 0.88 * glow, 0.26 * glow);
-    for (cap, mut bg) in &mut caps {
-        let face = match (cap.0, role(cap.0, gambling)) {
-            (CabButton::Spin, _) if gambling => green,
-            (CabButton::Spin, _) if idle || waiting => green,
-            (CabButton::Spin, _) => Color::srgb(0.1, 0.3, 0.12),
-            (_, Role::Denom(i)) if DECK_DENOMS[i] == cents => chosen,
-            (_, Role::Denom(_)) => lit,
-            (_, Role::Lines(n)) if n > max_lines(cents) => dark,
-            (_, Role::Lines(n)) if n == lines => chosen,
-            (_, Role::Lines(_)) => lit,
-            (_, Role::Gamble) if can_gamble => chosen,
-            (_, Role::Gamble) => dark,
-            (_, Role::Respin) => lit,
-            (_, Role::TakeWin) => chosen,
-            (_, Role::Pick(p)) if p.wins(0) => red,
-            (_, Role::Pick(_)) => blue,
-            (_, Role::Off) => dark,
-        };
-        if bg.0 != face {
-            bg.0 = face;
+    let glow = 0.84 + 0.16 * (time.elapsed_secs() * 3.5).sin().abs();
+    let face = |cap: CabButton| -> (&'static str, f32) {
+        match (cap, role(cap, gambling)) {
+            (CabButton::Spin, _) if gambling || idle || waiting => ("spin_lit", glow),
+            (CabButton::Spin, _) => ("spin_dim", 1.0),
+            (_, Role::Denom(i)) if DECK_DENOMS[i] == cents => ("key_white", 1.0),
+            (_, Role::Denom(_)) => ("key_blue", 1.0),
+            (_, Role::Lines(n)) if n > max_lines(cents) => ("key_dark", 1.0),
+            (_, Role::Lines(n)) if n == lines => ("key_white", 1.0),
+            (_, Role::Lines(_)) => ("key_blue", 1.0),
+            (_, Role::Gamble) if can_gamble => ("key_gold", glow),
+            (_, Role::Gamble) => ("key_dark", 1.0),
+            (_, Role::Respin) => ("key_blue", 1.0),
+            (_, Role::TakeWin) => ("key_gold", glow),
+            (_, Role::Pick(p)) if p.wins(0) => ("key_red", 1.0),
+            (_, Role::Pick(_)) => ("key_blue", 1.0),
+            (_, Role::Off) => ("key_dark", 1.0),
+        }
+    };
+    for (cap, mut image) in &mut caps {
+        let (key, k) = face(cap.0);
+        if let Some(h) = art.ui.get(key)
+            && image.image != *h
+        {
+            image.image = h.clone();
+        }
+        let tint = Color::srgb(k, k, k);
+        if image.color != tint {
+            image.color = tint;
         }
     }
-    // The play button reads START FEATURE while a feature waits for it.
     for (label, fonts, mut text, mut font, mut color) in &mut labels {
         let r = role(label.0, gambling);
         let (word, size) = match (label.0, r) {
-            (CabButton::Spin, _) if gambling => ("TAKE\nWIN".to_string(), 64.0),
+            (CabButton::Spin, _) if gambling => ("TAKE\nWIN".to_string(), 30.0),
             (CabButton::Spin, _) if matches!(show.awaiting, Some(Await::Start(_))) => {
-                ("START\nFEATURE".to_string(), 52.0)
+                ("START\nFEATURE".to_string(), 26.0)
             }
-            (CabButton::Spin, _) => ("SPIN".to_string(), 88.0),
+            (CabButton::Spin, _) => ("SPIN".to_string(), 40.0),
             (_, Role::Pick(p)) if !matches!(p, GamblePick::Red | GamblePick::Black) => {
-                (pick_text(p).to_string(), 56.0)
+                (pick_text(p).to_string(), 38.0)
             }
-            (_, Role::Denom(_)) => (role_text(r), 38.0),
-            _ => (role_text(r), 28.0),
+            (_, Role::Denom(_)) => (role_text(r), 28.0),
+            _ => (role_text(r), 19.0),
         };
         if text.0 != word {
             text.0 = word;
@@ -1126,7 +1106,12 @@ pub fn light_deck(
         if font.font != source {
             font.font = source;
         }
-        let ink = Color::srgb(0.08, 0.07, 0.05);
+        // Dark lettering on the white and gold caps, white on the others.
+        let ink = match face(label.0).0 {
+            "key_white" | "key_gold" => Color::srgb(0.06, 0.08, 0.2),
+            "key_dark" => Color::srgb(0.45, 0.5, 0.62),
+            _ => Color::WHITE,
+        };
         if color.0 != ink {
             color.0 = ink;
         }
