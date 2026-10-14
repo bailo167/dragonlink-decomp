@@ -412,6 +412,7 @@ pub fn spawn(commands: &mut Commands, model: &MathModel, art: &ArtPack, fonts: &
             spawn_strips(c, model.grid.reels);
             spawn_feature_layer(c, art, &fonts.meter);
             spawn_hs_overlays(c, &fonts.meter);
+            spawn_win_lines(c, &fonts.sans);
 
             // The jackpots across the top.
             let (bar_w, bar_top) = (JACKPOT_BAR_W, JACKPOT_BAR_TOP);
@@ -2273,6 +2274,11 @@ pub struct FeatureShow {
     pub reveal: Option<Reveal>,
     /// The current free game has paid (its win shows on the banner).
     game_won: bool,
+    /// The game's winning lines (line, count, award), shown in turn, the
+    /// seconds they have shown, and their message.
+    pub win_lines: Vec<(u16, u8, u64)>,
+    win_t: f32,
+    pub win_note: Option<String>,
 }
 
 impl FeatureShow {
@@ -2280,6 +2286,7 @@ impl FeatureShow {
     pub fn on_event(&mut self, event: &Event) {
         match event {
             Event::SpinStarted { .. } => {
+                self.win_lines.clear();
                 self.stage = Stage::Base;
                 self.scatter_award = 0;
                 self.collected = None;
@@ -2298,13 +2305,23 @@ impl FeatureShow {
             Event::MysteryRevealed { symbol, .. } => {
                 self.reveal = Some((0.0, symbol.clone(), Vec::new()));
             }
-            Event::LineWin { .. } | Event::ScatterWin { .. }
-                if matches!(self.stage, Stage::FreeGames { .. }) =>
-            {
+            Event::LineWin {
+                line, count, award, ..
+            } => {
+                if self.win_lines.is_empty() {
+                    self.win_t = 0.0;
+                }
+                self.win_lines.push((*line, *count, *award));
+                if matches!(self.stage, Stage::FreeGames { .. }) {
+                    self.game_won = true;
+                }
+            }
+            Event::ScatterWin { .. } if matches!(self.stage, Stage::FreeGames { .. }) => {
                 self.game_won = true;
             }
             Event::FreeGameStarted { number, remaining } => {
                 self.game_won = false;
+                self.win_lines.clear();
                 self.stage = Stage::FreeGames {
                     number: *number,
                     total: number + remaining,
@@ -2400,6 +2417,9 @@ impl FeatureShow {
 
     /// The message at the right, in place of the start prompts.
     pub fn message(&self) -> Option<String> {
+        if let Some(note) = &self.win_note {
+            return Some(note.clone());
+        }
         let free_games = matches!(self.awaiting, Some(Await::Start(Feature::FreeGames)))
             || matches!(self.stage, Stage::FreeGames { .. });
         (free_games && self.scatter_award > 0)
@@ -4562,5 +4582,224 @@ pub fn gamble_screen(
         if t.0 != s {
             t.0 = s;
         }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Winning lines
+// ---------------------------------------------------------------------------
+//
+// Cabinet footage of a line win: the line is drawn with the game's own
+// pieces, a numbered badge over the line tab at each end and a short dash in
+// each gap between the reels, at the line's rows; it blinks (on about three
+// quarters of a second in each second), each winning line in turn, and the
+// message at the right reads "Line 1 wins 2".
+
+/// Seconds each winning line shows, and the part of that it is lit.
+const WIN_LINE_SECONDS: f32 = 1.0;
+const WIN_LINE_LIT: f32 = 0.75;
+/// The badge and dash sizes on the canvas (footage, scaled).
+const LINE_BADGE: (f32, f32) = (104.0, 80.0);
+const LINE_DASH: (f32, f32) = (52.0, 26.0);
+
+/// A badge at one end of the shown line.
+#[derive(Component)]
+pub struct LineBadge {
+    right: bool,
+}
+/// The number on a badge (lines above five; the first five badges carry
+/// their own).
+#[derive(Component)]
+pub struct LineBadgeNumber;
+/// The dash in one gap between reels.
+#[derive(Component)]
+pub struct LineDash {
+    gap: u8,
+}
+
+/// The pieces of the shown winning line, hidden until a line wins.
+pub fn spawn_win_lines(c: &mut ChildSpawnerCommands, font: &Handle<Font>) {
+    for right in [false, true] {
+        c.spawn((
+            LineBadge { right },
+            Node {
+                position_type: PositionType::Absolute,
+                width: Val::Px(LINE_BADGE.0),
+                height: Val::Px(LINE_BADGE.1),
+                justify_content: JustifyContent::Center,
+                align_items: AlignItems::Center,
+                ..default()
+            },
+            ImageNode {
+                image_mode: NodeImageMode::Stretch,
+                ..default()
+            },
+            GlobalZIndex(6),
+            Visibility::Hidden,
+        ))
+        .with_children(|b| {
+            b.spawn((
+                LineBadgeNumber,
+                Text::new(""),
+                TextFont {
+                    font: bevy::text::FontSource::Handle(font.clone()),
+                    font_size: FontSize::Px(52.0),
+                    ..default()
+                },
+                TextColor(Color::WHITE),
+                TextShadow {
+                    offset: Vec2::new(2.0, 2.0),
+                    color: Color::srgba(0.0, 0.0, 0.0, 0.6),
+                },
+            ));
+        });
+    }
+    for gap in 0..4u8 {
+        c.spawn((
+            LineDash { gap },
+            Node {
+                position_type: PositionType::Absolute,
+                width: Val::Px(LINE_DASH.0),
+                height: Val::Px(LINE_DASH.1),
+                ..default()
+            },
+            ImageNode {
+                image_mode: NodeImageMode::Stretch,
+                ..default()
+            },
+            UiTransform::IDENTITY,
+            GlobalZIndex(6),
+            Visibility::Hidden,
+        ));
+    }
+}
+
+/// Show the winning lines in turn, and their message.
+#[allow(clippy::too_many_arguments, clippy::type_complexity)]
+pub fn win_lines(
+    fidelity: Res<Fidelity>,
+    time: Res<Time>,
+    smoke: Res<Smoke>,
+    sim: Res<Sim>,
+    art: Res<ArtPack>,
+    denom: Res<Denom>,
+    gamble: Res<GambleShow>,
+    mut show: ResMut<FeatureShow>,
+    mut badges: Query<(&LineBadge, &mut Node, &mut ImageNode, &mut Visibility), Without<LineDash>>,
+    mut numbers: Query<&mut Text, With<LineBadgeNumber>>,
+    mut dashes: Query<
+        (
+            &LineDash,
+            &mut Node,
+            &mut ImageNode,
+            &mut UiTransform,
+            &mut Visibility,
+        ),
+        Without<LineBadge>,
+    >,
+) {
+    if !fidelity.0 {
+        return;
+    }
+    show.win_t += smoke.dt(&time);
+    let showing = !show.win_lines.is_empty()
+        && !gamble.active
+        && show.awaiting.is_none()
+        && !show.hold_and_spin()
+        && show.reveal.is_none();
+    let current = showing.then(|| {
+        let i = (show.win_t / WIN_LINE_SECONDS) as usize % show.win_lines.len();
+        show.win_lines[i]
+    });
+    show.win_note = current.map(|(line, _, award)| {
+        let shown = if (show.win_t / 2.5) as u32 % 2 == 1 {
+            grouped(award)
+        } else {
+            money(award, denom.cents())
+        };
+        format!("Line {} wins {shown}", line + 1)
+    });
+    let lit = current.filter(|_| show.win_t % WIN_LINE_SECONDS < WIN_LINE_LIT);
+    let rows = lit.and_then(|(line, _, _)| sim.game.model().paylines.get(line as usize));
+    let set = |vis: &mut Visibility, on: bool| {
+        let want = if on {
+            Visibility::Inherited
+        } else {
+            Visibility::Hidden
+        };
+        if *vis != want {
+            *vis = want;
+        }
+    };
+    let (Some((line, _, _)), Some(rows)) = (lit, rows) else {
+        for (_, _, _, mut v) in &mut badges {
+            set(&mut v, false);
+        }
+        for (_, _, _, _, mut v) in &mut dashes {
+            set(&mut v, false);
+        }
+        return;
+    };
+    // The game's five line colours, by line number.
+    let group = (line as usize % 5) + 1;
+    let row_y = |reel: usize| {
+        let row = rows.0.get(reel).copied().unwrap_or(1);
+        cell_center(reel as u8, row).1
+    };
+    let badge_key = if line < 5 {
+        format!("line{group}")
+    } else {
+        format!("line_blank{group}")
+    };
+    let tab_x = 2.0 * PITCH.0 + 196.0;
+    for (b, mut node, mut image, mut vis) in &mut badges {
+        let reel = if b.right {
+            rows.0.len().saturating_sub(1)
+        } else {
+            0
+        };
+        let x = GRID_CENTER.0 + if b.right { tab_x } else { -tab_x };
+        node.left = Val::Px(x - LINE_BADGE.0 / 2.0);
+        node.top = Val::Px(row_y(reel) - LINE_BADGE.1 / 2.0);
+        if let Some(h) = art.ui.get(&badge_key)
+            && image.image != *h
+        {
+            image.image = h.clone();
+        }
+        set(&mut vis, true);
+    }
+    let number = if line < 5 {
+        String::new()
+    } else {
+        (line + 1).to_string()
+    };
+    for mut t in &mut numbers {
+        if t.0 != number {
+            t.0 = number.clone();
+        }
+    }
+    let dash_key = format!("line{group}_s");
+    for (d, mut node, mut image, mut transform, mut vis) in &mut dashes {
+        let a = d.gap as usize;
+        let (y0, y1) = (row_y(a), row_y(a + 1));
+        let x = (cell_center(d.gap, 0).0 + cell_center(d.gap + 1, 0).0) / 2.0;
+        let y = (y0 + y1) / 2.0;
+        node.left = Val::Px(x - LINE_DASH.0 / 2.0);
+        node.top = Val::Px(y - LINE_DASH.1 / 2.0);
+        // Slanted where the line steps between rows.
+        let angle = (y1 - y0).atan2(PITCH.0);
+        let want = UiTransform {
+            rotation: Rot2::radians(angle),
+            ..UiTransform::IDENTITY
+        };
+        if *transform != want {
+            *transform = want;
+        }
+        if let Some(h) = art.ui.get(&dash_key)
+            && image.image != *h
+        {
+            image.image = h.clone();
+        }
+        set(&mut vis, true);
     }
 }

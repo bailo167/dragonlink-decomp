@@ -1805,6 +1805,7 @@ fn main() -> AppExit {
                 cabinet::hs_backdrop,
                 cabinet::door_reveal,
                 cabinet::door_draw,
+                cabinet::win_lines,
             )
                 .chain(),
             (
