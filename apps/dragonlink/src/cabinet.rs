@@ -211,6 +211,13 @@ pub fn cell_size() -> (f32, f32) {
 /// height.
 const ORB_SCALE: (f32, f32) = (1.12, 1.02);
 
+/// The height scale the coin's image is drawn at; what sits on the coin (its
+/// tier plate) is drawn at this scale, at its own proportions, so it stays
+/// inside the coin.
+pub fn orb_scale(_src: (f32, f32)) -> f32 {
+    SYMBOL_SCALE.1 * ORB_SCALE.1
+}
+
 /// The on-canvas size of symbol `key`'s image of `src` pixels.
 pub fn symbol_size(key: &str, src: (f32, f32)) -> (f32, f32) {
     let k = if key == "orb" { ORB_SCALE } else { (1.0, 1.0) };
@@ -304,12 +311,21 @@ pub fn spawn(commands: &mut Commands, model: &MathModel, art: &ArtPack, fonts: &
             ));
             for side in [-1.0f32, 1.0] {
                 let x = gx + side * (2.0 * PITCH.0 + 196.0);
-                c.spawn(sprite(ui("payline_tab"), x, gy, 134.0, 272.0));
+                // The tabs stand in front of the reels: a coin on an outer
+                // reel overhangs its reel and must not cover them.
+                c.spawn((
+                    sprite(ui("payline_tab"), x, gy, 134.0, 272.0),
+                    GlobalZIndex(3),
+                ));
                 c.spawn((
                     CabMeter::Lines,
                     label("50", font, 64.0, gold, x, gy - 34.0, 134.0),
+                    GlobalZIndex(4),
                 ));
-                c.spawn(label("LINES", font, 34.0, gold, x, gy + 34.0, 134.0));
+                c.spawn((
+                    label("LINES", font, 34.0, gold, x, gy + 34.0, 134.0),
+                    GlobalZIndex(4),
+                ));
             }
 
             // The reels: one cell per window position.
@@ -1858,17 +1874,14 @@ pub fn orb_overlay(
             }
         }
     }
-    // The tier plate covers the coin itself, at the coin's drawn size.
+    // The tier plate sits on the coin at the coin's own scale.
     let (cw, ch) = cell_size();
-    let (pw, ph) = art
-        .sizes
-        .get("orb")
-        .map_or((cw, ch), |s| symbol_size("orb", *s));
+    let k = art.sizes.get("orb").map_or(1.0, |s| orb_scale(*s));
     for (o, mut image, mut vis, mut node) in &mut tiers {
-        let Some(h) = face(o.reel, o.row)
+        let Some((key, h)) = face(o.reel, o.row)
             .as_deref()
             .and_then(tier_image)
-            .and_then(|k| art.ui.get(k))
+            .and_then(|key| art.ui.get(key).map(|h| (key, h)))
         else {
             *vis = Visibility::Hidden;
             continue;
@@ -1876,6 +1889,7 @@ pub fn orb_overlay(
         if image.image != *h {
             image.image = h.clone();
         }
+        let (pw, ph) = art.sizes.get(key).map_or((cw, ch), |s| (s.0 * k, s.1 * k));
         node.width = Val::Px(pw);
         node.height = Val::Px(ph);
         node.left = Val::Px((cw - pw) / 2.0);
@@ -2733,7 +2747,7 @@ pub fn spawn_hs_spin(cell: &mut ChildSpawnerCommands, art: &ArtPack, reel: u8, r
     });
     cell.spawn((
         HsRing { reel, row },
-        centred(ow * 1.1, oh * 1.1),
+        centred(ow * 1.02, oh * 1.02),
         ImageNode {
             image_mode: NodeImageMode::Stretch,
             ..default()
@@ -2742,7 +2756,7 @@ pub fn spawn_hs_spin(cell: &mut ChildSpawnerCommands, art: &ArtPack, reel: u8, r
     ));
     cell.spawn((
         HsBurst { reel, row },
-        centred(ow * 1.6, oh * 1.6),
+        centred(ow * 1.3, oh * 1.3),
         ImageNode {
             image_mode: NodeImageMode::Stretch,
             ..default()
