@@ -180,6 +180,8 @@ pub struct CabFonts {
     pub sans: Handle<Font>,
     /// A face with the card suits.
     pub symbols: Handle<Font>,
+    /// Bold italic, for the gamble screen.
+    pub italic: Handle<Font>,
 }
 
 /// Load the cabinet's fonts from the operating system, where it has them.
@@ -205,6 +207,10 @@ pub fn load_fonts(fonts: &mut Assets<Font>) -> CabFonts {
         symbols: first(&[
             "/System/Library/Fonts/Apple Symbols.ttf",
             "C:/Windows/Fonts/seguisym.ttf",
+        ]),
+        italic: first(&[
+            "/System/Library/Fonts/Supplemental/Arial Bold Italic.ttf",
+            "C:/Windows/Fonts/arialbi.ttf",
         ]),
     }
 }
@@ -674,30 +680,6 @@ fn spawn_meter_band(
             ));
         }
     });
-
-    // The lines box: the line count over "LINES".
-    c.spawn((
-        Node {
-            border: UiRect::all(Val::Px(2.0)),
-            border_radius: BorderRadius::all(Val::Px(10.0)),
-            ..rect(86.0, METER_Y - 56.0, 86.0, 112.0)
-        },
-        BackgroundColor(inset),
-        BorderColor::all(rim),
-    ));
-    c.spawn((
-        CabMeter::Lines,
-        label("50", font, 62.0, gold, 129.0, METER_Y - 16.0, 86.0),
-    ));
-    c.spawn(label(
-        "LINES",
-        font,
-        28.0,
-        gold,
-        129.0,
-        METER_Y + 32.0,
-        86.0,
-    ));
 
     // CREDIT / BET / WIN, their values, WIN's value in its own box.
     for (text, x, w) in [
@@ -2817,10 +2799,6 @@ pub const DIM_TINT: Color = Color::srgb(0.62, 0.62, 0.68);
 const HS_BACKDROP: Color = Color::srgb(0.17, 0.16, 0.23);
 /// The veil over an open Hold & Spin position.
 const HS_VEIL: Color = Color::srgba(0.24, 0.21, 0.30, 0.74);
-/// An open position while it respins: the veiled reel face, and the tint of
-/// the symbols passing through it.
-const HS_SPIN_FACE: Color = Color::srgb(0.13, 0.15, 0.24);
-const HS_SPIN_TINT: Color = Color::srgb(0.36, 0.37, 0.43);
 
 /// A respin in motion: each open position spins, then stops in turn.
 #[derive(Clone, Debug, Default)]
@@ -2950,13 +2928,14 @@ pub struct WinnerPlate;
 pub fn winner_plate(
     fidelity: Res<Fidelity>,
     show: Res<FeatureShow>,
+    gamble: Res<GambleShow>,
     mut plates: Query<&mut Visibility, With<WinnerPlate>>,
 ) {
     if !fidelity.0 {
         return;
     }
     for mut v in &mut plates {
-        let want = if show.winner.is_some() {
+        let want = if show.winner.is_some() && !gamble.active {
             Visibility::Inherited
         } else {
             Visibility::Hidden
@@ -3006,6 +2985,41 @@ fn respin_symbol(reel: u8, row: u8, n: i64) -> &'static str {
     }
 }
 
+impl RespinAnim {
+    /// A respinning position's strip now: its scroll position, and the strip
+    /// index it comes to rest on and whether a coin lands there. The scroll
+    /// runs so it stops exactly on that index.
+    fn strip(&self, reel: u8, row: u8) -> Option<(f32, i64, bool)> {
+        let &(_, _, at, coin) = self
+            .stops
+            .iter()
+            .find(|s| s.0 == reel && s.1 == row)
+            .filter(|s| self.t < s.2)?;
+        let end = ((at * RESPIN_SPEED).round() as i64).max(2);
+        Some((self.t * end as f32 / at, end, coin))
+    }
+}
+
+/// The symbol at strip index `n` of a respinning position that comes to
+/// rest at `end` (a coin there if one lands; never a coin otherwise).
+fn respin_key(reel: u8, row: u8, n: i64, end: i64, coin: bool) -> &'static str {
+    let key = respin_symbol(reel, row, n);
+    if n == end {
+        if coin {
+            "orb"
+        } else if key == "orb" {
+            "Q"
+        } else {
+            key
+        }
+    } else if (n - end).abs() == 1 && key == "orb" {
+        // No stray coin right beside the landing one.
+        "K"
+    } else {
+        key
+    }
+}
+
 /// An open position's spinning strip.
 #[derive(Component)]
 pub struct HsSpin {
@@ -3033,6 +3047,7 @@ pub fn hs_spin_digits(
     denom: Res<Denom>,
     spins: Query<(&HsSpin, &Children)>,
     images: Query<(&HsSpinImage, &Children)>,
+    labels: Query<(&CellLabel, &Text)>,
     mut digits: Query<(&HsSpinDigit, &mut ImageNode, &mut Node)>,
 ) {
     if !fidelity.0 {
@@ -3044,15 +3059,31 @@ pub fn hs_spin_digits(
     let total_bet = sim.game.total_bet();
     let cents = denom.cents();
     let ch = cell_size().1;
-    let pos = anim.t * RESPIN_SPEED;
-    let base = pos.floor() as i64;
     for (spin, spin_children) in &spins {
+        let Some((pos, end, coin)) = anim.strip(spin.reel, spin.row) else {
+            continue;
+        };
+        let base = pos.floor() as i64;
+        // The coin landing here carries its drawn prize.
+        let landing = labels
+            .iter()
+            .find(|(l, _)| l.reel == spin.reel && l.row == spin.row)
+            .and_then(|(_, t)| t.0.strip_prefix("ORB\n"))
+            .map(str::to_string);
         for image_entity in spin_children.iter() {
             let Ok((img, children)) = images.get(image_entity) else {
                 continue;
             };
             let n = base + i64::from(img.index);
-            let text = (respin_symbol(spin.reel, spin.row, n) == "orb").then(|| {
+            if coin && n == end {
+                let text = landing
+                    .as_deref()
+                    .and_then(|f| face_credits(f, total_bet))
+                    .map(|c| coin_text(c, cents));
+                letter(&art, ch, text.as_deref(), children, &mut digits);
+                continue;
+            }
+            let text = (respin_key(spin.reel, spin.row, n, end, coin) == "orb").then(|| {
                 // Passing coins carry bet multiples, never a tier plate.
                 let face = passing_face(spin.reel, n * 3 + i64::from(spin.row));
                 let face = if tier_image(face).is_some() {
@@ -3062,39 +3093,41 @@ pub fn hs_spin_digits(
                 };
                 face_credits(face, total_bet).map(|c| coin_text(c, cents))
             });
-            let text = text.flatten();
-            // The coin is drawn shrunk to fit the position; so are its digits.
-            let fit = art
-                .sizes
-                .get("orb")
-                .map_or(1.0, |s| (ch * 0.96 / symbol_size("orb", *s).1).min(1.0));
-            let digit_h = ch * COIN_DIGIT_SHARE * fit;
-            let scale = text
-                .as_deref()
-                .map_or(1.0, |t| coin_digit_scale(t, &art, digit_h));
-            for child in children.iter() {
-                let Ok((d, mut image, mut node)) = digits.get_mut(child) else {
-                    continue;
-                };
-                let glyph = text
-                    .as_deref()
-                    .and_then(|t| t.chars().nth(d.index as usize))
-                    .and_then(|c| {
-                        let key = coin_key(c);
-                        art.ui.get(&key).cloned().zip(art.sizes.get(&key).copied())
-                    });
-                match glyph {
-                    Some((h, (w, gh))) => {
-                        if image.image != h {
-                            image.image = h;
-                        }
-                        node.width = Val::Px(w * scale);
-                        node.height = Val::Px(gh * scale);
-                        node.display = Display::Flex;
-                    }
-                    None => node.display = Display::None,
+            letter(&art, ch, text.flatten().as_deref(), children, &mut digits);
+        }
+    }
+}
+
+/// Letter the digit slots of a coin passing on a respinning position.
+fn letter(
+    art: &ArtPack,
+    ch: f32,
+    text: Option<&str>,
+    children: &Children,
+    digits: &mut Query<(&HsSpinDigit, &mut ImageNode, &mut Node)>,
+) {
+    let digit_h = ch * COIN_DIGIT_SHARE;
+    let scale = text.map_or(1.0, |t| coin_digit_scale(t, art, digit_h));
+    for child in children.iter() {
+        let Ok((d, mut image, mut node)) = digits.get_mut(child) else {
+            continue;
+        };
+        let glyph = text
+            .and_then(|t| t.chars().nth(d.index as usize))
+            .and_then(|c| {
+                let key = coin_key(c);
+                art.ui.get(&key).cloned().zip(art.sizes.get(&key).copied())
+            });
+        match glyph {
+            Some((h, (w, gh))) => {
+                if image.image != h {
+                    image.image = h;
                 }
+                node.width = Val::Px(w * scale);
+                node.height = Val::Px(gh * scale);
+                node.display = Display::Flex;
             }
+            None => node.display = Display::None,
         }
     }
 }
@@ -3150,15 +3183,33 @@ pub fn spawn_hs_spin(cell: &mut ChildSpawnerCommands, art: &ArtPack, reel: u8, r
         ImageNode {
             image: art.ui.get("white").cloned().unwrap_or_default(),
             image_mode: NodeImageMode::Stretch,
-            color: HS_SPIN_FACE,
+            color: HS_BACKDROP,
             ..default()
         },
         Visibility::Hidden,
     ))
     .with_children(|s| {
+        // The veil a resting open position wears, so a respinning one
+        // matches it; coins pass in front of it.
+        s.spawn((
+            Node {
+                position_type: PositionType::Absolute,
+                width: Val::Percent(100.0),
+                height: Val::Percent(100.0),
+                ..default()
+            },
+            ImageNode {
+                image: art.ui.get("white").cloned().unwrap_or_default(),
+                image_mode: NodeImageMode::Stretch,
+                color: HS_VEIL,
+                ..default()
+            },
+            ZIndex(1),
+        ));
         for index in 0..3u8 {
             s.spawn((
                 HsSpinImage { index },
+                ZIndex(0),
                 Node {
                     position_type: PositionType::Absolute,
                     flex_direction: FlexDirection::Row,
@@ -3477,15 +3528,11 @@ pub fn hold_and_spin_motion(
                 );
                 show.bursts.push((reel, row, clock));
             } else {
-                // The position comes to rest on a new dimmed symbol.
-                let n = (anim.t * RESPIN_SPEED) as i64;
+                // The position comes to rest on the strip's landing symbol.
+                let end = ((at * RESPIN_SPEED).round() as i64).max(2);
                 for (l, mut text) in &mut labels {
                     if l.reel == reel && l.row == row && open(&text.0) {
-                        let key = match respin_symbol(reel, row, n) {
-                            "orb" => "9",
-                            k => k,
-                        };
-                        text.0 = format!("{DIM}{key}");
+                        text.0 = format!("{DIM}{}", respin_key(reel, row, end, end, false));
                     }
                 }
             }
@@ -3568,11 +3615,12 @@ pub fn hold_and_spin_motion(
 pub fn hold_and_spin_draw(
     fidelity: Res<Fidelity>,
     show: Res<FeatureShow>,
+    gamble: Res<GambleShow>,
     art: Res<ArtPack>,
     denom: Res<Denom>,
     labels: Query<(&CellLabel, &Text), Without<WinnerText>>,
     mut spins: Query<(&HsSpin, &mut Visibility, &Children)>,
-    mut images: Query<(&HsSpinImage, &mut Node, &mut ImageNode), Without<HsSpin>>,
+    mut images: Query<(&HsSpinImage, &mut Node, &mut ImageNode, &mut ZIndex), Without<HsSpin>>,
     mut rings: Query<
         (&HsRing, &mut ImageNode, &mut Visibility),
         (Without<HsSpin>, Without<HsSpinImage>, Without<HsBurst>),
@@ -3663,46 +3711,52 @@ pub fn hold_and_spin_draw(
             .find(|(l, _)| l.reel == reel && l.row == row)
             .map_or("", |(_, t)| t.0.as_str())
     };
-    let spinning = |reel: u8, row: u8| -> Option<f32> {
-        let a = show.respin.as_ref()?;
-        a.stops
-            .iter()
-            .find(|s| s.0 == reel && s.1 == row)
-            .filter(|s| a.t < s.2)
-            .map(|_| a.t)
-    };
+    let spinning =
+        |reel: u8, row: u8| -> Option<(f32, i64, bool)> { show.respin.as_ref()?.strip(reel, row) };
 
     // Open positions spinning: dimmed symbols scrolling, coins bright.
     let (cw, ch) = cell_size();
     for (spin, mut vis, children) in &mut spins {
         let t = spinning(spin.reel, spin.row);
         set(&mut vis, t.is_some());
-        let Some(t) = t else { continue };
-        let pos = t * RESPIN_SPEED;
+        let Some((pos, end, coin)) = t else { continue };
         let base = pos.floor() as i64;
         for child in children.iter() {
-            let Ok((img, mut node, mut image)) = images.get_mut(child) else {
+            let Ok((img, mut node, mut image, mut z)) = images.get_mut(child) else {
                 continue;
             };
             let n = base + i64::from(img.index);
-            let key = respin_symbol(spin.reel, spin.row, n);
+            let key = respin_key(spin.reel, spin.row, n, end, coin);
             let (w, h) = art
                 .sizes
                 .get(key)
                 .map_or((cw, ch), |s| symbol_size(key, *s));
-            // Symbols taller than the position shrink to fit it.
-            let fit = (ch * 0.96 / h).min(1.0);
+            // Symbols taller than the position shrink to fit it; a coin keeps
+            // its size, so it lands without a jump.
+            let fit = if key == "orb" {
+                1.0
+            } else {
+                (ch * 0.96 / h).min(1.0)
+            };
             let (w, h) = (w * fit, h * fit);
             if let Some(handle) = art.symbols.get(key)
                 && image.image != *handle
             {
                 image.image = handle.clone();
             }
-            image.color = if key == "orb" {
-                Color::WHITE
+            // Symbols dimmed under the veil, as on resting positions; coins
+            // bright in front of it.
+            let (tint, layer) = if key == "orb" {
+                (Color::WHITE, ZIndex(2))
             } else {
-                HS_SPIN_TINT
+                (DIM_TINT, ZIndex(0))
             };
+            if image.color != tint {
+                image.color = tint;
+            }
+            if *z != layer {
+                *z = layer;
+            }
             // Symbols move down through the position.
             let cy = ch / 2.0 + (pos - n as f32) * ch;
             node.left = Val::Px((cw - w) / 2.0);
@@ -3808,7 +3862,9 @@ pub fn hold_and_spin_draw(
 
     // The WINNER total.
     for (mut image, mut vis) in &mut winner {
-        match show.winner.and(frame("flameborder_sm", clock, true)) {
+        // The gamble shows the jackpots, not the WINNER total.
+        let winner = show.winner.filter(|_| !gamble.active);
+        match winner.and(frame("flameborder_sm", clock, true)) {
             Some(h) => {
                 if image.image != h {
                     image.image = h;
@@ -3820,6 +3876,7 @@ pub fn hold_and_spin_draw(
     }
     let amount = show
         .winner
+        .filter(|_| !gamble.active)
         .map(|w| money(w, denom.cents()))
         .unwrap_or_default();
     for mut t in &mut winner_text {
@@ -4004,6 +4061,8 @@ pub struct GambleShow {
     pub active: bool,
     /// The card turned up, whether it won, seconds since.
     card: Option<(u8, bool, f32)>,
+    /// The last gamble made: its choice and what it staked.
+    last: Option<(GamblePick, u64)>,
     /// Cards turned, most recent first.
     history: Vec<u8>,
     /// What is at stake now (credits).
@@ -4143,8 +4202,13 @@ pub fn gamble_control(
             for e in &events {
                 match e {
                     Event::GambleResolved {
-                        card, won, award, ..
+                        pick,
+                        card,
+                        won,
+                        stake,
+                        award,
                     } => {
+                        gamble.last = Some((*pick, *stake));
                         gamble.card = Some((*card, *won, 0.0));
                         gamble.history.insert(0, *card);
                         gamble.history.truncate(HISTORY);
@@ -4176,42 +4240,47 @@ pub enum GambleText {
     ToWin,
     /// "Gamble Win / n / $x" over a winning card.
     GambleWin,
-    /// "WIN" across a winning card.
-    WinStamp,
 }
-/// The card: its back, or its face.
+/// The card in the middle: its back, or the turned card's face.
 #[derive(Component)]
-pub struct GambleCardBack;
+pub struct GambleCard;
+/// "WIN" stamped across a winning card.
 #[derive(Component)]
-pub struct GambleCardFace;
-#[derive(Component)]
-pub struct GambleCardRank;
-#[derive(Component)]
-pub struct GambleCardSuit;
+pub struct GambleStamp;
 /// A card in the history strip.
 #[derive(Component)]
 pub struct GambleHistory(usize);
 
-/// Build the gamble screen over the reel window (hidden until a gamble).
+/// The text style of the gamble screen: bold italic white with a dark
+/// shadow (cabinet footage).
+fn gamble_text(
+    s: &str,
+    font: &Handle<Font>,
+    size: f32,
+) -> (Text, TextFont, TextColor, TextLayout, TextShadow) {
+    (
+        Text::new(s),
+        TextFont {
+            font: bevy::text::FontSource::Handle(font.clone()),
+            font_size: FontSize::Px(size),
+            ..default()
+        },
+        TextColor(Color::srgb(0.98, 0.97, 0.94)),
+        TextLayout::justify(Justify::Center),
+        TextShadow {
+            offset: Vec2::new(2.0, 3.0),
+            color: Color::srgba(0.0, 0.0, 0.0, 0.85),
+        },
+    )
+}
+
+/// Build the gamble screen (hidden until a gamble): the game's feature
+/// backdrop, the panels either side of the card, the card, the history.
 pub fn spawn_gamble_screen(c: &mut ChildSpawnerCommands, art: &ArtPack, fonts: &CabFonts) {
-    // The gamble takes the whole screen between the jackpots and the meter
-    // band, as the cabinet's does.
+    let ui = |k: &str| art.ui.get(k).cloned().unwrap_or_default();
+    // The whole screen between the jackpots and the meter band.
     let top = JACKPOT_BAR_TOP + JACKPOT_BAR_W * 104.0 / 1225.0 + 4.0;
-    let (left, w, h) = (0.0, CANVAS_W, BAND_TOP - top);
-    let white = Color::srgb(0.97, 0.97, 0.97);
-    let sans = &fonts.sans;
-    let text = |s: &str, size: f32, color: Color| {
-        (
-            Text::new(s),
-            TextFont {
-                font: bevy::text::FontSource::Handle(sans.clone()),
-                font_size: FontSize::Px(size),
-                ..default()
-            },
-            TextColor(color),
-            TextLayout::justify(Justify::Center),
-        )
-    };
+    let (w, h) = (CANVAS_W, BAND_TOP - top);
     let at = |cx: f32, cy: f32, bw: f32, bh: f32| Node {
         position_type: PositionType::Absolute,
         left: Val::Px(cx - bw / 2.0),
@@ -4222,11 +4291,12 @@ pub fn spawn_gamble_screen(c: &mut ChildSpawnerCommands, art: &ArtPack, fonts: &
         align_items: AlignItems::Center,
         ..default()
     };
+    let italic = &fonts.italic;
     c.spawn((
         GambleRoot,
         Node {
             position_type: PositionType::Absolute,
-            left: Val::Px(left),
+            left: Val::Px(0.0),
             top: Val::Px(top),
             width: Val::Px(w),
             height: Val::Px(h),
@@ -4237,214 +4307,135 @@ pub fn spawn_gamble_screen(c: &mut ChildSpawnerCommands, art: &ArtPack, fonts: &
         Visibility::Hidden,
     ))
     .with_children(|g| {
-        // The game's own backdrop, aligned with the one behind the screen,
-        // dimmed a little.
+        // The game's own sunset over the Great Wall, as the gamble shows it.
         g.spawn((
             Node {
                 position_type: PositionType::Absolute,
-                left: Val::Px(-left),
-                top: Val::Px(-30.0 - top),
-                width: Val::Px(1920.0),
-                height: Val::Px(1242.0),
+                left: Val::Px(0.0),
+                top: Val::Px(0.0),
+                width: Val::Percent(100.0),
+                height: Val::Percent(100.0),
                 ..default()
             },
             ImageNode {
-                image: art.ui.get("background").cloned().unwrap_or_default(),
+                image: ui("feature_background"),
                 image_mode: NodeImageMode::Stretch,
-                color: Color::srgb(0.9, 0.88, 0.92),
                 ..default()
             },
         ));
-        let (lx, cx, rx) = (w * 0.5 - 500.0, w * 0.5, w * 0.5 + 500.0);
-        // Left: the tab, the amount, RED and the red suits.
-        g.spawn((
-            BackgroundColor(Color::srgb(0.2, 0.26, 0.6)),
-            BorderColor::all(Color::srgb(0.9, 0.75, 0.4)),
-            Node {
-                border: UiRect::all(Val::Px(3.0)),
-                border_radius: BorderRadius::all(Val::Px(25.0)),
-                ..at(lx, 110.0, 360.0, 50.0)
-            },
-        ))
-        .with_children(|t| {
-            t.spawn(text("Full Gamble Selected", 26.0, white));
-        });
-        g.spawn((at(lx, 235.0, 460.0, 170.0),)).with_children(|t| {
-            t.spawn((GambleText::Amount, text("", 30.0, white)));
-        });
-        gamble_button(g, sans, GamblePick::Red, lx, 390.0, 330.0, 76.0);
-        gamble_button(
-            g,
-            &fonts.symbols,
-            GamblePick::Hearts,
-            lx - 90.0,
-            500.0,
-            150.0,
-            86.0,
-        );
-        gamble_button(
-            g,
-            &fonts.symbols,
-            GamblePick::Diamonds,
-            lx + 90.0,
-            500.0,
-            150.0,
-            86.0,
-        );
-
-        // Middle: the card, "Gamble Win" over it, "WIN" across it.
-        g.spawn((at(cx, 115.0, 400.0, 150.0),)).with_children(|t| {
-            t.spawn((GambleText::GambleWin, text("", 30.0, white)));
-        });
-        let (cw, ch) = (240.0, 336.0);
-        g.spawn((
-            GambleCardBack,
-            Node {
-                border: UiRect::all(Val::Px(8.0)),
-                border_radius: BorderRadius::all(Val::Px(16.0)),
-                padding: UiRect::all(Val::Px(10.0)),
-                ..at(cx, 390.0, cw, ch)
-            },
-            BackgroundColor(Color::srgb(0.95, 0.9, 0.92)),
-            BorderColor::all(Color::srgb(0.97, 0.95, 0.96)),
-        ))
-        .with_children(|b| {
-            b.spawn((
-                Node {
-                    width: Val::Percent(100.0),
-                    height: Val::Percent(100.0),
-                    border: UiRect::all(Val::Px(3.0)),
-                    border_radius: BorderRadius::all(Val::Px(8.0)),
+        let (lx, cx, rx) = (w * 0.5 - 470.0, w * 0.5, w * 0.5 + 470.0);
+        let pill = |g: &mut ChildSpawnerCommands, x: f32, y: f32, pw: f32, s: &str| {
+            g.spawn((
+                at(x, y, pw, 50.0),
+                ImageNode {
+                    image: ui("pill"),
+                    image_mode: NodeImageMode::Stretch,
                     ..default()
                 },
-                BackgroundColor(Color::srgb(0.8, 0.3, 0.42)),
-                BorderColor::all(Color::srgb(0.62, 0.16, 0.28)),
-            ));
-        });
-        g.spawn((
-            GambleCardFace,
-            Node {
-                border: UiRect::all(Val::Px(3.0)),
-                border_radius: BorderRadius::all(Val::Px(16.0)),
-                ..at(cx, 390.0, cw, ch)
-            },
-            BackgroundColor(Color::srgb(0.99, 0.99, 0.99)),
-            BorderColor::all(Color::srgb(0.75, 0.75, 0.78)),
-            Visibility::Hidden,
-        ))
-        .with_children(|f| {
-            f.spawn((
-                GambleCardRank,
-                text("A", 64.0, Color::BLACK),
-                Node {
-                    position_type: PositionType::Absolute,
-                    left: Val::Px(14.0),
-                    top: Val::Px(4.0),
-                    ..default()
-                },
-            ));
-            f.spawn((
-                GambleCardSuit,
-                Text::new("\u{2660}"),
-                TextFont {
-                    font: bevy::text::FontSource::Handle(fonts.symbols.clone()),
-                    font_size: FontSize::Px(150.0),
-                    ..default()
-                },
-                TextColor(Color::BLACK),
-            ));
-        });
-        g.spawn((at(cx, 520.0, 420.0, 130.0), GlobalZIndex(13)))
-            .with_children(|t| {
-                t.spawn((
-                    GambleText::WinStamp,
-                    Text::new(""),
-                    TextFont {
-                        font: bevy::text::FontSource::Handle(fonts.meter.clone()),
-                        font_size: FontSize::Px(130.0),
-                        ..default()
-                    },
-                    TextColor(Color::srgb(1.0, 0.72, 0.1)),
-                ));
+            ))
+            .with_children(|p| {
+                p.spawn(gamble_text(s, italic, 25.0));
             });
+        };
+        // Left: the tab, the amount, RED and the red suits.
+        pill(g, lx, 92.0, 330.0, "Full Gamble Selected");
+        g.spawn((at(lx, 210.0, 460.0, 170.0),)).with_children(|t| {
+            t.spawn((GambleText::Amount, gamble_text("", italic, 30.0)));
+        });
+        gamble_button(g, art, GamblePick::Red, lx, 360.0, 330.0, 76.0);
+        gamble_button(g, art, GamblePick::Hearts, lx - 84.0, 460.0, 150.0, 86.0);
+        gamble_button(g, art, GamblePick::Diamonds, lx + 84.0, 460.0, 150.0, 86.0);
+
+        // Middle: "Gamble Win" over the card, "WIN" across it.
+        g.spawn((at(cx, 92.0, 400.0, 130.0),)).with_children(|t| {
+            t.spawn((GambleText::GambleWin, gamble_text("", italic, 30.0)));
+        });
+        g.spawn((
+            GambleCard,
+            at(cx, 345.0, 240.0, 336.0),
+            ImageNode {
+                image: ui("card_back"),
+                image_mode: NodeImageMode::Stretch,
+                ..default()
+            },
+        ));
+        g.spawn((
+            GambleStamp,
+            at(cx, 410.0, 420.0, 170.0),
+            ImageNode {
+                image: ui("win_stamp"),
+                image_mode: NodeImageMode::Stretch,
+                ..default()
+            },
+            GlobalZIndex(13),
+            Visibility::Hidden,
+        ));
 
         // Right: HISTORY, the amount to win, BLACK and the black suits.
         g.spawn((
             Node {
-                border: UiRect::all(Val::Px(3.0)),
-                border_radius: BorderRadius::all(Val::Px(25.0)),
-                column_gap: Val::Px(8.0),
-                padding: UiRect::horizontal(Val::Px(18.0)),
+                column_gap: Val::Px(6.0),
+                padding: UiRect::horizontal(Val::Px(22.0)),
                 justify_content: JustifyContent::FlexStart,
-                ..at(rx, 110.0, 420.0, 50.0)
+                ..at(rx, 92.0, 420.0, 50.0)
             },
-            BackgroundColor(Color::srgb(0.2, 0.26, 0.6)),
-            BorderColor::all(Color::srgb(0.9, 0.75, 0.4)),
+            ImageNode {
+                image: ui("pill"),
+                image_mode: NodeImageMode::Stretch,
+                ..default()
+            },
         ))
         .with_children(|t| {
-            t.spawn(text("HISTORY", 26.0, white));
+            t.spawn(gamble_text("HISTORY", italic, 25.0));
             for i in 0..HISTORY {
                 t.spawn((
                     GambleHistory(i),
                     Text::new(""),
                     TextFont {
                         font: bevy::text::FontSource::Handle(fonts.symbols.clone()),
-                        font_size: FontSize::Px(30.0),
+                        font_size: FontSize::Px(28.0),
                         ..default()
                     },
                     TextColor(Color::BLACK),
                 ));
             }
         });
-        g.spawn((at(rx, 235.0, 460.0, 170.0),)).with_children(|t| {
-            t.spawn((GambleText::ToWin, text("", 30.0, white)));
+        g.spawn((at(rx, 210.0, 460.0, 170.0),)).with_children(|t| {
+            t.spawn((GambleText::ToWin, gamble_text("", italic, 30.0)));
         });
-        gamble_button(g, sans, GamblePick::Black, rx, 390.0, 330.0, 76.0);
-        gamble_button(
-            g,
-            &fonts.symbols,
-            GamblePick::Clubs,
-            rx - 90.0,
-            500.0,
-            150.0,
-            86.0,
-        );
-        gamble_button(
-            g,
-            &fonts.symbols,
-            GamblePick::Spades,
-            rx + 90.0,
-            500.0,
-            150.0,
-            86.0,
-        );
+        gamble_button(g, art, GamblePick::Black, rx, 360.0, 330.0, 76.0);
+        gamble_button(g, art, GamblePick::Clubs, rx - 84.0, 460.0, 150.0, 86.0);
+        gamble_button(g, art, GamblePick::Spades, rx + 84.0, 460.0, 150.0, 86.0);
 
-        g.spawn((at(cx, h - 40.0, 900.0, 50.0),))
+        g.spawn((at(cx, h - 34.0, 900.0, 50.0),))
             .with_children(|t| {
-                t.spawn(text("Select a SUIT, RED/BLACK or TAKE WIN", 30.0, white));
+                t.spawn(gamble_text(
+                    "Select a SUIT, RED/BLACK or TAKE WIN",
+                    italic,
+                    26.0,
+                ));
             });
     });
 }
 
-/// A silver-rimmed gamble button on the screen.
+/// A gamble button on the screen: the gold-rimmed chrome RED / BLACK
+/// lozenges and the gold suit ovals.
 fn gamble_button(
     g: &mut ChildSpawnerCommands,
-    font: &Handle<Font>,
+    art: &ArtPack,
     pick: GamblePick,
     cx: f32,
     cy: f32,
     w: f32,
     h: f32,
 ) {
-    let ink = if is_red(pick) {
-        Color::srgb(0.85, 0.08, 0.08)
-    } else {
-        Color::srgb(0.06, 0.12, 0.45)
-    };
-    let size = if matches!(pick, GamblePick::Red | GamblePick::Black) {
-        60.0
-    } else {
-        64.0
+    let key = match pick {
+        GamblePick::Red => "btn_red",
+        GamblePick::Black => "btn_black",
+        GamblePick::Hearts => "suit_hearts",
+        GamblePick::Diamonds => "suit_diamonds",
+        GamblePick::Clubs => "suit_clubs",
+        GamblePick::Spades => "suit_spades",
     };
     g.spawn((
         Node {
@@ -4453,26 +4444,14 @@ fn gamble_button(
             top: Val::Px(cy - h / 2.0),
             width: Val::Px(w),
             height: Val::Px(h),
-            border: UiRect::all(Val::Px(5.0)),
-            border_radius: BorderRadius::all(Val::Px(h / 2.0)),
-            justify_content: JustifyContent::Center,
-            align_items: AlignItems::Center,
             ..default()
         },
-        BackgroundColor(Color::srgb(0.86, 0.88, 0.94)),
-        BorderColor::all(Color::srgb(0.85, 0.62, 0.22)),
+        ImageNode {
+            image: art.ui.get(key).cloned().unwrap_or_default(),
+            image_mode: NodeImageMode::Stretch,
+            ..default()
+        },
     ))
-    .with_children(|b| {
-        b.spawn((
-            Text::new(pick_text(pick)),
-            TextFont {
-                font: bevy::text::FontSource::Handle(font.clone()),
-                font_size: FontSize::Px(size),
-                ..default()
-            },
-            TextColor(ink),
-        ));
-    })
     .observe(
         move |_press: On<PointerPress>, mut input: ResMut<CabinetInput>| {
             input.pick = Some(pick);
@@ -4480,14 +4459,19 @@ fn gamble_button(
     );
 }
 
-/// The rank and suit of a card (0..52).
-fn card_parts(card: u8) -> (&'static str, &'static str, bool) {
-    const RANKS: [&str; 13] = [
-        "A", "2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K",
-    ];
+/// The suit of a card (0..52) and whether it is red.
+fn card_suit(card: u8) -> (&'static str, bool) {
     const SUITS: [&str; 4] = ["\u{2665}", "\u{2666}", "\u{2663}", "\u{2660}"];
     let suit = (card / 13).min(3);
-    (RANKS[(card % 13) as usize], SUITS[suit as usize], suit < 2)
+    (SUITS[suit as usize], suit < 2)
+}
+
+/// What kind of gamble a pick is, as the screen names it.
+fn gamble_kind(pick: Option<GamblePick>) -> &'static str {
+    match pick {
+        Some(GamblePick::Red | GamblePick::Black) | None => "Red/Black Gamble",
+        Some(_) => "Suit Gamble",
+    }
 }
 
 /// Draw the gamble screen.
@@ -4497,50 +4481,12 @@ pub fn gamble_screen(
     time: Res<Time>,
     gamble: Res<GambleShow>,
     denom: Res<Denom>,
+    art: Res<ArtPack>,
     mut root: Query<&mut Visibility, With<GambleRoot>>,
     mut texts: Query<(&GambleText, &mut Text), Without<GambleHistory>>,
-    mut back: Query<
-        &mut Visibility,
-        (
-            With<GambleCardBack>,
-            Without<GambleRoot>,
-            Without<GambleCardFace>,
-        ),
-    >,
-    mut face: Query<
-        &mut Visibility,
-        (
-            With<GambleCardFace>,
-            Without<GambleRoot>,
-            Without<GambleCardBack>,
-        ),
-    >,
-    mut rank: Query<
-        (&mut Text, &mut TextColor),
-        (
-            With<GambleCardRank>,
-            Without<GambleText>,
-            Without<GambleCardSuit>,
-            Without<GambleHistory>,
-        ),
-    >,
-    mut suit: Query<
-        (&mut Text, &mut TextColor),
-        (
-            With<GambleCardSuit>,
-            Without<GambleText>,
-            Without<GambleCardRank>,
-            Without<GambleHistory>,
-        ),
-    >,
-    mut history: Query<
-        (&GambleHistory, &mut Text, &mut TextColor),
-        (
-            Without<GambleText>,
-            Without<GambleCardRank>,
-            Without<GambleCardSuit>,
-        ),
-    >,
+    mut card: Query<&mut ImageNode, (With<GambleCard>, Without<GambleStamp>)>,
+    mut stamp: Query<&mut Visibility, (With<GambleStamp>, Without<GambleRoot>)>,
+    mut history: Query<(&GambleHistory, &mut Text, &mut TextColor), Without<GambleText>>,
 ) {
     if !fidelity.0 {
         return;
@@ -4563,69 +4509,55 @@ pub fn gamble_screen(
     }
     let cents = denom.cents();
     let shown = gamble.card;
-    for mut v in &mut back {
-        set(&mut v, shown.is_none());
-    }
-    for mut v in &mut face {
-        set(&mut v, shown.is_some());
-    }
-    if let Some((card, _, _)) = shown {
-        let (r, s, red) = card_parts(card);
-        let ink = if red {
-            Color::srgb(0.85, 0.05, 0.05)
-        } else {
-            Color::BLACK
-        };
-        for (mut t, mut c) in &mut rank {
-            t.0 = r.to_string();
-            c.0 = ink;
+    let key = shown.map_or("card_back".to_string(), |(c, _, _)| format!("card_{c}"));
+    if let Some(h) = art.ui.get(&key) {
+        for mut image in &mut card {
+            if image.image != *h {
+                image.image = h.clone();
+            }
         }
-        for (mut t, mut c) in &mut suit {
-            t.0 = s.to_string();
-            c.0 = ink;
-        }
+    }
+    let won = shown.is_some_and(|(_, w, _)| w);
+    for mut v in &mut stamp {
+        set(&mut v, won);
     }
     for (h, mut t, mut c) in &mut history {
-        let s = gamble.history.get(h.0).map(|card| card_parts(*card));
-        let txt = s.map(|(_, s, _)| s.to_string()).unwrap_or_default();
+        let s = gamble.history.get(h.0).map(|card| card_suit(*card));
+        let txt = s.map(|(s, _)| s.to_string()).unwrap_or_default();
         if t.0 != txt {
             t.0 = txt;
         }
-        c.0 = if s.is_some_and(|(_, _, red)| red) {
-            Color::srgb(0.95, 0.15, 0.15)
+        c.0 = if s.is_some_and(|(_, red)| red) {
+            Color::srgb(0.95, 0.12, 0.12)
         } else {
             Color::srgb(0.05, 0.05, 0.08)
         };
     }
-    // The amounts. A won card shows what the gamble now holds; otherwise
-    // the stake and what each kind of gamble would win.
-    let won = shown.is_some_and(|(_, w, _)| w);
-    let stake = if won {
-        gamble
-            .history
-            .first()
-            .map_or(gamble.stake, |_| gamble.stake)
-    } else {
-        gamble.stake
-    };
+    // While a card is up the screen shows the gamble just made: its kind,
+    // what was staked, what it won. Otherwise the stake now, and what each
+    // kind of gamble would win.
     let amount = |credits: u64| format!("{credits}\n{}", money(credits, cents));
     let suit_turn = ((time.elapsed_secs() / 2.0) as u32) % 2 == 1;
-    for (kind, mut t) in &mut texts {
-        let s = match kind {
-            GambleText::Amount => format!("Red/Black Gamble\nGamble Amount\n{}", amount(stake)),
+    let (kind, staked) = match (shown, gamble.last) {
+        (Some(_), Some((pick, stake))) => (gamble_kind(Some(pick)), stake),
+        (_, last) => (gamble_kind(last.map(|l| l.0)), gamble.stake),
+    };
+    for (which, mut t) in &mut texts {
+        let s = match which {
+            GambleText::Amount => format!("{kind}\nGamble Amount\n{}", amount(staked)),
+            GambleText::ToWin if shown.is_some() => {
+                let mult = gamble.last.map_or(2, |(p, _)| p.multiplier());
+                format!("{kind}\nto win\n{}", amount(staked.saturating_mul(mult)))
+            }
             GambleText::ToWin if suit_turn => {
-                format!("Suit Gamble\nto win\n{}", amount(stake.saturating_mul(4)))
+                format!("Suit Gamble\nto win\n{}", amount(staked.saturating_mul(4)))
             }
-            GambleText::ToWin => {
-                format!(
-                    "Red/Black Gamble\nto win\n{}",
-                    amount(stake.saturating_mul(2))
-                )
-            }
+            GambleText::ToWin => format!(
+                "Red/Black Gamble\nto win\n{}",
+                amount(staked.saturating_mul(2))
+            ),
             GambleText::GambleWin if won => format!("Gamble Win\n{}", amount(gamble.stake)),
             GambleText::GambleWin => String::new(),
-            GambleText::WinStamp if won => "WIN".into(),
-            GambleText::WinStamp => String::new(),
         };
         if t.0 != s {
             t.0 = s;
