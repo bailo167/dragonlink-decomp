@@ -531,6 +531,24 @@ fn schedule_with(events: Vec<Event>, timing: &Timing) -> Vec<(f32, Event)> {
         .collect()
 }
 
+/// Events presented while the reels are moving: the spin's start, its bet,
+/// and the reels' stops (with their coin values). Everything else waits for
+/// the reels to come to rest.
+fn during_reels(event: &Event) -> bool {
+    matches!(
+        event,
+        Event::BetPlaced { .. }
+            | Event::BetChanged { .. }
+            | Event::SpinStarted { .. }
+            | Event::ReelStopped { .. }
+            | Event::OrbValueShown { .. }
+            | Event::CreditsChanged {
+                reason: CreditReason::Bet,
+                ..
+            }
+    )
+}
+
 fn orb_text(value: OrbValue) -> String {
     match value {
         OrbValue::BetMultiple(m) => format!("ORB\nx{m}"),
@@ -899,9 +917,16 @@ fn input(
     cabinet_input: Res<cabinet::CabinetInput>,
     feature: Res<cabinet::FeatureShow>,
     mut gamble: ResMut<cabinet::GambleShow>,
+    reels: Res<cabinet::Reels>,
 ) {
-    // Denomination (display only) cycles with D, while idle.
-    let at_rest = sim.game.is_idle() && presentation.queue.is_empty() && !gamble.active;
+    // Denomination (display only) cycles with D, while idle. Idle means the
+    // reels have come to rest on screen too: the last one runs on and
+    // settles after the game has stopped it, and a spin started then would
+    // throw it straight back into motion mid-settle.
+    let at_rest = sim.game.is_idle()
+        && presentation.queue.is_empty()
+        && !gamble.active
+        && !reels.any_moving();
     if keys.just_pressed(KeyCode::KeyD) && at_rest {
         denom.index = (denom.index + 1) % DENOM_CENTS.len();
     }
@@ -947,6 +972,7 @@ fn input(
         && sim.game.is_idle()
         // A feature still on screen (its count, its banner) finishes first.
         && presentation.queue.is_empty()
+        && !reels.any_moving()
         && feature.awaiting.is_none()
         && !feature.blocks()
         && !gamble.active;
@@ -1107,6 +1133,7 @@ fn present(
     mut feature: ResMut<cabinet::FeatureShow>,
     mut presentation: ResMut<Presentation>,
     mut reels_spin: ResMut<ReelAnim>,
+    reels_motion: Res<cabinet::Reels>,
     mut cells: Query<(&Cell, &mut BackgroundColor)>,
     mut labels: Query<(&CellLabel, &mut Text)>,
 ) {
@@ -1118,6 +1145,20 @@ fn present(
     while presentation.wait <= 0.0 {
         // A respin spinning or the coins being counted hold what follows.
         if fidelity.0 && feature.blocks() {
+            presentation.wait = 0.0;
+            break;
+        }
+        // What a spin brings (its wins, its feature, the next game) waits
+        // until the reels are at rest on screen: the last reel's stop is
+        // presented as it starts to run on to its stop, and it overshoots
+        // and settles after that.
+        if fidelity.0
+            && reels_motion.any_moving()
+            && presentation
+                .queue
+                .front()
+                .is_some_and(|(_, e)| !during_reels(e))
+        {
             presentation.wait = 0.0;
             break;
         }

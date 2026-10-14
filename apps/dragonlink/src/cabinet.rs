@@ -1316,6 +1316,14 @@ impl Reels {
             .is_some_and(|s| s.motion != Motion::Idle)
     }
 
+    /// Whether any reel is in motion on screen: spinning, running on to its
+    /// stop, or sliding back after the overshoot. A reel's stop is presented
+    /// before it comes to rest (it runs on about 3 symbols, overshoots and
+    /// settles, some 0.4 s), so this is later than the game's stop.
+    pub fn any_moving(&self) -> bool {
+        self.states.iter().any(|s| s.motion != Motion::Idle)
+    }
+
     /// Reels that hit their stop this frame.
     pub fn just_stopped(&self) -> impl Iterator<Item = usize> + '_ {
         self.states
