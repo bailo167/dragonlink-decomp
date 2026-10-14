@@ -10,8 +10,10 @@ meaningful increment. Item-level state is in `progress/progress.toml`; this page
 **The target is to recreate the actual Dragon Link gaming-machine experience as closely as
 technically possible — launching Golden Century should feel like sitting at a real Dragon Link
 machine, recognisable against the reference footage.** The current builds do **not** meet that
-standard: they are **functional prototypes** — a working simulation under placeholder coloured
-rectangles and text symbols. That is explicitly not "finished", "polished" or "player-ready".
+standard yet. Golden Century now runs with the authentic art, animations and sound of the owner's
+mobile build (from a local pack, never committed), and its gameplay follows timings and sounds
+measured on a recording of the official app; it is still not "finished": side-by-side comparison
+throughout, unplaced sounds, attract mode and the hidden maths remain.
 
 **Priority is absolute: Golden Century cabinet experience first. Every other title is frozen**
 (Autumn Moon, Happy & Prosperous, Panda Magic, and the further titles) until Golden Century reaches
@@ -21,8 +23,10 @@ the cabinet-experience standard, after which the proven systems propagate.
 
 The repository has its foundation, a headless game model, an evidence base, a mathematics analysis
 subsystem, and **functional-prototype** gameplay for four titles on synthetic maths behind a
-launcher. The visual/audio layer is placeholder only and does not look like Dragon Link — the P0 now
-is to rebuild Golden Century as the authentic cabinet experience. **A major enabler just landed: the
+launcher. Golden Century is being rebuilt as the authentic experience (P0): it plays with the game's
+own art, animations and sound from a local pack, in a cabinet frame the owner chose, its gameplay
+matched step by step to a recording of the official app
+([reverse-engineering/GOLDEN_CENTURY_PRESENTATION.md](reverse-engineering/GOLDEN_CENTURY_PRESENTATION.md)). **A major enabler just landed: the
 official mobile art and audio are now extractable.** The Mercury container parser plus a new raw-RGBA
 and ETC1 texture decoder recover Golden Century's authentic artwork, fonts and 114 Ogg audio clips to
 viewable files, and the game's own help/paytable screens were read to recover the **authentic
@@ -301,6 +305,27 @@ experience. Golden Century is the one under active rebuild; the other three are 
   start inside its free games on the real machine; Autumn Moon's free-games wild has its own line pay.
   Neither is modelled yet. No themed artwork or audio (assets are blocked, B-005). No authentic math.
 
+### Golden Century gameplay matched to the official app (2026-10-14)
+
+The owner recorded the official mobile app with sound (a 3:41 session and six excerpts). Every
+topic was measured frame by frame and sound by sound, and re-measured by an independent verifier
+([reverse-engineering/GOLDEN_CENTURY_PRESENTATION.md](reverse-engineering/GOLDEN_CENTURY_PRESENTATION.md)).
+The app now follows it:
+
+- **Reels.** Measured speed, cadence and landing (on past the stop, snap back, slide home); every
+  reel lands within a frame of the real timing in a timed run. Results wait 0.17 s after the reels
+  are still, and a spin is refused until then (this fixed wins showing while the last reel moved).
+- **Wins.** The real tunes at the measured win sizes, counts lasting the tune's audible length, lines
+  in turn with their symbols blinking, stacked emperors standing only on a winning line with
+  SND_Wild_2/3. The synthetic strips now deal cards apart, so columns mix their cards.
+- **Free games.** Bell, waving flags with SND_Scatter, the scatter win, the prompt, a silent press
+  and a cut into the free games with their music and counting total; doors at once with
+  SND_EndMask; measured pace; FEATURE COMPLETED with SND_Fea_End. Retriggers add three (owner).
+- **Hold & Spin.** The trigger, fire and medallion (about 1 s, and no COLLECT screen: the owner's
+  changes), the counter, respins stopping by reel with their sounds, and the payout: coins added to
+  a WIN banner by fire comets, then a coin shower and the payout music, found in the app's shared
+  sound bank (it also plays under the cabinet's big counts).
+
 ## Known limits of what exists
 
 - Every rule in the simulation is a generic slot-game rule, written down so it can be checked. None
@@ -310,11 +335,10 @@ experience. Golden Century is the one under active rebuild; the other three are 
   strip, weight, chance and jackpot amount is invented and labelled so.
 - The importer handles standard media that is loose or inside ZIP-family archives, and identifies
   nothing. No proprietary container is unpacked. The application cannot display imported assets.
-- The application draws every title with generated coloured tiles and generic symbol names, no
-  themed artwork and no audio. Its timing constants are ours, not measured. In a browser it has been
-  checked on one host and one browser only, and the headless screenshot capture is unreliable on the
-  current host (black frames), so recent presentation changes are verified by tests and code, not by
-  eye.
+- Golden Century uses the authentic art and sound only when the local pack is present; the other
+  titles still draw generated tiles. About 55 of the game's sound clips are not placed yet, and some
+  rules are unknown (the win-tune rule between measured sizes, the big-coin sound threshold). The
+  build is checked by eye from screen recordings of unattended runs on the Windows host.
 - Replay has never been given an observation of an original game: none has been transcribed.
 - The mathematics tooling has never seen a real configuration. Its model will need extending when
   one arrives ([reverse-engineering/math/CONFIGURATION.md](reverse-engineering/math/CONFIGURATION.md)).
@@ -355,7 +379,10 @@ flow with no debug or manual steps:
 
 ## Next — the Golden Century cabinet rebuild (P0)
 
-The asset extraction is proven; now build the authentic experience outward from the base screen.
+Steps 1 to 3 below are largely done (art, sound, base screen, features); the remaining work: place
+the unplaced sounds where recordings show them, check every screen side by side with the
+recordings, order both features in one spin (Hold & Spin first), attract/idle, and bring the
+exporter into the repository's importer.
 
 1. **Runtime asset pack.** Finish the exporter (ETC1 RGB + the second ETC1 block as **alpha**, so
    symbols are cut out; raw RGBA; Ogg audio; fonts) and build the authentic textures/audio into a

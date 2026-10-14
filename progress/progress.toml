@@ -48,7 +48,7 @@ note = "Stage D: state, spin, awards, feature state machine, deterministic trace
 id = "M4"
 name = "Golden Century Bevy slice"
 status = "partial"
-note = "FUNCTIONAL PROTOTYPE, not the cabinet experience. The app runs Golden Century (synthetic maths) with line/bet selection, reel animation, line and scatter wins, free games (reveal, retrigger), Hold & Spin with orb values and jackpots, and clean returns - but under PLACEHOLDER coloured rectangles and text symbols, with no authentic art or audio. The P0 target (recognisable Golden Century cabinet experience, driven by the now-extractable authentic mobile assets) is NOT met; this is the active rebuild."
+note = "The app plays Golden Century (synthetic maths) with the authentic art, animations and sound of the owner's mobile build from a local pack, in the cabinet frame the owner chose. Reels, wins, free games, Hold & Spin and its payout follow timings and sounds measured on the official app's recording (docs/reverse-engineering/GOLDEN_CENTURY_PRESENTATION.md). Not yet near-1:1 throughout: side-by-side comparison, unplaced sounds, attract mode and the hidden maths remain."
 
 [[milestone]]
 id = "M5"
@@ -193,12 +193,13 @@ note = "The app's large native library is identified as the manufacturer's nativ
 id = "asset-containers"
 name = "Asset-container identification"
 status = "partial"
-note = "The MERC container is understood by a private parser that reads every such file of eight titles with cross-checks (one analysis pass, not yet a committed tool). Exporting assets from it was stopped by the tooling's safety controls (BLOCKERS B-005)."
+note = "The MERC container is understood by a private parser that reads every such file of eight titles. A private exporter (outside Git) takes Golden Century's art, animation sequences and sound into a local, ignored pack the app loads; the repository's own importer does not do this yet."
 
 [[category.item]]
 id = "textures"
 name = "Texture and image extraction"
-status = "not_started"
+status = "partial"
+note = "Golden Century's textures (raw RGBA and ETC1) and sprite cuts are decoded by the private exporter into the local pack. Not a committed tool."
 
 [[category.item]]
 id = "fonts"
@@ -208,12 +209,14 @@ status = "not_started"
 [[category.item]]
 id = "audio"
 name = "Audio extraction"
-status = "not_started"
+status = "partial"
+note = "Golden Century's 114 Ogg clips, the seven sister titles' clips and the app's shared sound bank (three payout tracks) are carved by private tooling into the local pack. Not a committed tool."
 
 [[category.item]]
 id = "animation"
 name = "Animation extraction"
-status = "not_started"
+status = "partial"
+note = "Golden Century's image sequences and alpha video animations are exported by private tooling to frame folders in the local pack. Not a committed tool."
 
 [[category.item]]
 id = "config-data"
@@ -441,7 +444,7 @@ note = "Test instruments of ours. Models nothing about the original generator, w
 id = "state-machine"
 name = "State machine"
 status = "partial"
-note = "Idle and Hold & Spin phases with transactional commands; no free games, attract or idle states."
+note = "Idle, free-games and Hold & Spin phases and the gamble, with transactional commands; no attract or idle states."
 
 [[category.item]]
 id = "credits"
@@ -484,14 +487,14 @@ note = "Generic left-to-right line rules and scatter pays, each stated in eval.r
 id = "win-presentation"
 name = "Win presentation"
 status = "implemented"
-evidence = "apps/dragonlink/src/main.rs (present: line highlight and win meter)"
-note = "A winning line lights up its run on its payline, and a win meter counts up what the spin paid, features included. No win-amount animation or sound yet."
+evidence = "apps/dragonlink/src/cabinet.rs (win_rollup, win_lines, symbol_fx); apps/dragonlink/src/main.rs (wins_play_the_real_games_tunes)"
+note = "Win tunes chosen by the win's size where measured, counts lasting the tune's audible length, lines in turn with their symbols blinking, symbol animations, a coin shower for big wins."
 
 [[category.item]]
 id = "feature-trigger"
 name = "Feature triggering"
 status = "partial"
-note = "Hold & Spin by orb count only."
+note = "Hold & Spin by orb count, free games by scatter count; both in one spin is not yet ordered as the owner describes (Hold & Spin first)."
 
 [[category.item]]
 id = "hold-and-spin"
@@ -515,33 +518,37 @@ note = "Scatter trigger, an award of free games on their own reels played withou
 [[category.item]]
 id = "audio"
 name = "Audio"
-status = "not_started"
+status = "implemented"
+evidence = "apps/dragonlink/src/cabinet.rs (Sounds, reel_audio, feature cues, feature_music, payout)"
+note = "Plays clips from the local pack: one-shots, loops, cues scheduled to the presentation, a fade. Placements follow recordings (GOLDEN_CENTURY_PRESENTATION.md)."
 
 [[category.item]]
 id = "animation"
 name = "Animation"
 status = "implemented"
-evidence = "apps/dragonlink/src/main.rs (animate_reels; feature stepping)"
-note = "Reels run through the symbols while spinning and settle on their stops; features play on a timer with a clean return. No symbol artwork or transition effects yet (placeholder coloured tiles)."
+evidence = "apps/dragonlink/src/cabinet.rs (animate_reels, TIMING; respins)"
+note = "Reels at the measured speed, cadence and landing; respin positions as the real game's; feature sequences on measured timings."
 
 [[category.item]]
 id = "vfx"
 name = "VFX"
-status = "not_started"
+status = "implemented"
+evidence = "apps/dragonlink/src/cabinet.rs (symbol_fx, wild_talls, door_draw, hold_and_spin_draw, coin_shower, payout_effects)"
+note = "The game's own animation sequences: symbol win animations, tall wilds, door reveal, fire rings, bursts, fire transitions, collection comets, coin shower and banner bursts."
 
 [[category.item]]
 id = "ui"
 name = "UI"
 status = "implemented"
-evidence = "apps/dragonlink/src/main.rs (setup, hud, menu_setup)"
-note = "A four-title launcher (Golden Century, Happy & Prosperous, Panda Magic, Autumn Moon) on an ordinary start, selected by key, then the game: title, a jackpot bar (Grand/Major/Minor/Mini with amounts), framed reels, credit/bet/win meters in credits and dollars, a denomination selector and a compact synthetic disclaimer. A `--game` flag or smoke run skips the launcher. Placeholder art; no themed artwork or audio yet."
+evidence = "apps/dragonlink/src/cabinet.rs (spawn_meter_band, spawn_deck, gamble screen); apps/dragonlink/src/main.rs (menu_setup)"
+note = "A cabinet frame chosen by the owner: jackpot bar, CREDIT/BET/WIN meters, a 2x6 button deck with SPIN, denominations, lines, GAMBLE and RESPIN, a gamble screen; a four-title launcher."
 
 [[category.item]]
 id = "input"
 name = "Input"
 status = "implemented"
-evidence = "apps/dragonlink/src/main.rs (input)"
-note = "Spin, credits per line, line count and denomination from the keyboard; features play themselves. No autoplay or settings menu yet."
+evidence = "apps/dragonlink/src/cabinet.rs (deck buttons); apps/dragonlink/src/main.rs (input)"
+note = "Deck buttons by pointer and the keyboard: spin, stake, lines, denomination, gamble, take win; a spin is refused until the reels are still. No autoplay or settings menu yet."
 
 [[category.item]]
 id = "save-settings"
@@ -596,8 +603,8 @@ status = "not_started"
 [[category.item]]
 id = "hold-and-spin"
 name = "Hold & Spin rules and presentation"
-status = "investigating"
-note = "Australia, from public footage: six prize symbols trigger; spins-remaining and collected-of-fifteen counters; prizes in credits or a level's name, tallied at the end. No rules text for this title; value set and weights unknown. Not implemented to these observations."
+status = "partial"
+note = "Presentation follows the official app recording step by step (trigger, medallion with the owner's 1 s change, respins, counter, payout and its music). Rules, values and weights are synthetic."
 
 [[category.item]]
 id = "jackpots"
@@ -609,23 +616,27 @@ note = "Australia, from public footage: Grand and Major are running meters; Mini
 id = "free-games"
 name = "Free games feature"
 status = "partial"
-note = "Australia: three scatters award six free games; mystery symbols reveal one symbol; retriggers (public footage and the manufacturer's page). The synthetic Golden Century config implements this (six games, reveal, retrigger) with synthetic strips and weights; the app does not yet present it. Initial award six is official."
+note = "Three scatters award six free games; mystery doors reveal one symbol; retriggers add three (owner). Presentation follows the official app recording (trigger sequence, cut, doors, pacing, end). Strips and weights are synthetic."
 
 [[category.item]]
 id = "art-ui"
 name = "Title artwork, UI layout and typography"
 status = "partial"
-note = "The app renders Golden Century as a game: title, jackpot bar, framed reels, meters, denomination, disclaimer. Symbols are coloured placeholder tiles with their names, not artwork; no audio. Themed art and audio are the fidelity pass."
+note = "The app renders Golden Century with the authentic art, animations and sound of the owner's mobile build from a local, ignored pack (never committed), in the cabinet frame the owner chose. Gameplay presentation follows the official app recording; not compared side by side throughout."
 
 [[category.item]]
 id = "audio"
 name = "Sound and music"
-status = "not_started"
+status = "implemented"
+evidence = "docs/reverse-engineering/GOLDEN_CENTURY_PRESENTATION.md; docs/reverse-engineering/golden-century-sound-cues.md; apps/dragonlink/src/cabinet.rs"
+note = "Each sound the app plays is a game clip placed where recordings show it (waveform-matched); placements not evidenced stay silent. About 55 of the game's clips are not placed yet."
 
 [[category.item]]
 id = "animation-timing"
 name = "Animation and sequence timing"
-status = "not_started"
+status = "implemented"
+evidence = "docs/reverse-engineering/GOLDEN_CENTURY_PRESENTATION.md; apps/dragonlink/src/cabinet.rs (TIMING, respins, feature sequences)"
+note = "Reel cadence and landing, results, free games, Hold & Spin and its payout follow timings measured frame by frame on the official app; the app's reels land within a frame of them in a timed run."
 
 [[category.item]]
 id = "attract"
@@ -635,8 +646,8 @@ status = "not_started"
 [[category.item]]
 id = "imported-assets"
 name = "Locally imported original assets"
-status = "blocked"
-blocker = "The mobile build's Golden Century content is held, but exporting from its containers was stopped by the tooling's safety controls (docs/BLOCKERS.md B-005)."
+status = "partial"
+note = "Golden Century's art, animation and sound from the owner's mobile build are exported by private tooling into a local, ignored pack the app loads (DRAGONLINK_ART). The repository's importer and manifest do not produce it yet."
 
 [[category.item]]
 id = "parity"
@@ -938,7 +949,7 @@ note = "One JSON Lines format for rewrite traces and transcribed observations; h
 id = "source-recordings"
 name = "Source recordings of the original"
 status = "partial"
-note = "Public recordings located and scanned for all four titles, held privately with hashes. One Australian Golden Century session is transcribed game by game into a window sheet and observation traces, its windows read twice. No recording is tied to a regulatory build."
+note = "Public cabinet recordings of all four titles held privately with hashes; one Australian Golden Century session transcribed. The owner's own recording of the official mobile app (3:41 with sound, six excerpts) is the gameplay presentation reference. No recording is tied to a regulatory build."
 
 [[category.item]]
 id = "capture-tooling"
@@ -963,18 +974,19 @@ note = "The outcomes a trace shows are scripted through the simulation, so that 
 id = "timing-comparison"
 name = "Timing comparison"
 status = "partial"
-note = "Differences in event times are measured against a stated tolerance when both traces carry times. Headless rewrite traces carry none, and there is no recording to take times from."
+note = "Timings in the official app recording are measured frame by frame and the app's timed runs compared with them by hand (docs/reverse-engineering/GOLDEN_CENTURY_PRESENTATION.md); no automated trace comparison yet."
 
 [[category.item]]
 id = "visual-comparison"
 name = "Visual comparison"
-status = "not_started"
-note = "The app can save a picture of its window from a reproducible unattended run (--smoke-frames with --screenshot); there is nothing to compare it with yet."
+status = "partial"
+note = "Frames of the app's unattended runs are captured and compared with recording frames by eye; no automated comparison."
 
 [[category.item]]
 id = "audio-comparison"
 name = "Audio comparison"
-status = "not_started"
+status = "partial"
+note = "Sounds in recordings are identified by waveform cross-correlation with the game's clips, with control windows (private tooling); not yet automated against the app's output."
 
 [[category.item]]
 id = "deterministic-replay"
