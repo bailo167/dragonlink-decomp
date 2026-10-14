@@ -180,8 +180,6 @@ pub struct CabFonts {
     pub symbols: Handle<Font>,
     /// Bold italic, for the gamble screen.
     pub italic: Handle<Font>,
-    /// Bold serif, for the collect coin.
-    pub serif_bold: Handle<Font>,
 }
 
 /// Load the cabinet's fonts from the operating system, where it has them.
@@ -211,10 +209,6 @@ pub fn load_fonts(fonts: &mut Assets<Font>) -> CabFonts {
         italic: first(&[
             "/System/Library/Fonts/Supplemental/Arial Bold Italic.ttf",
             "C:/Windows/Fonts/arialbi.ttf",
-        ]),
-        serif_bold: first(&[
-            "/System/Library/Fonts/Supplemental/Georgia Bold.ttf",
-            "C:/Windows/Fonts/georgiab.ttf",
         ]),
     }
 }
@@ -401,7 +395,6 @@ pub fn spawn(commands: &mut Commands, model: &MathModel, art: &ArtPack, fonts: &
             spawn_hs_overlays(c, &fonts.meter);
             spawn_win_lines(c, &fonts.sans);
             spawn_coin_shower(c);
-            spawn_collect_coin(c, art, fonts);
 
             // The jackpots across the top.
             let (bar_w, bar_top) = (JACKPOT_BAR_W, JACKPOT_BAR_TOP);
@@ -1024,7 +1017,8 @@ pub fn light_deck(
     let waiting = show.awaiting.is_some();
     let cents = denom.cents();
     let idle = sim.game.is_idle() && presentation.queue.is_empty();
-    let can_gamble = idle && sim.game.can_gamble() && !rollup.active() && !waiting;
+    let can_gamble =
+        idle && sim.game.can_gamble() && !rollup.active() && !waiting && !show.no_gamble();
     let lines = sim.game.lines();
     let glow = 0.84 + 0.16 * (time.elapsed_secs() * 3.5).sin().abs();
     let face = |cap: CabButton| -> (&'static str, f32) {
@@ -2386,6 +2380,14 @@ pub struct FeatureShow {
     /// A full grid's Grand jackpot, while it is shown and after.
     pub grand: Option<u64>,
     grand_done: bool,
+    /// Seconds "FREE SPINS COMPLETED" has shown, until the collection.
+    completed_wait: Option<f32>,
+    /// The WINNER total being paid onto WIN.
+    pay: Option<Pay>,
+    /// Paid onto WIN so far by the feature's end (coins, then the Grand).
+    paid: u64,
+    /// The rollup sound of a payment.
+    pay_sound: Option<Entity>,
     /// Respins run so far (each starts a fresh stretch of strip).
     respins_run: i64,
     /// Sounds the presentation has cued, played by `feature_cues`.
@@ -2512,7 +2514,7 @@ impl FeatureShow {
                 self.cues.push("SND_Fea_End");
                 self.awaiting = None;
                 self.stage = Stage::HoldSpinDone;
-                self.collect_start = true;
+                self.completed_wait = Some(0.0);
             }
             _ => {}
         }
@@ -2802,7 +2804,8 @@ pub fn feature_screen(
         && show.game_won
         && show.reveal.is_none()
         && rollup.to > rollup.from)
-        .then(|| rollup.shown().saturating_sub(rollup.from));
+        .then(|| rollup.shown().saturating_sub(rollup.from))
+        .or(show.pay_banner());
     for (mut text, mut vis) in &mut amount {
         let s = game_win
             .map(|w| money(w, denom.cents()))
@@ -2820,7 +2823,9 @@ pub fn feature_screen(
         }
     }
     let text = match (show.awaiting, show.stage) {
-        (_, Stage::FreeGames { .. }) if game_win.is_some() => Some("banner_win".to_string()),
+        (_, Stage::FreeGames { .. } | Stage::HoldSpinDone) if game_win.is_some() => {
+            Some("banner_win".to_string())
+        }
         (_, Stage::HoldSpin { .. }) if show.intro.is_some() => None,
         // The WINNER total takes the top of the screen while it shows.
         _ if show.winner.is_some() => None,
@@ -2992,27 +2997,64 @@ pub struct Collect {
     counted: usize,
 }
 
-/// Seconds the Grand is shown, its amount counting onto WIN, before the
-/// coins are counted (footage: about a minute on the cabinet; shortened).
-const GRAND_SECONDS: f32 = 12.0;
+/// The end of Hold & Spin, from cabinet footage: "FREE SPINS COMPLETED"
+/// shows for 3 s; the coins are counted into WINNER; the total holds about
+/// 1.5 s, then a WIN banner on the reels counts it onto WIN (about 60 s for
+/// any amount; SPIN completes it), under a coin shower for big amounts; the
+/// jackpots return about 0.4 s after.
+const COMPLETED_SECONDS: f32 = 3.0;
+const PAY_HOLD: f32 = 1.5;
+const PAY_SECONDS: f32 = 59.1;
+const PAY_AFTER: f32 = 0.4;
+/// A payment at least this many times the bet rains coins (footage: 30x and
+/// up did, 22x did not).
+const PAY_SHOWER_RATIO: u64 = 25;
+
+/// A WINNER total being paid onto WIN: the amount, seconds since the count
+/// began (negative while it holds), and whether it is the Grand.
+#[derive(Clone, Debug)]
+pub struct Pay {
+    amount: u64,
+    t: f32,
+    grand: bool,
+}
 
 impl FeatureShow {
-    /// The Grand is being shown (its count onto WIN running).
+    /// The Grand is on the WINNER box.
     pub fn grand_showing(&self) -> bool {
-        self.grand.is_some() && !self.grand_done && self.collect.is_some()
+        self.pay.as_ref().is_some_and(|p| p.grand)
     }
 
-    /// What the WIN meter shows while a Grand is counted onto it, and after
-    /// while the coins are counted.
+    /// Paid onto WIN so far while the feature's total is counted onto it.
     pub fn grand_win(&self) -> Option<u64> {
-        let g = self.grand?;
-        let c = self.collect.as_ref()?;
-        if c.t < 0.0 {
-            let k = ((c.t + GRAND_SECONDS) / GRAND_SECONDS).clamp(0.0, 1.0);
-            Some((g as f32 * k) as u64)
-        } else {
-            Some(g)
+        let p = self.pay.as_ref()?;
+        let k = (p.t / PAY_SECONDS).clamp(0.0, 1.0);
+        Some(self.paid + (p.amount as f32 * k) as u64)
+    }
+
+    /// A payment's count is showing on the WIN banner: what it shows.
+    pub fn pay_banner(&self) -> Option<u64> {
+        match &self.pay {
+            Some(p) => (p.t >= 0.0).then(|| {
+                self.paid + (p.amount as f32 * (p.t / PAY_SECONDS).clamp(0.0, 1.0)) as u64
+            }),
+            // Paid: the banner keeps showing the total until the next game.
+            None => {
+                (self.stage == Stage::HoldSpinDone && self.collected.is_some()).then_some(self.paid)
+            }
         }
+    }
+
+    /// A big payment is counting (coins rain).
+    pub fn pay_shower(&self, bet: u64) -> bool {
+        self.pay
+            .as_ref()
+            .is_some_and(|p| p.t >= 0.0 && p.t < PAY_SECONDS && p.amount >= PAY_SHOWER_RATIO * bet)
+    }
+
+    /// The feature's win may not be gambled (a Grand was won).
+    pub fn no_gamble(&self) -> bool {
+        self.grand.is_some()
     }
 }
 
@@ -3076,15 +3118,16 @@ fn bolt_for(reel: u8, row: u8) -> (usize, bool, f32, f32, f32, f32) {
 }
 
 /// The top of the WINNER total's flame box.
-const WINNER_TOP: f32 = 42.0;
+const WINNER_TOP: f32 = 33.0;
 /// The WINNER total's flame box.
-const WINNER_BOX: (f32, f32) = (560.0, 104.0);
+const WINNER_BOX: (f32, f32) = (440.0, 80.0);
 /// Where the splash animation (512 x 256) draws its box: x 40..472,
 /// y 145..223 (measured on its frames).
 const SPLASH_BOX: (f32, f32, f32, f32) = (40.0, 145.0, 432.0, 78.0);
 
-/// The WINNER plate's height: the jackpot bar's band, clear of the reels.
-const WINNER_PLATE_H: f32 = 148.0;
+/// The WINNER plate's height: clear of the banner slot at the top of the
+/// reels (the WIN banner counts there while WINNER shows).
+const WINNER_PLATE_H: f32 = 114.0;
 
 /// The slate under the Hold & Spin grid.
 #[derive(Component)]
@@ -3536,7 +3579,7 @@ pub fn spawn_hs_overlays(c: &mut ChildSpawnerCommands, font: &Handle<Font>) {
             Text::new("WINNER"),
             TextFont {
                 font: bevy::text::FontSource::Handle(font.clone()),
-                font_size: FontSize::Px(40.0),
+                font_size: FontSize::Px(32.0),
                 ..default()
             },
             TextColor(Color::srgb(0.95, 0.32, 0.12)),
@@ -3591,7 +3634,7 @@ pub fn spawn_hs_overlays(c: &mut ChildSpawnerCommands, font: &Handle<Font>) {
             Text::new(""),
             TextFont {
                 font: bevy::text::FontSource::Handle(font.clone()),
-                font_size: FontSize::Px(70.0),
+                font_size: FontSize::Px(54.0),
                 ..default()
             },
             TextColor(Color::srgb(0.86, 0.93, 0.36)),
@@ -3615,6 +3658,8 @@ impl FeatureShow {
     /// the counter, a respin or the count is playing.
     pub fn blocks(&self) -> bool {
         self.intro.is_some()
+            || self.completed_wait.is_some()
+            || self.pay.is_some()
             || self.reveal.is_some()
             || self.count_up.is_some()
             || self.respin_landed.is_some()
@@ -3636,6 +3681,8 @@ pub fn hold_and_spin_motion(
     fidelity: Res<Fidelity>,
     time: Res<Time>,
     smoke: Res<Smoke>,
+    keys: Res<ButtonInput<KeyCode>>,
+    mut input: ResMut<CabinetInput>,
     sim: Res<Sim>,
     mut show: ResMut<FeatureShow>,
     sounds: Res<Sounds>,
@@ -3769,6 +3816,16 @@ pub fn hold_and_spin_motion(
         show.counter = show.pending_left;
     }
 
+    if let Some(w) = show.completed_wait {
+        let w = w + dt;
+        if w >= COMPLETED_SECONDS && show.respin.is_none() {
+            show.completed_wait = None;
+            show.collect_start = true;
+        } else {
+            show.completed_wait = Some(w);
+        }
+    }
+
     // The count after the feature.
     let total_bet = sim.game.total_bet();
     if show.collect_start && show.respin.is_none() {
@@ -3797,27 +3854,13 @@ pub fn hold_and_spin_motion(
             .position(|(tier, _)| *tier == JackpotTier::Grand)
             .map(|i| jackpots.remove(i).1);
         show.grand = grand;
-        show.winner = Some(grand.unwrap_or(0));
-        let lead = if grand.is_some() { GRAND_SECONDS } else { 0.0 };
-        show.collect = Some(Collect {
-            coins,
-            t: -lead,
-            ..default()
-        });
+        show.winner = Some(0);
+        show.paid = 0;
+        show.collect = Some(Collect { coins, ..default() });
     }
     let mut done = None;
     if let Some(mut c) = show.collect.take() {
-        let before = c.t;
         c.t += dt;
-        // The Grand's show ends: the WINNER total empties for the coins.
-        if before < 0.0 && c.t >= 0.0 && show.grand.is_some() {
-            show.grand_done = true;
-            show.winner = Some(0);
-        }
-        if c.t < 0.0 {
-            show.collect = Some(c);
-            return;
-        }
         // Each coin in turn: its fire bolt leaves the coin, and when it
         // reaches the WINNER box the box splashes and the total rises.
         while c.launched < c.coins.len() && c.t >= c.launched as f32 * COLLECT_STEP + 0.2 {
@@ -3844,8 +3887,78 @@ pub fn hold_and_spin_motion(
             show.collect = Some(c);
         }
     }
-    if done.is_some() {
-        show.collected = done;
+    // The coins counted, the WINNER total holds, then pays onto WIN.
+    if let Some(total) = done {
+        show.pay = Some(Pay {
+            amount: total,
+            t: -PAY_HOLD,
+            grand: false,
+        });
+        done = None;
+    }
+    let slam = input.spin
+        || keys.just_pressed(KeyCode::Space)
+        || keys.just_pressed(KeyCode::Enter)
+        || (smoke.frames_left.is_some()
+            && show
+                .pay
+                .as_ref()
+                .is_some_and(|p| p.t > 3.0 && p.t < PAY_SECONDS));
+    if show.pay.is_some() && slam {
+        input.skip_spin = true;
+    }
+    let mut next = None;
+    if let Some(mut p) = show.pay.take() {
+        let before = p.t;
+        p.t += dt;
+        if before < 0.0 && p.t >= 0.0 && p.amount < PAY_SHOWER_RATIO * total_bet {
+            // The WIN banner appears and counts to the game's long win tune
+            // (footage, a 22x-bet feature: wintune32 from the banner's first
+            // frame, its 59 s about the count's length). A payment big enough
+            // to rain coins plays a sound that is not among the game's clips
+            // on the footage, so that one stays silent here.
+            show.pay_sound = sounds.play(&mut commands, "wintune32");
+        }
+        // A press completes the count (once: the payment then finishes).
+        if p.t >= 0.0 && p.t < PAY_SECONDS && slam {
+            p.t = PAY_SECONDS;
+        }
+        if p.t >= PAY_SECONDS + PAY_AFTER {
+            if let Some(id) = show.pay_sound.take() {
+                commands.entity(id).try_despawn();
+            }
+            show.paid += p.amount;
+            match (p.grand, show.grand) {
+                // The coins are paid; the Grand follows.
+                (false, Some(g)) => {
+                    show.winner = Some(g);
+                    show.grand_done = false;
+                    next = Some(Pay {
+                        amount: g,
+                        t: -PAY_HOLD,
+                        grand: true,
+                    });
+                }
+                _ => {
+                    show.grand_done = true;
+                    done = Some(show.paid);
+                }
+            }
+        } else {
+            if p.t >= PAY_SECONDS
+                && let Some(id) = show.pay_sound.take()
+            {
+                commands.entity(id).try_despawn();
+            }
+            next = Some(p);
+        }
+    }
+    if next.is_some() {
+        show.pay = next;
+    }
+    if let Some(total) = done {
+        show.winner = None;
+        show.collected = Some(total);
     }
 }
 
@@ -4410,7 +4523,7 @@ pub fn gamble_control(
             && show.awaiting.is_none()
             && !show.blocks()
             && !rollup.active();
-        if input.gamble && at_rest && sim.game.can_gamble() {
+        if input.gamble && at_rest && sim.game.can_gamble() && !show.no_gamble() {
             gamble.active = true;
             gamble.card = None;
             gamble.stake = sim.game.state().gamble_stake;
@@ -4947,9 +5060,12 @@ pub fn win_lines(
         show.win_lines[i]
     });
     show.win_current = current.map(|(line, count, _)| (line, count));
+    // The flags keep waving while the free games wait for START FEATURE
+    // (cabinet footage: they wave until the feature starts).
+    let flags_wait = matches!(show.awaiting, Some(Await::Start(Feature::FreeGames)));
     show.scatter_shown = show.scatter_paid
         && !gamble.active
-        && show.awaiting.is_none()
+        && (show.awaiting.is_none() || flags_wait)
         && !show.hold_and_spin()
         && show.reveal.is_none();
     show.win_note = current.map(|(line, _, award)| {
@@ -5443,7 +5559,7 @@ pub fn coin_shower(
     }
     let bet = sim.game.total_bet().max(1);
     let on = (rollup.active() && rollup.to.saturating_sub(rollup.from) >= SHOWER_RATIO * bet)
-        || show.grand_showing();
+        || show.pay_shower(bet);
     let frames = art.anims.get("coin_shower");
     let t = time.elapsed_secs();
     for (coin, mut node, mut image, mut vis) in &mut coins {
@@ -5482,162 +5598,6 @@ pub fn coin_shower(
             {
                 image.image = h.clone();
             }
-        }
-    }
-}
-
-/// The burning coin on the top during Hold & Spin, with its count.
-#[derive(Component)]
-pub struct CollectCoin;
-#[derive(Component)]
-pub struct CollectCount;
-#[derive(Component)]
-pub struct CollectTitle;
-
-/// Where the collect coin stands: over the jackpots, between MAJOR and MINOR.
-const COLLECT_COIN: (f32, f32, f32) = (985.0, 78.0, 168.0);
-
-/// The collect coin (hidden until Hold & Spin).
-pub fn spawn_collect_coin(c: &mut ChildSpawnerCommands, art: &ArtPack, fonts: &CabFonts) {
-    let (x, y, s) = COLLECT_COIN;
-    c.spawn((
-        CollectCoin,
-        Node {
-            position_type: PositionType::Absolute,
-            left: Val::Px(x - s / 2.0),
-            top: Val::Px(y - s / 2.0),
-            width: Val::Px(s),
-            height: Val::Px(s),
-            flex_direction: FlexDirection::Column,
-            justify_content: JustifyContent::Center,
-            align_items: AlignItems::Center,
-            ..default()
-        },
-        ImageNode {
-            image_mode: NodeImageMode::Stretch,
-            ..default()
-        },
-        GlobalZIndex(18),
-        Visibility::Hidden,
-    ))
-    .with_children(|coin| {
-        coin.spawn((
-            CollectTitle,
-            Node {
-                position_type: PositionType::Absolute,
-                left: Val::Px(s * 0.12),
-                top: Val::Px(s * 0.1),
-                width: Val::Px(s * 0.76),
-                height: Val::Px(s * 0.8),
-                ..default()
-            },
-            ImageNode {
-                image: art.ui.get("hs_title").cloned().unwrap_or_default(),
-                image_mode: NodeImageMode::Stretch,
-                ..default()
-            },
-            Visibility::Hidden,
-        ));
-        coin.spawn((
-            CollectCount,
-            Text::new(""),
-            TextFont {
-                font: bevy::text::FontSource::Handle(fonts.serif_bold.clone()),
-                font_size: FontSize::Px(76.0),
-                ..default()
-            },
-            TextColor(Color::srgb(0.08, 0.04, 0.03)),
-            TextShadow {
-                offset: Vec2::new(2.0, 2.0),
-                color: Color::srgba(0.85, 0.1, 0.05, 0.9),
-            },
-            TextLayout::justify(Justify::Center),
-        ));
-        coin.spawn((
-            Text::new("COLLECTED"),
-            TextFont {
-                font: bevy::text::FontSource::Handle(fonts.serif_bold.clone()),
-                font_size: FontSize::Px(15.0),
-                ..default()
-            },
-            TextColor(Color::srgb(0.12, 0.05, 0.03)),
-            CollectCount,
-        ));
-    });
-}
-
-/// Show the collect coin and its count during Hold & Spin.
-#[allow(clippy::type_complexity, clippy::too_many_arguments)]
-pub fn collect_coin(
-    fidelity: Res<Fidelity>,
-    time: Res<Time>,
-    art: Res<ArtPack>,
-    show: Res<FeatureShow>,
-    gamble: Res<GambleShow>,
-    labels: Query<&Text, (With<CellLabel>, Without<CollectCount>)>,
-    mut coin: Query<(&mut ImageNode, &mut Visibility), (With<CollectCoin>, Without<CollectTitle>)>,
-    mut title: Query<
-        &mut Visibility,
-        (
-            With<CollectTitle>,
-            Without<CollectCoin>,
-            Without<CollectCount>,
-        ),
-    >,
-    mut counts: Query<
-        (&mut Text, &mut Visibility),
-        (
-            With<CollectCount>,
-            Without<CollectCoin>,
-            Without<CollectTitle>,
-        ),
-    >,
-) {
-    if !fidelity.0 {
-        return;
-    }
-    let on = show.grid && show.hold_and_spin() && show.winner.is_none() && !gamble.active;
-    let intro = show.awaiting.is_some() || !show.started;
-    let held = labels.iter().filter(|t| t.0.starts_with("ORB")).count();
-    let vis = |on: bool| {
-        if on {
-            Visibility::Inherited
-        } else {
-            Visibility::Hidden
-        }
-    };
-    for (mut image, mut v) in &mut coin {
-        let want = vis(on);
-        if *v != want {
-            *v = want;
-        }
-        if on
-            && let Some(f) = art.anims.get("coin")
-            && let Some(h) = f.get((time.elapsed_secs() * 30.0) as usize % f.len().max(1))
-            && image.image != *h
-        {
-            image.image = h.clone();
-        }
-    }
-    for mut v in &mut title {
-        let want = vis(on && intro);
-        if *v != want {
-            *v = want;
-        }
-    }
-    let mut first = true;
-    for (mut text, mut v) in &mut counts {
-        let want = vis(on && !intro);
-        if *v != want {
-            *v = want;
-        }
-        // The number (the COLLECTED caption keeps its text).
-        if first && text.0 != "COLLECTED" {
-            let n = held.to_string();
-            if text.0 != n {
-                text.0 = n;
-            }
-            first = false;
         }
     }
 }

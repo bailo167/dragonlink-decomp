@@ -48,8 +48,9 @@ mod cabinet;
 
 /// Testing only (`DRAGONLINK_FEATURE_TEST`): one orb inserted after every this
 /// many stops of each base reel, and one scatter after every this many, so a
-/// feature starts about one game in three. Synthetic either way; never a
-/// claim about the original.
+/// feature starts about one game in three. `DRAGONLINK_FEATURE_TEST=flags`
+/// adds the scatters only (free games often, Hold & Spin at its usual rate).
+/// Synthetic either way; never a claim about the original.
 const FEATURE_TEST_ORB: usize = 3;
 const FEATURE_TEST_SCATTER: usize = 6;
 
@@ -78,16 +79,54 @@ fn feature_test(mut model: MathModel, orb_every: usize, scatter_every: usize) ->
         let mut padded = Vec::with_capacity(strip.len() * 2);
         for (i, &s) in strip.iter().enumerate() {
             padded.push(s);
-            if (i + 1) % orb_every == 0 {
+            if orb_every > 0 && (i + 1) % orb_every == 0 {
                 padded.push(orb);
             }
-            if (i + 1) % scatter_every == 0 {
+            if scatter_every > 0 && (i + 1) % scatter_every == 0 {
                 padded.push(scatter);
             }
         }
-        *strip = padded;
+        *strip = spaced(padded, scatter);
     }
     model
+}
+
+/// The strip with any scatter dropped that would show with another in one
+/// reel window (three rows): the game never shows two flags on a reel.
+fn spaced(
+    strip: Vec<dragonlink_model::SymbolId>,
+    scatter: dragonlink_model::SymbolId,
+) -> Vec<dragonlink_model::SymbolId> {
+    let mut out: Vec<dragonlink_model::SymbolId> = Vec::with_capacity(strip.len());
+    for s in strip {
+        let near = out.iter().rev().take(2).any(|&p| p == scatter);
+        if s == scatter && near {
+            continue;
+        }
+        out.push(s);
+    }
+    // Across the wrap: the last two stops and the first two show together.
+    while out.len() > 4 {
+        let n = out.len();
+        let tail = [out[n - 2], out[n - 1]];
+        let head = [out[0], out[1]];
+        let clash = |a: &[dragonlink_model::SymbolId], b: &[dragonlink_model::SymbolId]| {
+            (0..a.len()).any(|i| {
+                (0..b.len()).any(|j| a[i] == scatter && b[j] == scatter && (a.len() - i) + j <= 2)
+            })
+        };
+        if !clash(&tail, &head) {
+            break;
+        }
+        // Drop the latest scatter at the end of the strip.
+        match out.iter().rposition(|&p| p == scatter) {
+            Some(i) if i >= n - 2 => {
+                out.remove(i);
+            }
+            _ => break,
+        }
+    }
+    out
 }
 
 /// Seconds between one reel stopping and the next. Presentation only; ours.
@@ -128,9 +167,10 @@ impl GameChoice {
     fn model(self) -> MathModel {
         match self {
             GameChoice::GoldenCentury if std::env::var_os("DRAGONLINK_FEATURE_TEST").is_some() => {
+                let flags = std::env::var("DRAGONLINK_FEATURE_TEST").is_ok_and(|v| v == "flags");
                 feature_test(
                     golden_century_synthetic(),
-                    FEATURE_TEST_ORB,
+                    if flags { 0 } else { FEATURE_TEST_ORB },
                     FEATURE_TEST_SCATTER,
                 )
             }
@@ -1845,7 +1885,6 @@ fn main() -> AppExit {
                 cabinet::feature_music,
                 cabinet::feature_cues,
                 cabinet::coin_shower,
-                cabinet::collect_coin,
             )
                 .chain(),
             (
@@ -1958,6 +1997,41 @@ mod tests {
         assert_eq!(cabinet::coin_text(20, 1), "20");
         assert_eq!(cabinet::coin_text(20, 100), "$20");
         assert_eq!(cabinet::coin_text(10, 200), "$20");
+    }
+
+    /// No reel shows two flags at once (any three consecutive stops, across
+    /// the wrap), in the model or either feature test model.
+    #[test]
+    fn a_reel_never_shows_two_flags() {
+        for model in [
+            golden_century_synthetic(),
+            feature_test(
+                golden_century_synthetic(),
+                FEATURE_TEST_ORB,
+                FEATURE_TEST_SCATTER,
+            ),
+            feature_test(golden_century_synthetic(), 0, FEATURE_TEST_SCATTER),
+        ] {
+            let scatter = model
+                .symbols
+                .iter()
+                .position(|s| s.key == "pennant")
+                .expect("pennant");
+            for (r, strip) in model
+                .reel_strips
+                .iter()
+                .chain(model.free_games.iter().flat_map(|f| &f.free_reel_strips))
+                .enumerate()
+            {
+                let n = strip.len();
+                for i in 0..n {
+                    let flags = (0..3)
+                        .filter(|k| strip[(i + k) % n].0 as usize == scatter)
+                        .count();
+                    assert!(flags <= 1, "strip {r} stop {i}: {flags} flags");
+                }
+            }
+        }
     }
 
     #[test]
