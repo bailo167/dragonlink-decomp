@@ -16,6 +16,8 @@
 use std::io::Read;
 use std::path::Path;
 
+use bevy::ecs::hierarchy::ChildSpawnerCommands;
+use bevy::picking::events::PointerPress;
 use bevy::ui::widget::NodeImageMode;
 use bevy::window::{MonitorSelection, PrimaryWindow, WindowMode};
 
@@ -297,6 +299,9 @@ pub fn spawn(commands: &mut Commands, model: &MathModel, art: &ArtPack, font: &H
                 }
             }
 
+            // The moving reels, drawn over the landed cells while they spin.
+            spawn_strips(c, model.grid.reels);
+
             // The jackpot meter bar, directly above the reel panel.
             let (x, y) = meters(840.0, 53.0);
             c.spawn(sprite(
@@ -322,22 +327,49 @@ pub fn spawn(commands: &mut Commands, model: &MathModel, art: &ArtPack, font: &H
 
             // The bottom player bar, bottom-anchored at y = 1050.
             c.spawn(sprite(ui("upi_bar"), 850.0, 975.0, 1878.0, 150.0));
-            c.spawn(sprite(ui("btn_minus"), 281.0, 993.0, 67.0 * 0.935, 104.0));
-            c.spawn(sprite(ui("btn_plus"), 534.0, 993.0, 68.0 * 0.935, 104.0));
-            c.spawn(sprite(
-                ui("btn_maxbet"),
-                1222.0,
-                994.5,
-                257.0 * 0.935,
-                104.0,
-            ));
-            c.spawn(sprite(
-                ui("btn_spin_normal"),
-                1510.5,
-                990.5,
-                322.0 * 0.935,
-                115.0,
-            ));
+            for (button, img, x, y, w, h) in [
+                (
+                    CabButton::BetDown,
+                    "btn_minus",
+                    281.0,
+                    993.0,
+                    67.0 * 0.935,
+                    104.0,
+                ),
+                (
+                    CabButton::BetUp,
+                    "btn_plus",
+                    534.0,
+                    993.0,
+                    68.0 * 0.935,
+                    104.0,
+                ),
+                (
+                    CabButton::MaxBet,
+                    "btn_maxbet",
+                    1222.0,
+                    994.5,
+                    257.0 * 0.935,
+                    104.0,
+                ),
+                (
+                    CabButton::Spin,
+                    "btn_spin_normal",
+                    1510.5,
+                    990.5,
+                    322.0 * 0.935,
+                    115.0,
+                ),
+            ] {
+                c.spawn((button, sprite(ui(img), x, y, w, h))).observe(
+                    move |_press: On<PointerPress>, mut input: ResMut<CabinetInput>| match button {
+                        CabButton::Spin => input.spin = true,
+                        CabButton::MaxBet => input.max_bet = true,
+                        CabButton::BetUp => input.bet_up = true,
+                        CabButton::BetDown => input.bet_down = true,
+                    },
+                );
+            }
             c.spawn((
                 CabMeter::Bet,
                 label("-", font, 44.0, white, 407.5, 993.0, 190.0),
@@ -443,5 +475,429 @@ pub fn update_meters(
         if text.0 != value {
             text.0 = value;
         }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Controls
+// ---------------------------------------------------------------------------
+
+/// The on-screen buttons of the player bar.
+#[derive(Component, Clone, Copy, PartialEq, Eq)]
+pub enum CabButton {
+    Spin,
+    MaxBet,
+    BetUp,
+    BetDown,
+}
+
+/// Button presses this frame, read by `input` alongside the keyboard.
+#[derive(Resource, Default)]
+pub struct CabinetInput {
+    pub spin: bool,
+    pub max_bet: bool,
+    pub bet_up: bool,
+    pub bet_down: bool,
+}
+
+/// Presses are set by the buttons' pointer observers (before `Update`) and
+/// cleared once `input` has read them.
+pub fn clear_buttons(mut input: ResMut<CabinetInput>) {
+    *input = CabinetInput::default();
+}
+
+// ---------------------------------------------------------------------------
+// Reel motion
+// ---------------------------------------------------------------------------
+
+/// The machine's pace: the first reel stops a second after the spin starts,
+/// the rest follow one by one.
+pub const TIMING: Timing = Timing {
+    lead_in: 1.0,
+    reel_interval: 0.28,
+    event_interval: 0.14,
+};
+
+/// Reel speed in symbols per second while spinning.
+const SPIN_SPEED: f32 = 17.0;
+/// How far a stopping reel runs past its rest position, in symbols.
+const OVERSHOOT: f32 = 0.16;
+/// How long the bounce back to rest takes, in seconds.
+const SETTLE_SECONDS: f32 = 0.13;
+/// The upward kick a reel gives as it starts, in symbols, and its duration.
+const KICK: f32 = 0.14;
+const KICK_SECONDS: f32 = 0.09;
+/// Images per reel strip: one above the window, three in it, one below.
+const STRIP_SLOTS: usize = 5;
+
+#[derive(Clone, Copy, PartialEq, Debug, Default)]
+enum Motion {
+    #[default]
+    Idle,
+    /// Spinning, `t` seconds since the start.
+    Spinning { t: f32 },
+    /// Running on to `target` (an integer position), then bouncing back.
+    Stopping { target: f32, bounce: Option<f32> },
+}
+
+/// One reel's scroll state. `pos` is the strip index at the top visible row,
+/// as a real number; decreasing it moves the symbols down.
+#[derive(Clone, Debug, Default)]
+struct ReelState {
+    motion: Motion,
+    pos: f32,
+    /// The landing symbols for rows 0..3, placed at `landing_at` when stopping.
+    landing: Vec<String>,
+    landing_at: i64,
+    /// Set for one frame when the reel hits its stop (for the stop sound).
+    stopped_now: bool,
+}
+
+/// All reels' motion.
+#[derive(Resource, Default)]
+pub struct Reels {
+    states: Vec<ReelState>,
+    /// The symbol keys the reels scroll through while spinning.
+    strips: Vec<Vec<String>>,
+}
+
+impl Reels {
+    /// Whether a reel is moving (so its landed cells are hidden).
+    pub fn moving(&self, reel: u8) -> bool {
+        self.states
+            .get(reel as usize)
+            .is_some_and(|s| s.motion != Motion::Idle)
+    }
+
+    /// Reels that hit their stop this frame.
+    pub fn just_stopped(&self) -> impl Iterator<Item = usize> + '_ {
+        self.states
+            .iter()
+            .enumerate()
+            .filter(|(_, s)| s.stopped_now)
+            .map(|(i, _)| i)
+    }
+
+    fn key_at(&self, reel: usize, n: i64) -> &str {
+        let s = &self.states[reel];
+        let k = n - s.landing_at;
+        if (0..s.landing.len() as i64).contains(&k) {
+            return &s.landing[k as usize];
+        }
+        let strip = &self.strips[reel];
+        if strip.is_empty() {
+            return "";
+        }
+        &strip[n.rem_euclid(strip.len() as i64) as usize]
+    }
+}
+
+/// One image in a reel strip.
+#[derive(Component)]
+pub struct StripSlot {
+    reel: u8,
+    index: u8,
+}
+
+/// The clip window of one reel strip.
+#[derive(Component)]
+pub struct StripColumn {
+    reel: u8,
+}
+
+fn reel_center_x(reel: u8) -> f32 {
+    slot(352.0 + 244.0 * reel as f32, 0.0).0
+}
+
+fn row_center_y(row: f32) -> f32 {
+    slot(0.0, 335.0 + 200.0 * row).1
+}
+
+fn pitch() -> f32 {
+    200.0 * SLOT_SCALE.1
+}
+
+fn column_width() -> f32 {
+    244.0 * SLOT_SCALE.0
+}
+
+/// The strips the reels scroll through, as symbol keys.
+pub fn reel_strips(model: &MathModel) -> Reels {
+    let strips = model
+        .reel_strips
+        .iter()
+        .map(|strip| {
+            strip
+                .iter()
+                .map(|id| model.symbols[id.0 as usize].key.clone())
+                .collect()
+        })
+        .collect::<Vec<Vec<String>>>();
+    let states = (0..strips.len())
+        .map(|reel| ReelState {
+            pos: ((reel * 7 + 2) % strips[reel].len().max(1)) as f32,
+            ..default()
+        })
+        .collect();
+    Reels { states, strips }
+}
+
+/// The reel strips: a clipped column per reel over the panel, shown only
+/// while the reel moves.
+pub fn spawn_strips(c: &mut ChildSpawnerCommands, reels: u8) {
+    let (cw, _) = cell_size();
+    let top = row_center_y(0.0) - pitch() / 2.0;
+    let height = pitch() * 3.0;
+    for reel in 0..reels {
+        let x = reel_center_x(reel);
+        c.spawn((
+            StripColumn { reel },
+            Node {
+                position_type: PositionType::Absolute,
+                left: Val::Px(x - column_width() / 2.0),
+                top: Val::Px(top),
+                width: Val::Px(column_width()),
+                height: Val::Px(height),
+                overflow: Overflow::clip(),
+                ..default()
+            },
+            Visibility::Hidden,
+        ))
+        .with_children(|col| {
+            for index in 0..STRIP_SLOTS as u8 {
+                col.spawn((
+                    StripSlot { reel, index },
+                    Node {
+                        position_type: PositionType::Absolute,
+                        left: Val::Px((column_width() - cw) / 2.0),
+                        width: Val::Px(cw),
+                        ..default()
+                    },
+                    ImageNode {
+                        image_mode: NodeImageMode::Stretch,
+                        ..default()
+                    },
+                ));
+            }
+        });
+    }
+}
+
+fn ease_out(t: f32) -> f32 {
+    1.0 - (1.0 - t) * (1.0 - t)
+}
+
+/// Run the reels: start them when a spin starts, stop each on its landing
+/// symbols when its stop is presented, with the machine's overshoot and
+/// bounce, and draw the strips while they move.
+#[allow(clippy::type_complexity, clippy::too_many_arguments)]
+pub fn spin_reels(
+    fidelity: Res<Fidelity>,
+    time: Res<Time>,
+    smoke: Res<Smoke>,
+    anim: Res<ReelAnim>,
+    art: Res<ArtPack>,
+    mut reels: ResMut<Reels>,
+    labels: Query<(&CellLabel, &Text)>,
+    mut columns: Query<(&StripColumn, &mut Visibility)>,
+    mut slots: Query<(&StripSlot, &mut ImageNode, &mut Node), Without<StripColumn>>,
+) {
+    if !fidelity.0 || reels.states.is_empty() {
+        return;
+    }
+    let dt = if smoke.frames_left.is_some() {
+        SMOKE_FRAME_SECONDS
+    } else {
+        time.delta_secs().min(0.05)
+    };
+    for reel in 0..reels.states.len() {
+        let spinning = anim.spinning.get(reel).copied().unwrap_or(false);
+        let state = &mut reels.states[reel];
+        state.stopped_now = false;
+        match state.motion {
+            Motion::Idle if spinning => {
+                state.pos = state.pos.round();
+                state.landing.clear();
+                state.motion = Motion::Spinning { t: 0.0 };
+            }
+            Motion::Idle => {}
+            Motion::Spinning { .. } if !spinning => {
+                // The stop has been presented: the cells hold the landing
+                // symbols. They scroll in from above.
+                let mut landing = vec![String::new(); 3];
+                for (label, text) in &labels {
+                    if label.reel as usize == reel && (label.row as usize) < 3 {
+                        landing[label.row as usize] = text.0.clone();
+                    }
+                }
+                let target = state.pos.floor() - 3.0;
+                state.landing = landing;
+                state.landing_at = target as i64;
+                state.motion = Motion::Stopping {
+                    target,
+                    bounce: None,
+                };
+            }
+            Motion::Spinning { t } => {
+                let t = t + dt;
+                // A short upward kick, then full speed.
+                let v = if t < KICK_SECONDS {
+                    -KICK / KICK_SECONDS
+                } else {
+                    let ramp = ((t - KICK_SECONDS) / 0.12).min(1.0);
+                    SPIN_SPEED * ramp.max(0.25)
+                };
+                state.pos -= v * dt;
+                state.motion = Motion::Spinning { t };
+            }
+            Motion::Stopping {
+                target,
+                bounce: None,
+            } => {
+                state.pos -= SPIN_SPEED * dt;
+                if state.pos <= target - OVERSHOOT {
+                    state.pos = target - OVERSHOOT;
+                    state.stopped_now = true;
+                    state.motion = Motion::Stopping {
+                        target,
+                        bounce: Some(0.0),
+                    };
+                }
+            }
+            Motion::Stopping {
+                target,
+                bounce: Some(b),
+            } => {
+                let b = b + dt;
+                let k = (b / SETTLE_SECONDS).min(1.0);
+                state.pos = target - OVERSHOOT * (1.0 - ease_out(k));
+                state.motion = if k >= 1.0 {
+                    state.pos = target;
+                    Motion::Idle
+                } else {
+                    Motion::Stopping {
+                        target,
+                        bounce: Some(b),
+                    }
+                };
+            }
+        }
+    }
+
+    // Draw.
+    let (cw, ch) = cell_size();
+    let p = pitch();
+    for (column, mut vis) in &mut columns {
+        let want = if reels.moving(column.reel) {
+            Visibility::Visible
+        } else {
+            Visibility::Hidden
+        };
+        if *vis != want {
+            *vis = want;
+        }
+    }
+    for (slot, mut image, mut node) in &mut slots {
+        let reel = slot.reel as usize;
+        if !reels.moving(slot.reel) {
+            continue;
+        }
+        let pos = reels.states[reel].pos;
+        let n = pos.floor() as i64 - 1 + slot.index as i64;
+        let key = reels.key_at(reel, n).to_string();
+        // Centre of this symbol relative to the column top.
+        let cy = p / 2.0 + (n as f32 - pos) * p;
+        let (w, h) = art
+            .sizes
+            .get(key.as_str())
+            .map_or((cw, ch), |s| symbol_size(*s));
+        if let Some(handle) = art.symbols.get(key.as_str())
+            && image.image != *handle
+        {
+            image.image = handle.clone();
+        }
+        node.top = Val::Px(cy - h / 2.0);
+        node.height = Val::Px(h);
+        node.width = Val::Px(w);
+        node.left = Val::Px((column_width() - w) / 2.0);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Sound
+// ---------------------------------------------------------------------------
+
+/// The game's own sound clips from the pack (`audio/<name>.ogg`), by name.
+#[derive(Resource, Default)]
+pub struct Sounds {
+    clips: std::collections::HashMap<String, Handle<AudioSource>>,
+    /// The reel-spin loop while it plays.
+    spin_loop: Option<Entity>,
+}
+
+impl Sounds {
+    /// Load every clip in the pack's `audio/` folder.
+    pub fn load(asset_server: &AssetServer, dir: &str) -> Sounds {
+        let mut clips = std::collections::HashMap::new();
+        if let Ok(entries) = std::fs::read_dir(Path::new(dir).join("audio")) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.extension().and_then(|e| e.to_str()) != Some("ogg") {
+                    continue;
+                }
+                if let Some(stem) = path.file_stem().and_then(|s| s.to_str()) {
+                    clips.insert(
+                        stem.to_string(),
+                        asset_server.load(format!("audio/{stem}.ogg")),
+                    );
+                }
+            }
+        }
+        Sounds {
+            clips,
+            spin_loop: None,
+        }
+    }
+
+    /// Play a clip once.
+    pub fn play(&self, commands: &mut Commands, name: &str) {
+        if let Some(clip) = self.clips.get(name) {
+            commands.spawn((AudioPlayer::new(clip.clone()), PlaybackSettings::DESPAWN));
+        }
+    }
+}
+
+/// The reels' sound: the spin whirr while any reel moves, and each reel's
+/// own stop sound as it lands.
+pub fn reel_audio(
+    fidelity: Res<Fidelity>,
+    mut commands: Commands,
+    mut sounds: ResMut<Sounds>,
+    reels: Res<Reels>,
+) {
+    if !fidelity.0 || sounds.clips.is_empty() {
+        return;
+    }
+    let spinning = reels
+        .states
+        .iter()
+        .any(|s| matches!(s.motion, Motion::Spinning { .. }));
+    if spinning
+        && sounds.spin_loop.is_none()
+        && let Some(clip) = sounds.clips.get("whirring_reel")
+    {
+        let id = commands
+            .spawn((AudioPlayer::new(clip.clone()), PlaybackSettings::LOOP))
+            .id();
+        sounds.spin_loop = Some(id);
+    }
+    let stopped: Vec<usize> = reels.just_stopped().collect();
+    for reel in &stopped {
+        let name = format!("reel{}", (reel + 1).min(5));
+        sounds.play(&mut commands, &name);
+    }
+    // The whirr ends as the last reel starts to land.
+    if !spinning && let Some(id) = sounds.spin_loop.take() {
+        commands.entity(id).despawn();
     }
 }

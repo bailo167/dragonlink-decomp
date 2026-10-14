@@ -14,7 +14,7 @@ dragonlink-core.workspace = true
 dragonlink-model.workspace = true
 # 2D and UI only for now. `default_platform` (pulled in by both) brings the
 # window backend, the built-in font and WebGL2 for the web target.
-bevy = { workspace = true, features = ["2d", "ui"] }
+bevy = { workspace = true, features = ["2d", "ui", "ui_picking", "audio"] }
 
 [lints]
 workspace = true

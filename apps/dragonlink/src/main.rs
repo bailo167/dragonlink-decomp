@@ -359,7 +359,31 @@ struct FeatureBanner;
 
 /// Give each event of one command its delay. Reels stop one after another;
 /// everything else follows at a steady pace.
+#[cfg(test)]
 fn schedule(events: Vec<Event>) -> Vec<(f32, Event)> {
+    schedule_with(events, &Timing::default())
+}
+
+/// When the reels stop and events follow. The developer build keeps a quick
+/// pace; the cabinet build uses the machine's pace.
+#[derive(Resource, Clone, Copy)]
+struct Timing {
+    lead_in: f32,
+    reel_interval: f32,
+    event_interval: f32,
+}
+
+impl Default for Timing {
+    fn default() -> Self {
+        Timing {
+            lead_in: SPIN_LEAD_IN,
+            reel_interval: REEL_STOP_INTERVAL,
+            event_interval: EVENT_INTERVAL,
+        }
+    }
+}
+
+fn schedule_with(events: Vec<Event>, timing: &Timing) -> Vec<(f32, Event)> {
     let mut first_reel = true;
     events
         .into_iter()
@@ -375,11 +399,11 @@ fn schedule(events: Vec<Event>) -> Vec<(f32, Event)> {
                 } => 0.0,
                 Event::ReelStopped { .. } if first_reel => {
                     first_reel = false;
-                    SPIN_LEAD_IN
+                    timing.lead_in
                 }
-                Event::ReelStopped { .. } => REEL_STOP_INTERVAL,
+                Event::ReelStopped { .. } => timing.reel_interval,
                 Event::OrbValueShown { .. } => 0.0,
-                _ => EVENT_INTERVAL,
+                _ => timing.event_interval,
             };
             (delay, event)
         })
@@ -422,6 +446,7 @@ fn setup(
     mut art: ResMut<ArtPack>,
     fidelity: Res<cabinet::Fidelity>,
     mut fonts: ResMut<Assets<Font>>,
+    mut sounds: ResMut<cabinet::Sounds>,
 ) {
     // The initial state's OnEnter runs before Startup systems, so the pack is
     // read here, on first use.
@@ -429,6 +454,9 @@ fn setup(
     let model = sim.game.model();
     if fidelity.0 {
         let font = cabinet::load_font(&mut fonts);
+        if let Ok(dir) = std::env::var("DRAGONLINK_ART") {
+            *sounds = cabinet::Sounds::load(&asset_server, &dir);
+        }
         cabinet::spawn(&mut commands, model, &art, &font);
         return;
     }
@@ -742,6 +770,7 @@ fn banner(
 
 /// Turn key presses into commands. The simulation answers with events, which
 /// are queued for presentation. A refused command only changes the status line.
+#[allow(clippy::too_many_arguments)]
 fn input(
     keys: Res<ButtonInput<KeyCode>>,
     smoke: Res<Smoke>,
@@ -749,6 +778,8 @@ fn input(
     mut presentation: ResMut<Presentation>,
     mut denom: ResMut<Denom>,
     mut exit: MessageWriter<AppExit>,
+    timing: Res<Timing>,
+    cabinet_input: Res<cabinet::CabinetInput>,
 ) {
     // Denomination (display only) cycles with D, while idle.
     if keys.just_pressed(KeyCode::KeyD) && sim.game.is_idle() && presentation.queue.is_empty() {
@@ -767,7 +798,10 @@ fn input(
         && smoke.frame.is_multiple_of(SMOKE_PRESS_EVERY);
     // Features play by themselves (see `drive_features`); the player spins and
     // sets the stake.
-    let go = (auto || keys.just_pressed(KeyCode::Space) || keys.just_pressed(KeyCode::Enter))
+    let go = (auto
+        || keys.just_pressed(KeyCode::Space)
+        || keys.just_pressed(KeyCode::Enter)
+        || cabinet_input.spin)
         && sim.game.is_idle();
     let bets = sim.game.model().bet.credits_per_line_options.len();
     let bet_index = sim.game.state().bet_index;
@@ -778,11 +812,14 @@ fn input(
         .unwrap_or(0);
     let command = if go {
         Some(Command::Spin)
-    } else if keys.just_pressed(KeyCode::ArrowUp) && bet_index + 1 < bets {
+    } else if cabinet_input.max_bet && bet_index + 1 < bets {
+        Some(Command::SetBet { index: bets - 1 })
+    } else if (keys.just_pressed(KeyCode::ArrowUp) || cabinet_input.bet_up) && bet_index + 1 < bets
+    {
         Some(Command::SetBet {
             index: bet_index + 1,
         })
-    } else if keys.just_pressed(KeyCode::ArrowDown) && bet_index > 0 {
+    } else if (keys.just_pressed(KeyCode::ArrowDown) || cabinet_input.bet_down) && bet_index > 0 {
         Some(Command::SetBet {
             index: bet_index - 1,
         })
@@ -801,7 +838,7 @@ fn input(
     let Sim { game, rng } = &mut *sim;
     match game.apply(command, rng) {
         Ok(events) => {
-            presentation.queue.extend(schedule(events));
+            presentation.queue.extend(schedule_with(events, &timing));
             presentation.wait = presentation.queue.front().map_or(0.0, |(delay, _)| *delay);
         }
         Err(refusal) => presentation.status = format!("{refusal}"),
@@ -817,8 +854,10 @@ fn animate_reels(
     mut reels_spin: ResMut<ReelAnim>,
     mut cells: Query<(&Cell, &mut BackgroundColor)>,
     mut labels: Query<(&CellLabel, &mut Text)>,
+    fidelity: Res<cabinet::Fidelity>,
 ) {
-    if reels_spin.spinning.iter().all(|s| !*s) {
+    // The cabinet build draws real moving strips instead (cabinet::spin_reels).
+    if fidelity.0 || reels_spin.spinning.iter().all(|s| !*s) {
         return;
     }
     let dt = if smoke.frames_left.is_some() {
@@ -877,6 +916,7 @@ fn drive_features(
     smoke: Res<Smoke>,
     mut sim: ResMut<Sim>,
     mut presentation: ResMut<Presentation>,
+    timing: Res<Timing>,
 ) {
     if !presentation.queue.is_empty() {
         presentation.step_timer = FEATURE_STEP_PAUSE;
@@ -897,7 +937,7 @@ fn drive_features(
     presentation.step_timer = FEATURE_STEP_PAUSE;
     let Sim { game, rng } = &mut *sim;
     if let Ok(events) = game.apply(Command::Advance, rng) {
-        presentation.queue.extend(schedule(events));
+        presentation.queue.extend(schedule_with(events, &timing));
         presentation.wait = presentation.queue.front().map_or(0.0, |(delay, _)| *delay);
     }
 }
@@ -1000,6 +1040,10 @@ fn present(
                 presentation.status = format!("FREE GAMES  -  {games} games won");
             }
             Event::FreeGameStarted { number, remaining } => {
+                // Each free game spins the reels like a paid game.
+                for s in reels_spin.spinning.iter_mut() {
+                    *s = true;
+                }
                 presentation.status = format!("FREE GAME {number}  ({remaining} to come)");
             }
             Event::MysteryRevealed { symbol, count } => {
@@ -1256,6 +1300,7 @@ fn load_pngs(
 fn render_symbols(
     art: Res<ArtPack>,
     fidelity: Res<cabinet::Fidelity>,
+    reels: Res<cabinet::Reels>,
     labels: Query<(&CellLabel, &Text)>,
     mut images: Query<(&CellImage, &mut ImageNode, &mut Visibility, &mut Node)>,
 ) {
@@ -1264,6 +1309,10 @@ fn render_symbols(
     }
     let (cw, ch) = cabinet::cell_size();
     for (cell, mut image, mut visibility, mut node) in &mut images {
+        if fidelity.0 && reels.moving(cell.reel) {
+            *visibility = Visibility::Hidden;
+            continue;
+        }
         let key = labels
             .iter()
             .find(|(l, _)| l.reel == cell.reel && l.row == cell.row)
@@ -1517,6 +1566,18 @@ fn main() -> AppExit {
         Color::srgb(0.03, 0.03, 0.05)
     }))
     .insert_resource(cabinet::Fidelity(fidelity))
+    .insert_resource(if fidelity {
+        cabinet::TIMING
+    } else {
+        Timing::default()
+    })
+    .insert_resource(cabinet::CabinetInput::default())
+    .insert_resource(cabinet::Sounds::default())
+    .insert_resource(if fidelity {
+        cabinet::reel_strips(&cli.game.model())
+    } else {
+        cabinet::Reels::default()
+    })
     .insert_resource(Presentation {
         shown_credits: cli.credits,
         ..default()
@@ -1543,11 +1604,14 @@ fn main() -> AppExit {
         (
             smoke,
             input,
+            cabinet::clear_buttons,
             drive_features,
             present,
             animate_reels,
             hud,
             banner,
+            cabinet::spin_reels,
+            cabinet::reel_audio,
             render_symbols,
             cabinet::clear_cells,
             cabinet::update_meters,
