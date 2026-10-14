@@ -21,6 +21,8 @@ use bevy::picking::events::PointerPress;
 use bevy::ui::widget::NodeImageMode;
 use bevy::window::{MonitorSelection, PrimaryWindow, WindowMode};
 
+use dragonlink_core::Feature;
+
 use super::*;
 
 /// The cabinet canvas: the game screen (down to [`SCREEN_BOTTOM`]) and the
@@ -353,13 +355,16 @@ pub fn spawn(commands: &mut Commands, model: &MathModel, art: &ArtPack, fonts: &
                             },
                             Visibility::Hidden,
                         ));
+                        spawn_hs_cell(cell, art, reel, row);
                         spawn_orb_overlay(cell, reel, row);
+                        spawn_hs_spin(cell, art, reel, row);
                     });
                 }
             }
 
             // The moving reels, drawn over the landed cells while they spin.
             spawn_strips(c, model.grid.reels);
+            spawn_feature_layer(c, art);
 
             // The jackpots across the top.
             let (bar_w, bar_top) = (JACKPOT_BAR_W, JACKPOT_BAR_TOP);
@@ -586,6 +591,26 @@ fn spawn_meter_band(
         });
     }
 
+    // A feature's message ("Scatter wins 100") takes the prompts' place.
+    c.spawn((
+        FeatureMessage,
+        Text::new(""),
+        TextFont {
+            font: bevy::text::FontSource::Handle(fonts.sans.clone()),
+            font_size: FontSize::Px(25.0),
+            ..default()
+        },
+        TextColor(white),
+        TextLayout::justify(Justify::Right),
+        Node {
+            position_type: PositionType::Absolute,
+            left: Val::Px(1200.0),
+            top: Val::Px(REEL_BOTTOM + 43.0),
+            width: Val::Px(510.0),
+            ..default()
+        },
+    ));
+
     // The player-information button at the far left.
     c.spawn((
         Node {
@@ -675,14 +700,16 @@ fn spawn_meter_band(
 pub fn start_prompts(
     fidelity: Res<Fidelity>,
     time: Res<Time>,
+    show: Res<FeatureShow>,
     mut prompts: Query<(&StartPrompt, &mut Visibility)>,
 ) {
     if !fidelity.0 {
         return;
     }
     let shown = ((time.elapsed_secs() / 3.0) as u32 % 2) as u8;
+    let quiet = show.message().is_some() || show.stage != Stage::Base;
     for (p, mut vis) in &mut prompts {
-        let want = if p.which == shown {
+        let want = if p.which == shown && !quiet {
             Visibility::Inherited
         } else {
             Visibility::Hidden
@@ -786,6 +813,10 @@ fn spawn_deck(c: &mut ChildSpawnerCommands, font: &Handle<Font>) {
     );
 }
 
+/// The play button's caption.
+#[derive(Component)]
+pub struct SpinLabel;
+
 /// The lit cap of a deck button (its colour is set by [`light_deck`]).
 #[derive(Component)]
 pub struct DeckCap(pub CabButton);
@@ -863,7 +894,7 @@ fn deck_button(
                 },
                 BackgroundColor(Color::srgba(0.0, 0.0, 0.0, 0.12)),
             ));
-            cap.spawn((
+            let mut label = cap.spawn((
                 Text::new(text),
                 TextFont {
                     font: bevy::text::FontSource::Handle(font.clone()),
@@ -871,7 +902,11 @@ fn deck_button(
                     ..default()
                 },
                 TextColor(Color::srgb(0.08, 0.07, 0.05)),
+                TextLayout::justify(Justify::Center),
             ));
+            if button == CabButton::Spin {
+                label.insert(SpinLabel);
+            }
         });
     })
     .observe(
@@ -886,17 +921,37 @@ fn deck_button(
 /// Light the deck: the chosen denomination and line count lit gold, the
 /// others lit white, lines above the denomination's maximum dark, and SPIN
 /// glowing while a game can start.
+#[allow(clippy::too_many_arguments)]
 pub fn light_deck(
     fidelity: Res<Fidelity>,
     time: Res<Time>,
     sim: Res<Sim>,
     denom: Res<Denom>,
     presentation: Res<Presentation>,
+    show: Res<FeatureShow>,
     mut caps: Query<(&DeckCap, &mut BackgroundColor)>,
+    mut spin_label: Query<(&mut Text, &mut TextFont), With<SpinLabel>>,
 ) {
     if !fidelity.0 {
         return;
     }
+    // The play button reads START FEATURE while a feature waits for it.
+    let (word, size) = if matches!(show.awaiting, Some(Await::Start(_))) {
+        (
+            "START
+FEATURE",
+            52.0,
+        )
+    } else {
+        ("SPIN", 88.0)
+    };
+    for (mut text, mut font) in &mut spin_label {
+        if text.0 != word {
+            text.0 = word.to_string();
+            font.font_size = FontSize::Px(size);
+        }
+    }
+    let waiting = show.awaiting.is_some();
     let cents = denom.cents();
     let idle = sim.game.is_idle() && presentation.queue.is_empty();
     let lines = sim.game.lines();
@@ -911,7 +966,7 @@ pub fn light_deck(
             CabButton::Lines(n) if n > max_lines(cents) => dark,
             CabButton::Lines(n) if n == lines => chosen,
             CabButton::Lines(_) => lit,
-            CabButton::Spin if idle => Color::srgb(0.2 * glow, 0.88 * glow, 0.26 * glow),
+            CabButton::Spin if idle || waiting => Color::srgb(0.2 * glow, 0.88 * glow, 0.26 * glow),
             CabButton::Spin => Color::srgb(0.1, 0.3, 0.12),
         };
         if bg.0 != face {
@@ -971,12 +1026,15 @@ pub fn clear_cells(fidelity: Res<Fidelity>, mut cells: Query<&mut BackgroundColo
 }
 
 /// The cabinet's credit, bet and win meters.
+#[allow(clippy::too_many_arguments)]
 pub fn update_meters(
     fidelity: Res<Fidelity>,
+    time: Res<Time>,
     sim: Res<Sim>,
     presentation: Res<Presentation>,
     denom: Res<Denom>,
     rollup: Res<Rollup>,
+    show: Res<FeatureShow>,
     mut meters: Query<(&CabMeter, &mut Text)>,
 ) {
     if !fidelity.0 {
@@ -989,7 +1047,10 @@ pub fn update_meters(
         let value = match meter {
             CabMeter::Credit => money(presentation.shown_credits.saturating_sub(pending), cents),
             CabMeter::Bet => money(sim.game.total_bet(), cents),
-            CabMeter::Win => money(rollup.shown(), cents),
+            CabMeter::Win => match &show.collect {
+                Some(c) => money(c.shown, cents),
+                None => money(rollup.shown(), cents),
+            },
             CabMeter::Denom => {
                 if cents >= 100 {
                     format!("${}", cents / 100)
@@ -998,7 +1059,9 @@ pub fn update_meters(
                 }
             }
             CabMeter::MinBet => format!("MIN BET {}", sim.game.lines()),
-            CabMeter::Multiplier => format!("Bet Multiplier {}", sim.game.credits_per_line()),
+            CabMeter::Multiplier => show
+                .caption(time.elapsed_secs())
+                .unwrap_or_else(|| format!("Bet Multiplier {}", sim.game.credits_per_line())),
             CabMeter::Lines => sim.game.lines().to_string(),
         };
         if text.0 != value {
@@ -1518,6 +1581,7 @@ pub fn win_rollup(
     time: Res<Time>,
     smoke: Res<Smoke>,
     sim: Res<Sim>,
+    show: Res<FeatureShow>,
     presentation: Res<Presentation>,
     mut rollup: ResMut<Rollup>,
     sounds: Res<Sounds>,
@@ -1534,7 +1598,13 @@ pub fn win_rollup(
         }
         *rollup = Rollup::default();
     }
-    if target > rollup.seen {
+    if target > rollup.seen && show.collected.is_some() {
+        // The coins were just counted onto the meter: it shows the total.
+        rollup.from = target;
+        rollup.to = target;
+        rollup.t = 0.0;
+        rollup.duration = 0.0;
+    } else if target > rollup.seen {
         let from = rollup.shown();
         let tune = win_tune(target, sim.game.total_bet());
         let name = format!("wintune{tune:02}");
@@ -1818,5 +1888,691 @@ pub fn strip_coins(
                 *vis = Visibility::Hidden;
             }
         }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Features
+// ---------------------------------------------------------------------------
+
+/// What the cabinet is waiting for the player to press.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Await {
+    /// START FEATURE, after a feature is won (footage: "PRESS START FEATURE
+    /// BUTTON" over the reels until it is pressed).
+    Start(Feature),
+    /// SPIN, before each Hold & Spin respin ("Press SPIN button").
+    Respin,
+}
+
+/// Which feature screen is showing.
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
+pub enum Stage {
+    #[default]
+    Base,
+    FreeGames {
+        number: u32,
+        total: u32,
+    },
+    FreeGamesDone,
+    HoldSpin {
+        respins_left: u8,
+    },
+    HoldSpinDone,
+}
+
+/// The feature presentation: what is showing and what is awaited.
+#[derive(Resource, Default)]
+pub struct FeatureShow {
+    pub awaiting: Option<Await>,
+    pub stage: Stage,
+    pub games_won: u8,
+    /// The scatter pay of the game that won the free games, in credits.
+    pub scatter_award: u64,
+    /// Seconds spent waiting for the current press.
+    waited: f32,
+    /// A respin to animate: the positions orbs just landed on.
+    respin_landed: Option<Vec<(u8, u8)>>,
+    respin: Option<RespinAnim>,
+    /// Jackpots the feature awarded, in award order.
+    jackpots: Vec<(JackpotTier, u64)>,
+    /// The count after the feature: about to start, running, finished.
+    collect_start: bool,
+    collect: Option<Collect>,
+    pub collected: Option<u64>,
+}
+
+impl FeatureShow {
+    /// Follow an event as it is presented.
+    pub fn on_event(&mut self, event: &Event) {
+        match event {
+            Event::SpinStarted { .. } => {
+                self.stage = Stage::Base;
+                self.scatter_award = 0;
+                self.collected = None;
+            }
+            Event::JackpotAwarded { tier, award } => self.jackpots.push((*tier, *award)),
+            Event::ScatterWin { award, .. } => self.scatter_award = *award,
+            Event::FreeGamesStarted { games } => {
+                self.games_won = *games;
+                self.wait_for(Await::Start(Feature::FreeGames));
+            }
+            Event::FreeGameStarted { number, remaining } => {
+                self.stage = Stage::FreeGames {
+                    number: *number,
+                    total: number + remaining,
+                };
+            }
+            Event::FreeGamesRetriggered { remaining, .. } => {
+                if let Stage::FreeGames { number, total } = &mut self.stage {
+                    *total = *number + remaining;
+                }
+            }
+            Event::FreeGamesCompleted { .. } => self.stage = Stage::FreeGamesDone,
+            Event::HoldAndSpinStarted { respins, .. } => {
+                self.jackpots.clear();
+                self.stage = Stage::HoldSpin {
+                    respins_left: *respins,
+                };
+                self.wait_for(Await::Start(Feature::HoldAndSpin));
+            }
+            Event::HoldAndSpinRespin {
+                respins_left,
+                landed,
+                ..
+            } => {
+                self.respin_landed = Some(landed.iter().map(|o| (o.reel, o.row)).collect());
+                self.stage = Stage::HoldSpin {
+                    respins_left: *respins_left,
+                };
+                if *respins_left > 0 {
+                    self.wait_for(Await::Respin);
+                }
+            }
+            Event::HoldAndSpinCompleted { .. } => {
+                self.awaiting = None;
+                self.stage = Stage::HoldSpinDone;
+                self.collect_start = true;
+            }
+            _ => {}
+        }
+    }
+
+    fn wait_for(&mut self, what: Await) {
+        self.awaiting = Some(what);
+        self.waited = 0.0;
+    }
+
+    /// The Hold & Spin grid is showing.
+    pub fn hold_and_spin(&self) -> bool {
+        matches!(self.stage, Stage::HoldSpin { .. } | Stage::HoldSpinDone)
+    }
+
+    /// The line under the reels, in place of "Bet Multiplier".
+    pub fn caption(&self, t: f32) -> Option<String> {
+        let alternate = ((t / 1.5) as u32).is_multiple_of(2);
+        match (self.awaiting, self.stage) {
+            (Some(Await::Start(Feature::FreeGames)), _) if alternate => {
+                Some(format!("{} FREE GAMES WON!", self.games_won))
+            }
+            (Some(Await::Start(_)), _) => Some("Press START FEATURE button".into()),
+            (Some(Await::Respin), _) => Some("Press SPIN button".into()),
+            (_, Stage::FreeGames { number, total }) => {
+                Some(format!("Free Game {number} of {total}"))
+            }
+            _ => None,
+        }
+    }
+
+    /// The message at the right, in place of the start prompts.
+    pub fn message(&self) -> Option<String> {
+        let free_games = matches!(self.awaiting, Some(Await::Start(Feature::FreeGames)))
+            || matches!(self.stage, Stage::FreeGames { .. });
+        (free_games && self.scatter_award > 0)
+            .then(|| format!("Scatter wins {}", self.scatter_award))
+    }
+}
+
+/// A SPIN press while a feature waits releases it (and starts no game). An
+/// unattended run presses by itself after a moment.
+#[allow(clippy::too_many_arguments)]
+pub fn feature_press(
+    fidelity: Res<Fidelity>,
+    time: Res<Time>,
+    keys: Res<ButtonInput<KeyCode>>,
+    smoke: Res<Smoke>,
+    mut input: ResMut<CabinetInput>,
+    mut show: ResMut<FeatureShow>,
+    mut presentation: ResMut<Presentation>,
+) {
+    if !fidelity.0 || show.awaiting.is_none() || show.blocks() {
+        return;
+    }
+    show.waited += smoke.dt(&time);
+    let pressed = (input.spin && !input.skip_spin)
+        || keys.just_pressed(KeyCode::Space)
+        || keys.just_pressed(KeyCode::Enter);
+    let auto = smoke.frames_left.is_some() && show.waited > 2.5;
+    if pressed || auto {
+        show.awaiting = None;
+        input.skip_spin = true;
+        // The press plays the next step at once.
+        presentation.step_timer = 0.0;
+    }
+}
+
+/// The feature banner across the top of the reels.
+#[derive(Component)]
+pub struct FeatureBanner;
+/// The text of the feature banner.
+#[derive(Component)]
+pub struct FeatureBannerText;
+/// A digit of the "FREE GAME n OF m" counter: which number, which digit.
+#[derive(Component)]
+pub struct CounterDigit {
+    number: u8,
+    index: u8,
+}
+/// The dark cell behind an empty Hold & Spin position.
+#[derive(Component)]
+pub struct HsCell {
+    reel: u8,
+    row: u8,
+}
+/// The Hold & Spin grid lines over the reels.
+#[derive(Component)]
+pub struct HsFrame;
+/// The message at the right of the meter band during a feature.
+#[derive(Component)]
+pub struct FeatureMessage;
+
+const BANNER_SIZE: (f32, f32) = (760.0, 96.0);
+const BANNER_Y: f32 = GRID_CENTER.1 - 1.5 * PITCH.1 + 6.0;
+/// Where the counter's two numbers sit across the banner, and their height.
+const COUNTER_X: [f32; 2] = [0.59, 0.795];
+const COUNTER_DIGIT_H: f32 = 52.0;
+
+/// The banner, its counter digits, the Hold & Spin grid lines.
+pub fn spawn_feature_layer(c: &mut ChildSpawnerCommands, art: &ArtPack) {
+    let ui = |k: &str| art.ui.get(k).cloned().unwrap_or_default();
+    let (gx, gy) = GRID_CENTER;
+    c.spawn((
+        HsFrame,
+        sprite(ui("hs_frame"), gx, gy, 5.0 * PITCH.0, 3.0 * PITCH.1),
+        Visibility::Hidden,
+    ));
+    let (bw, bh) = BANNER_SIZE;
+    c.spawn((
+        FeatureBanner,
+        Node {
+            position_type: PositionType::Absolute,
+            left: Val::Px(gx - bw / 2.0),
+            top: Val::Px(BANNER_Y - bh / 2.0),
+            width: Val::Px(bw),
+            height: Val::Px(bh),
+            ..default()
+        },
+        ImageNode {
+            image: ui("banner_base"),
+            image_mode: NodeImageMode::Stretch,
+            ..default()
+        },
+        GlobalZIndex(5),
+        Visibility::Hidden,
+    ))
+    .with_children(|b| {
+        b.spawn((
+            FeatureBannerText,
+            Node {
+                position_type: PositionType::Absolute,
+                left: Val::Px(bw * 0.04),
+                top: Val::Px(bh * 0.02),
+                width: Val::Px(bw * 0.92),
+                height: Val::Px(bh * 0.96),
+                ..default()
+            },
+            ImageNode {
+                image_mode: NodeImageMode::Stretch,
+                ..default()
+            },
+        ));
+        for number in 0..2u8 {
+            b.spawn(Node {
+                position_type: PositionType::Absolute,
+                left: Val::Px(bw * COUNTER_X[number as usize] - 60.0),
+                top: Val::Px(0.0),
+                width: Val::Px(120.0),
+                height: Val::Px(bh),
+                flex_direction: FlexDirection::Row,
+                justify_content: JustifyContent::Center,
+                align_items: AlignItems::Center,
+                ..default()
+            })
+            .with_children(|row| {
+                for index in 0..2u8 {
+                    row.spawn((
+                        CounterDigit { number, index },
+                        Node::default(),
+                        ImageNode {
+                            image_mode: NodeImageMode::Stretch,
+                            ..default()
+                        },
+                        Visibility::Hidden,
+                    ));
+                }
+            });
+        }
+    });
+}
+
+/// The dark panel an empty Hold & Spin position shows.
+pub fn spawn_hs_cell(cell: &mut ChildSpawnerCommands, art: &ArtPack, reel: u8, row: u8) {
+    let (cw, ch) = cell_size();
+    cell.spawn((
+        HsCell { reel, row },
+        Node {
+            position_type: PositionType::Absolute,
+            width: Val::Px(cw),
+            height: Val::Px(ch),
+            ..default()
+        },
+        ImageNode {
+            image: art.ui.get("hs_cell").cloned().unwrap_or_default(),
+            image_mode: NodeImageMode::Stretch,
+            color: Color::srgba(1.0, 1.0, 1.0, 0.86),
+            ..default()
+        },
+        Visibility::Hidden,
+    ));
+}
+
+/// Show the feature banner, counter, grid and messages for the stage.
+#[allow(clippy::too_many_arguments, clippy::type_complexity)]
+pub fn feature_screen(
+    fidelity: Res<Fidelity>,
+    show: Res<FeatureShow>,
+    art: Res<ArtPack>,
+    labels: Query<(&CellLabel, &Text), Without<FeatureMessage>>,
+    mut banner: Query<&mut Visibility, (With<FeatureBanner>, Without<HsFrame>, Without<HsCell>)>,
+    mut banner_text: Query<
+        &mut ImageNode,
+        (
+            With<FeatureBannerText>,
+            Without<CounterDigit>,
+            Without<HsCell>,
+        ),
+    >,
+    mut digits: Query<
+        (&CounterDigit, &mut ImageNode, &mut Visibility, &mut Node),
+        (
+            Without<FeatureBanner>,
+            Without<FeatureBannerText>,
+            Without<HsCell>,
+            Without<HsFrame>,
+        ),
+    >,
+    mut frame: Query<
+        &mut Visibility,
+        (
+            With<HsFrame>,
+            Without<FeatureBanner>,
+            Without<CounterDigit>,
+            Without<HsCell>,
+        ),
+    >,
+    mut cells: Query<
+        (&HsCell, &mut Visibility),
+        (
+            Without<FeatureBanner>,
+            Without<HsFrame>,
+            Without<CounterDigit>,
+        ),
+    >,
+    mut message: Query<&mut Text, (With<FeatureMessage>, Without<CellLabel>)>,
+) {
+    if !fidelity.0 {
+        return;
+    }
+    let text = match (show.awaiting, show.stage) {
+        (Some(Await::Start(_)), _) => Some("banner_start_feature".to_string()),
+        (_, Stage::FreeGames { .. }) => Some("banner_free_game".to_string()),
+        (_, Stage::FreeGamesDone) => Some("banner_feature_completed".to_string()),
+        (_, Stage::HoldSpin { respins_left }) => {
+            Some(format!("banner_spins_{}", respins_left.clamp(1, 3)))
+        }
+        (_, Stage::HoldSpinDone) => Some("banner_spins_completed".to_string()),
+        _ => None,
+    };
+    let handle = text.as_deref().and_then(|k| art.ui.get(k));
+    for mut vis in &mut banner {
+        let want = if handle.is_some() {
+            Visibility::Inherited
+        } else {
+            Visibility::Hidden
+        };
+        if *vis != want {
+            *vis = want;
+        }
+    }
+    if let Some(h) = handle {
+        for mut image in &mut banner_text {
+            if image.image != *h {
+                image.image = h.clone();
+            }
+        }
+    }
+    // The counter's numbers, in the banner's own gold digits.
+    let counter = match (show.awaiting, show.stage) {
+        (None | Some(Await::Respin), Stage::FreeGames { number, total }) => {
+            Some([number.to_string(), total.to_string()])
+        }
+        _ => None,
+    };
+    for (d, mut image, mut vis, mut node) in &mut digits {
+        let glyph = counter
+            .as_ref()
+            .and_then(|n| n[d.number as usize].chars().nth(d.index as usize))
+            .and_then(|c| {
+                let key = format!("bdigit_{c}");
+                art.ui.get(&key).zip(art.sizes.get(&key))
+            });
+        match glyph {
+            Some((h, (w, gh))) => {
+                if image.image != *h {
+                    image.image = h.clone();
+                }
+                let k = COUNTER_DIGIT_H / gh;
+                node.width = Val::Px(w * k);
+                node.height = Val::Px(gh * k);
+                node.display = Display::Flex;
+                *vis = Visibility::Inherited;
+            }
+            None => {
+                node.display = Display::None;
+                *vis = Visibility::Hidden;
+            }
+        }
+    }
+    // The Hold & Spin grid: lines over the reels, dark empty positions.
+    let hs = show.hold_and_spin();
+    for mut vis in &mut frame {
+        let want = if hs {
+            Visibility::Inherited
+        } else {
+            Visibility::Hidden
+        };
+        if *vis != want {
+            *vis = want;
+        }
+    }
+    for (cell, mut vis) in &mut cells {
+        let empty = labels
+            .iter()
+            .any(|(l, t)| l.reel == cell.reel && l.row == cell.row && t.0.is_empty());
+        let want = if hs && empty {
+            Visibility::Inherited
+        } else {
+            Visibility::Hidden
+        };
+        if *vis != want {
+            *vis = want;
+        }
+    }
+    let msg = show.message().unwrap_or_default();
+    for mut t in &mut message {
+        if t.0 != msg {
+            t.0 = msg.clone();
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Hold & Spin respins and collection
+// ---------------------------------------------------------------------------
+
+/// A respin in motion: each open position spins, then stops in turn.
+#[derive(Clone, Debug, Default)]
+pub struct RespinAnim {
+    t: f32,
+    /// Positions spinning, with the time each stops and whether an orb lands.
+    stops: Vec<(u8, u8, f32, bool)>,
+    /// Stops already sounded.
+    sounded: usize,
+}
+
+/// Coins being counted into the win after the feature (footage: each coin
+/// in turn, with the Hold & Spin "doonk").
+#[derive(Clone, Debug, Default)]
+pub struct Collect {
+    t: f32,
+    /// Coin amounts in counting order.
+    amounts: Vec<u64>,
+    counted: usize,
+    /// The total so far, shown on the win meter.
+    pub shown: u64,
+}
+
+/// Seconds a respin spins before its first position stops, and between
+/// stops.
+const RESPIN_FIRST_STOP: f32 = 0.55;
+const RESPIN_STOP_GAP: f32 = 0.09;
+/// Seconds per coin counted, and the hold after the last.
+const COLLECT_STEP: f32 = 0.45;
+const COLLECT_HOLD: f32 = 1.2;
+/// Symbols per second the open positions scroll at during a respin.
+const RESPIN_SPEED: f32 = 9.0;
+
+/// One open position's spinning strip.
+#[derive(Component)]
+pub struct HsSpin {
+    reel: u8,
+    row: u8,
+}
+/// An image on an open position's spinning strip.
+#[derive(Component)]
+pub struct HsSpinImage {
+    index: u8,
+}
+
+/// The strip an open Hold & Spin position shows while it respins.
+pub fn spawn_hs_spin(cell: &mut ChildSpawnerCommands, art: &ArtPack, reel: u8, row: u8) {
+    let (cw, ch) = cell_size();
+    let orb = art.symbols.get("orb").cloned().unwrap_or_default();
+    let (ow, oh) = art
+        .sizes
+        .get("orb")
+        .map_or((cw, ch), |s| symbol_size("orb", *s));
+    cell.spawn((
+        HsSpin { reel, row },
+        Node {
+            position_type: PositionType::Absolute,
+            width: Val::Px(cw),
+            height: Val::Px(ch),
+            overflow: Overflow::clip(),
+            ..default()
+        },
+        ImageNode {
+            image: art.ui.get("hs_cell").cloned().unwrap_or_default(),
+            image_mode: NodeImageMode::Stretch,
+            ..default()
+        },
+        Visibility::Hidden,
+    ))
+    .with_children(|s| {
+        for index in 0..2u8 {
+            s.spawn((
+                HsSpinImage { index },
+                Node {
+                    position_type: PositionType::Absolute,
+                    left: Val::Px((cw - ow * 0.86) / 2.0),
+                    width: Val::Px(ow * 0.86),
+                    height: Val::Px(oh * 0.86),
+                    ..default()
+                },
+                ImageNode {
+                    image: orb.clone(),
+                    image_mode: NodeImageMode::Stretch,
+                    ..default()
+                },
+            ));
+        }
+    });
+}
+
+impl FeatureShow {
+    /// The presentation holds its next event while a respin spins or coins
+    /// are counted.
+    pub fn blocks(&self) -> bool {
+        self.respin_landed.is_some()
+            || self.respin.is_some()
+            || self.collect_start
+            || self.collect.is_some()
+    }
+}
+
+/// Run the respin spins and the coin count.
+#[allow(clippy::too_many_arguments, clippy::type_complexity)]
+pub fn hold_and_spin_motion(
+    fidelity: Res<Fidelity>,
+    time: Res<Time>,
+    smoke: Res<Smoke>,
+    sim: Res<Sim>,
+    mut show: ResMut<FeatureShow>,
+    sounds: Res<Sounds>,
+    mut commands: Commands,
+    labels: Query<(&CellLabel, &Text)>,
+    mut spins: Query<(&HsSpin, &mut Visibility, &Children)>,
+    mut images: Query<(&HsSpinImage, &mut Node)>,
+) {
+    if !fidelity.0 {
+        return;
+    }
+    let dt = smoke.dt(&time).min(0.05);
+    let label = |reel: u8, row: u8| -> String {
+        labels
+            .iter()
+            .find(|(l, _)| l.reel == reel && l.row == row)
+            .map(|(_, t)| t.0.clone())
+            .unwrap_or_default()
+    };
+
+    // A respin was presented: every open position, and every position an
+    // orb just landed on, spins and stops in turn.
+    if let Some(landed) = show.respin_landed.take() {
+        let mut stops = Vec::new();
+        let (reels, rows) = (sim.game.model().grid.reels, sim.game.model().grid.rows);
+        for reel in 0..reels {
+            for row in 0..rows {
+                let new = landed.contains(&(reel, row));
+                if new || label(reel, row).is_empty() {
+                    let k = stops.len() as f32;
+                    stops.push((reel, row, RESPIN_FIRST_STOP + k * RESPIN_STOP_GAP, new));
+                }
+            }
+        }
+        sounds.play(
+            &mut commands,
+            &format!("betbeep{}_reduced", 1 + stops.len() % 3),
+        );
+        show.respin = Some(RespinAnim { stops, ..default() });
+    }
+    if let Some(anim) = show.respin.as_mut() {
+        anim.t += dt;
+        while let Some(&(_, _, at, orb)) = anim.stops.get(anim.sounded) {
+            if anim.t < at {
+                break;
+            }
+            let clip = if orb {
+                format!("SND_HandSDoonk{}", 1 + anim.sounded % 5)
+            } else {
+                format!("reel_clink{}", 1 + anim.sounded % 5)
+            };
+            sounds.play(&mut commands, &clip);
+            anim.sounded += 1;
+        }
+        if anim.sounded >= anim.stops.len() {
+            show.respin = None;
+        }
+    }
+    let anim = show.respin.clone();
+    let p = cell_size().1;
+    for (spin, mut vis, children) in &mut spins {
+        let running = anim.as_ref().and_then(|a| {
+            a.stops
+                .iter()
+                .find(|s| s.0 == spin.reel && s.1 == spin.row)
+                .filter(|s| a.t < s.2)
+                .map(|_| a.t)
+        });
+        let want = if running.is_some() {
+            Visibility::Inherited
+        } else {
+            Visibility::Hidden
+        };
+        if *vis != want {
+            *vis = want;
+        }
+        if let Some(t) = running {
+            // Orbs pass down the position, one every two symbols.
+            let offset = (t * RESPIN_SPEED + spin.reel as f32 * 0.37 + spin.row as f32 * 0.61)
+                .rem_euclid(2.0);
+            for child in children.iter() {
+                if let Ok((img, mut node)) = images.get_mut(child) {
+                    let h = match node.height {
+                        Val::Px(h) => h,
+                        _ => p,
+                    };
+                    let y = (offset - 1.0 - 2.0 * img.index as f32) * p + (p - h) / 2.0;
+                    node.top = Val::Px(y);
+                }
+            }
+        }
+    }
+
+    // The count after the feature.
+    let total_bet = sim.game.total_bet();
+    if show.collect_start {
+        show.collect_start = false;
+        let mut amounts = Vec::new();
+        let mut jackpots = show.jackpots.clone();
+        let (reels, rows) = (sim.game.model().grid.reels, sim.game.model().grid.rows);
+        for reel in 0..reels {
+            for row in 0..rows {
+                let l = label(reel, row);
+                let Some(v) = l.strip_prefix("ORB\n") else {
+                    continue;
+                };
+                let amount = match v.strip_prefix('x').and_then(|m| m.parse::<u64>().ok()) {
+                    Some(m) => m * total_bet,
+                    None => jackpots
+                        .iter()
+                        .position(|(tier, _)| format!("{tier:?}") == v)
+                        .map(|i| jackpots.remove(i).1)
+                        .unwrap_or(0),
+                };
+                amounts.push(amount);
+            }
+        }
+        show.collect = Some(Collect {
+            amounts,
+            ..default()
+        });
+    }
+    let mut done = false;
+    if let Some(c) = show.collect.as_mut() {
+        c.t += dt;
+        while c.counted < c.amounts.len() && c.t >= (c.counted as f32 + 1.0) * COLLECT_STEP {
+            c.shown += c.amounts[c.counted];
+            sounds.play(
+                &mut commands,
+                &format!("SND_HandSDoonk{}", 1 + c.counted % 5),
+            );
+            c.counted += 1;
+        }
+        done = c.counted >= c.amounts.len()
+            && c.t >= c.amounts.len() as f32 * COLLECT_STEP + COLLECT_HOLD;
+    }
+    if done {
+        show.collected = show.collect.take().map(|c| c.shown);
     }
 }

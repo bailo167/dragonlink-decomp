@@ -993,7 +993,13 @@ fn drive_features(
     mut sim: ResMut<Sim>,
     mut presentation: ResMut<Presentation>,
     timing: Res<Timing>,
+    feature: Res<cabinet::FeatureShow>,
 ) {
+    // The cabinet waits for START FEATURE, and for SPIN between respins.
+    if feature.awaiting.is_some() || feature.blocks() {
+        presentation.step_timer = FEATURE_STEP_PAUSE;
+        return;
+    }
     if !presentation.queue.is_empty() {
         presentation.step_timer = FEATURE_STEP_PAUSE;
         return;
@@ -1015,10 +1021,13 @@ fn drive_features(
 }
 
 /// Show queued events when their time comes.
+#[allow(clippy::too_many_arguments)]
 fn present(
     time: Res<Time>,
     smoke: Res<Smoke>,
     sim: Res<Sim>,
+    fidelity: Res<cabinet::Fidelity>,
+    mut feature: ResMut<cabinet::FeatureShow>,
     mut presentation: ResMut<Presentation>,
     mut reels_spin: ResMut<ReelAnim>,
     mut cells: Query<(&Cell, &mut BackgroundColor)>,
@@ -1030,10 +1039,18 @@ fn present(
     }
     presentation.wait -= smoke.dt(&time);
     while presentation.wait <= 0.0 {
+        // A respin spinning or the coins being counted hold what follows.
+        if fidelity.0 && feature.blocks() {
+            presentation.wait = 0.0;
+            break;
+        }
         let Some((_, event)) = presentation.queue.pop_front() else {
             presentation.wait = 0.0;
             break;
         };
+        if fidelity.0 {
+            feature.on_event(&event);
+        }
         let model = sim.game.model();
         let mut set_cell = |reel: u8, row: u8, text: String, color: Color| {
             for (cell, mut background) in &mut cells {
@@ -1658,6 +1675,7 @@ fn main() -> AppExit {
     .insert_resource(cabinet::CabinetInput::default())
     .insert_resource(cabinet::Sounds::default())
     .insert_resource(cabinet::Rollup::default())
+    .insert_resource(cabinet::FeatureShow::default())
     .insert_resource(if fidelity {
         cabinet::reel_strips(&cli.game.model())
     } else {
@@ -1688,26 +1706,35 @@ fn main() -> AppExit {
     .add_systems(
         Update,
         (
-            smoke,
-            cabinet::rollup_skip,
-            input,
-            cabinet::clear_buttons,
-            drive_features,
-            present,
-            animate_reels,
-            hud,
-            banner,
-            cabinet::spin_reels,
-            cabinet::strip_coins,
-            cabinet::reel_audio,
-            cabinet::win_rollup,
-            render_symbols,
-            cabinet::orb_overlay,
-            cabinet::light_deck,
-            cabinet::start_prompts,
-            cabinet::clear_cells,
-            cabinet::update_meters,
-            cabinet::fit,
+            (
+                smoke,
+                cabinet::rollup_skip,
+                cabinet::feature_press,
+                input,
+                cabinet::clear_buttons,
+                drive_features,
+                present,
+                animate_reels,
+                hud,
+                banner,
+            )
+                .chain(),
+            (
+                cabinet::spin_reels,
+                cabinet::strip_coins,
+                cabinet::reel_audio,
+                cabinet::hold_and_spin_motion,
+                cabinet::win_rollup,
+                render_symbols,
+                cabinet::orb_overlay,
+                cabinet::light_deck,
+                cabinet::feature_screen,
+                cabinet::start_prompts,
+                cabinet::clear_cells,
+                cabinet::update_meters,
+                cabinet::fit,
+            )
+                .chain(),
         )
             .chain()
             .run_if(in_state(Screen::Playing)),
