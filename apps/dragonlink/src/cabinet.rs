@@ -2349,8 +2349,6 @@ pub struct FeatureShow {
     pub winner: Option<u64>,
     /// Respins run so far (each starts a fresh stretch of strip).
     respins_run: i64,
-    /// The whir playing under a respin.
-    whir: Option<Entity>,
     /// The bolt in flight (its coin, its start on `clock`), and the last
     /// splash on the WINNER box.
     bolt: Option<(u8, u8, f32)>,
@@ -3115,21 +3113,23 @@ impl RespinAnim {
             .iter()
             .find(|s| s.0 == reel && s.1 == row)
             .filter(|s| self.t < s.2)?;
-        let travel = Self::travel(at);
-        // Easing into the stop: the last symbols, a landing coin among
-        // them, slow down and come into view before it stops.
-        let u = (self.t / at).clamp(0.0, 1.0);
-        let eased = 1.0 - (1.0 - u) * (1.0 - u);
-        Some((
-            self.base as f32 + travel as f32 * eased,
-            self.base + travel,
-            coin,
-        ))
+        let end = self.end_of(at);
+        // Full speed to the stop, run a little past it, slide back: the same
+        // stop as the main reels (footage), no slowing beforehand.
+        let hard = at - SETTLE_SECONDS;
+        let pos = if self.t < hard {
+            end as f32 + OVERSHOOT - (hard - self.t) * RESPIN_SPEED
+        } else {
+            let k = ((self.t - hard) / SETTLE_SECONDS).min(1.0);
+            let back = 0.85 * k + 0.15 * ease_out(k);
+            end as f32 + OVERSHOOT * (1.0 - back)
+        };
+        Some((pos, end, coin))
     }
 
     /// Symbols a position runs through before a stop at `at` seconds.
     fn travel(at: f32) -> i64 {
-        ((at * RESPIN_SPEED * 0.6).round() as i64).max(3)
+        (((at - SETTLE_SECONDS) * RESPIN_SPEED).round() as i64).max(3)
     }
 
     /// The strip index a position stopping at `at` comes to rest on.
@@ -3651,10 +3651,6 @@ pub fn hold_and_spin_motion(
             }
         }
         show.respins_run += 1;
-        if let Some(id) = show.whir.take() {
-            commands.entity(id).try_despawn();
-        }
-        show.whir = sounds.play_loop(&mut commands, "SND_ST_Whir_Loop", 0.7);
         show.respin = Some(RespinAnim {
             stops,
             base: show.respins_run * 1009,
@@ -3691,9 +3687,6 @@ pub fn hold_and_spin_motion(
         } else {
             show.respin = Some(anim);
         }
-    }
-    if finished && let Some(id) = show.whir.take() {
-        commands.entity(id).try_despawn();
     }
     if finished {
         if show.pending_left > show.counter {
