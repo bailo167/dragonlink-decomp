@@ -450,46 +450,86 @@ fn setup(mut commands: Commands, sim: Res<Sim>, art: Res<ArtPack>) {
                 },
                 TextColor(gold),
             ));
-            // Jackpot bar.
-            root.spawn(Node {
-                flex_direction: FlexDirection::Row,
-                column_gap: Val::Px(10.0),
-                ..default()
-            })
-            .with_children(|bar| {
-                for (tier, colour) in tiers {
-                    bar.spawn((
-                        Node {
-                            width: Val::Px(150.0),
-                            padding: UiRect::all(Val::Px(6.0)),
-                            flex_direction: FlexDirection::Column,
-                            align_items: AlignItems::Center,
-                            row_gap: Val::Px(2.0),
-                            ..default()
-                        },
-                        BackgroundColor(colour.with_alpha(0.22)),
-                    ))
-                    .with_children(|box_| {
-                        box_.spawn((
-                            Text::new(format!("{tier:?}").to_uppercase()),
-                            TextFont {
-                                font_size: FontSize::Px(14.0),
-                                ..default()
-                            },
-                            TextColor(colour),
-                        ));
-                        box_.spawn((
+            // Jackpot bar: the authentic bar image with live amounts overlaid
+            // when the pack supplies it, otherwise coloured tier boxes.
+            if let Some(bar_img) = art.ui.get("jackpot_bar") {
+                root.spawn((
+                    Node {
+                        width: Val::Px(760.0),
+                        height: Val::Px(64.0),
+                        ..default()
+                    },
+                    ImageNode::new(bar_img.clone()),
+                ))
+                .with_children(|bar| {
+                    // One amount over each segment (Grand, Major, Minor, Mini).
+                    for (tier, frac) in [
+                        (JackpotTier::Grand, 0.16),
+                        (JackpotTier::Major, 0.41),
+                        (JackpotTier::Minor, 0.66),
+                        (JackpotTier::Mini, 0.91),
+                    ] {
+                        bar.spawn((
                             JackpotMeter { tier },
                             Text::new("-"),
                             TextFont {
-                                font_size: FontSize::Px(18.0),
+                                font_size: FontSize::Px(17.0),
                                 ..default()
                             },
                             TextColor(Color::WHITE),
+                            TextLayout::justify(Justify::Center),
+                            Node {
+                                position_type: PositionType::Absolute,
+                                left: Val::Percent(frac * 100.0 - 11.0),
+                                top: Val::Px(36.0),
+                                width: Val::Percent(22.0),
+                                justify_content: JustifyContent::Center,
+                                ..default()
+                            },
                         ));
-                    });
-                }
-            });
+                    }
+                });
+            } else {
+                root.spawn(Node {
+                    flex_direction: FlexDirection::Row,
+                    column_gap: Val::Px(10.0),
+                    ..default()
+                })
+                .with_children(|bar| {
+                    for (tier, colour) in tiers {
+                        bar.spawn((
+                            Node {
+                                width: Val::Px(150.0),
+                                padding: UiRect::all(Val::Px(6.0)),
+                                flex_direction: FlexDirection::Column,
+                                align_items: AlignItems::Center,
+                                row_gap: Val::Px(2.0),
+                                ..default()
+                            },
+                            BackgroundColor(colour.with_alpha(0.22)),
+                        ))
+                        .with_children(|box_| {
+                            box_.spawn((
+                                Text::new(format!("{tier:?}").to_uppercase()),
+                                TextFont {
+                                    font_size: FontSize::Px(14.0),
+                                    ..default()
+                                },
+                                TextColor(colour),
+                            ));
+                            box_.spawn((
+                                JackpotMeter { tier },
+                                Text::new("-"),
+                                TextFont {
+                                    font_size: FontSize::Px(18.0),
+                                    ..default()
+                                },
+                                TextColor(Color::WHITE),
+                            ));
+                        });
+                    }
+                });
+            }
             // An initial reel window, drawn from the strips, so the machine
             // shows symbols the moment it opens instead of blanks.
             let initial = |reel: u8, row: u8| -> (String, Option<SymbolKind>) {
