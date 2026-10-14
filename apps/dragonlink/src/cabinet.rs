@@ -404,6 +404,7 @@ pub fn spawn(commands: &mut Commands, model: &MathModel, art: &ArtPack, fonts: &
                         spawn_orb_overlay(cell, reel, row);
                         spawn_hs_spin(cell, art, reel, row);
                         spawn_door_fx(cell, art, reel, row);
+                        spawn_symbol_fx(cell, reel, row);
                     });
                 }
             }
@@ -2356,6 +2357,11 @@ pub struct FeatureShow {
     pub win_lines: Vec<(u16, u8, u64)>,
     win_t: f32,
     pub win_note: Option<String>,
+    /// The winning line being shown (line, count), and whether a scatter
+    /// win is being shown.
+    win_current: Option<(u16, u8)>,
+    scatter_shown: bool,
+    scatter_paid: bool,
 }
 
 impl FeatureShow {
@@ -2364,6 +2370,7 @@ impl FeatureShow {
         match event {
             Event::SpinStarted { .. } => {
                 self.win_lines.clear();
+                self.scatter_paid = false;
                 self.stage = Stage::Base;
                 self.scatter_award = 0;
                 self.collected = None;
@@ -2373,7 +2380,11 @@ impl FeatureShow {
             }
             Event::JackpotAwarded { tier, award } => self.jackpots.push((*tier, *award)),
             Event::ScatterWin { award, .. } if !matches!(self.stage, Stage::FreeGames { .. }) => {
-                self.scatter_award = *award
+                self.scatter_award = *award;
+                if self.win_lines.is_empty() {
+                    self.win_t = 0.0;
+                }
+                self.scatter_paid = true;
             }
             Event::FreeGamesStarted { games } => {
                 self.games_won = *games;
@@ -2395,6 +2406,7 @@ impl FeatureShow {
             }
             Event::ScatterWin { .. } if matches!(self.stage, Stage::FreeGames { .. }) => {
                 self.game_won = true;
+                self.scatter_paid = true;
             }
             Event::FreeGameStarted { number, remaining } => {
                 self.game_won = false;
@@ -4788,6 +4800,12 @@ pub fn win_lines(
         let i = (show.win_t / WIN_LINE_SECONDS) as usize % show.win_lines.len();
         show.win_lines[i]
     });
+    show.win_current = current.map(|(line, count, _)| (line, count));
+    show.scatter_shown = show.scatter_paid
+        && !gamble.active
+        && show.awaiting.is_none()
+        && !show.hold_and_spin()
+        && show.reveal.is_none();
     show.win_note = current.map(|(line, _, award)| {
         let shown = if (show.win_t / 2.5) as u32 % 2 == 1 {
             grouped(award)
@@ -5003,6 +5021,126 @@ pub fn wild_talls(
         };
         if *vis != want {
             *vis = want;
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Winning symbols
+// ---------------------------------------------------------------------------
+//
+// The symbols of the winning line being shown play the game's own win
+// animations (Pic1-4, Scatter, Wild: an intro, then a loop), drawn at the
+// symbol's own size; a scatter win animates every scatter.
+
+/// The win animation drawn over one cell.
+#[derive(Component)]
+pub struct SymbolFx {
+    reel: u8,
+    row: u8,
+}
+
+/// Frames per second of the symbol win animations.
+const SYMBOL_FX_FPS: f32 = 30.0;
+
+/// The win animation over one cell (hidden until it wins).
+pub fn spawn_symbol_fx(cell: &mut ChildSpawnerCommands, reel: u8, row: u8) {
+    cell.spawn((
+        SymbolFx { reel, row },
+        Node {
+            position_type: PositionType::Absolute,
+            ..default()
+        },
+        ImageNode {
+            image_mode: NodeImageMode::Stretch,
+            ..default()
+        },
+        Visibility::Hidden,
+    ));
+}
+
+/// Animate the symbols of the winning line being shown.
+#[allow(clippy::type_complexity, clippy::too_many_arguments)]
+pub fn symbol_fx(
+    fidelity: Res<Fidelity>,
+    show: Res<FeatureShow>,
+    sim: Res<Sim>,
+    art: Res<ArtPack>,
+    stacks: Res<WildStacks>,
+    labels: Query<(&CellLabel, &Text)>,
+    mut fx: Query<(&SymbolFx, &mut Node, &mut ImageNode, &mut Visibility), Without<CellImage>>,
+    mut images: Query<(&CellImage, &mut Visibility), Without<SymbolFx>>,
+) {
+    if !fidelity.0 {
+        return;
+    }
+    // The positions animating now.
+    let mut cells: Vec<(u8, u8)> = Vec::new();
+    if let Some((line, count)) = show.win_current
+        && let Some(rows) = sim.game.model().paylines.get(line as usize)
+    {
+        for reel in 0..count {
+            if let Some(&row) = rows.0.get(reel as usize) {
+                cells.push((reel, row));
+            }
+        }
+    }
+    if show.scatter_shown {
+        for (l, t) in &labels {
+            if t.0 == "pennant" {
+                cells.push((l.reel, l.row));
+            }
+        }
+    }
+    let t = show.win_t;
+    let (cw, ch) = cell_size();
+    for (f, mut node, mut image, mut vis) in &mut fx {
+        let on = cells.contains(&(f.reel, f.row)) && !stacks.0.iter().any(|s| s.0 == f.reel);
+        let key = labels
+            .iter()
+            .find(|(l, _)| l.reel == f.reel && l.row == f.row)
+            .map(|(_, t)| label_symbol(&t.0).0.to_string())
+            .unwrap_or_default();
+        let frame = on
+            .then(|| {
+                let n = (t * SYMBOL_FX_FPS) as usize;
+                let intro = art.anims.get(&format!("{key}_intro"));
+                let lp = art.anims.get(&format!("{key}_loop"))?;
+                match intro {
+                    Some(i) if n < i.len() => i.get(n).cloned(),
+                    Some(i) => lp.get((n - i.len()) % lp.len().max(1)).cloned(),
+                    None => lp.get(n % lp.len().max(1)).cloned(),
+                }
+            })
+            .flatten();
+        let want = match frame {
+            Some(h) => {
+                if image.image != h {
+                    image.image = h;
+                }
+                let (w, hh) = art
+                    .sizes
+                    .get(key.as_str())
+                    .map_or((cw, ch), |s| symbol_size(&key, *s));
+                node.left = Val::Px((cw - w) / 2.0);
+                node.top = Val::Px((ch - hh) / 2.0);
+                node.width = Val::Px(w);
+                node.height = Val::Px(hh);
+                Visibility::Inherited
+            }
+            None => Visibility::Hidden,
+        };
+        let playing = want == Visibility::Inherited;
+        if *vis != want {
+            *vis = want;
+        }
+        // The still symbol gives way to its animation.
+        if playing {
+            for (ci, mut v) in &mut images {
+                if ci.reel == f.reel && ci.row == f.row && *v != Visibility::Hidden {
+                    *v = Visibility::Hidden;
+                }
+            }
         }
     }
 }

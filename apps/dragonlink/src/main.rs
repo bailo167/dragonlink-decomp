@@ -1815,6 +1815,7 @@ fn main() -> AppExit {
                 cabinet::win_rollup,
                 render_symbols,
                 cabinet::orb_overlay,
+                cabinet::symbol_fx,
                 cabinet::light_deck,
                 cabinet::feature_screen,
                 cabinet::gamble_screen,
