@@ -1030,6 +1030,22 @@ fn present(
                     let kind = model.symbols.iter().find(|s| &s.key == key).map(|s| s.kind);
                     set_cell(*reel, row as u8, key.clone(), cell_color(kind, key));
                 }
+                // The machine letters an orb's prize as its reel lands; the
+                // engine reports the values after the last reel, so look ahead.
+                let landed = *reel;
+                let ahead: Vec<(u8, OrbValue)> = presentation
+                    .queue
+                    .iter()
+                    .filter_map(|(_, e)| match e {
+                        Event::OrbValueShown { reel, row, value } if *reel == landed => {
+                            Some((*row, *value))
+                        }
+                        _ => None,
+                    })
+                    .collect();
+                for (row, value) in ahead {
+                    set_cell(landed, row, orb_text(value), orb_color);
+                }
             }
             Event::OrbValueShown { reel, row, value } => {
                 set_cell(*reel, *row, orb_text(*value), orb_color);
@@ -1306,10 +1322,10 @@ fn load_pngs(
             }
             if let Some(stem) = path.file_stem().and_then(|s| s.to_str()) {
                 let handle = asset_server.load(format!("{sub}/{stem}.png"));
+                if let Some(size) = cabinet::png_size(&path) {
+                    pack.sizes.insert(stem.to_string(), size);
+                }
                 if symbols {
-                    if let Some(size) = cabinet::png_size(&path) {
-                        pack.sizes.insert(stem.to_string(), size);
-                    }
                     pack.symbols.insert(stem.to_string(), handle);
                 } else {
                     pack.ui.insert(stem.to_string(), handle);
@@ -1640,6 +1656,7 @@ fn main() -> AppExit {
             hud,
             banner,
             cabinet::spin_reels,
+            cabinet::strip_coins,
             cabinet::reel_audio,
             cabinet::win_rollup,
             render_symbols,

@@ -864,6 +864,13 @@ impl Reels {
             .map(|(i, _)| i)
     }
 
+    /// The strip index and the symbol (or landed cell label) a strip slot
+    /// shows now.
+    fn slot_entry(&self, reel: usize, index: u8) -> (i64, &str) {
+        let n = self.states[reel].pos.floor() as i64 - 1 + index as i64;
+        (n, self.key_at(reel, n))
+    }
+
     fn key_at(&self, reel: usize, n: i64) -> &str {
         let s = &self.states[reel];
         let k = n - s.landing_at;
@@ -875,6 +882,15 @@ impl Reels {
             return "";
         }
         &strip[n.rem_euclid(strip.len() as i64) as usize]
+    }
+}
+
+/// The symbol a landed cell label stands for: a lettered orb is an orb.
+fn symbol_of(label: &str) -> &str {
+    if label.starts_with("ORB") {
+        "orb"
+    } else {
+        label
     }
 }
 
@@ -957,13 +973,33 @@ pub fn spawn_strips(c: &mut ChildSpawnerCommands, reels: u8) {
                         position_type: PositionType::Absolute,
                         left: Val::Px((column_width() - cw) / 2.0),
                         width: Val::Px(cw),
+                        flex_direction: FlexDirection::Row,
+                        justify_content: JustifyContent::Center,
+                        align_items: AlignItems::Center,
                         ..default()
                     },
                     ImageNode {
                         image_mode: NodeImageMode::Stretch,
                         ..default()
                     },
-                ));
+                ))
+                .with_children(|slot_node| {
+                    for digit in 0..COIN_SLOTS {
+                        slot_node.spawn((
+                            StripDigit {
+                                reel,
+                                slot: index,
+                                index: digit,
+                            },
+                            Node::default(),
+                            ImageNode {
+                                image_mode: NodeImageMode::Stretch,
+                                ..default()
+                            },
+                            Visibility::Hidden,
+                        ));
+                    }
+                });
             }
         });
     }
@@ -1090,8 +1126,8 @@ pub fn spin_reels(
             continue;
         }
         let pos = reels.states[reel].pos;
-        let n = pos.floor() as i64 - 1 + slot.index as i64;
-        let key = reels.key_at(reel, n).to_string();
+        let (n, raw) = reels.slot_entry(reel, slot.index);
+        let key = symbol_of(raw).to_string();
         // Centre of this symbol relative to the column top.
         let cy = p / 2.0 + (n as f32 - pos) * p;
         let (w, h) = art
@@ -1454,6 +1490,78 @@ pub fn orb_overlay(
                 image.image = h.clone();
             }
             *vis = Visibility::Visible;
+        }
+    }
+}
+
+/// One digit of the prize on an orb passing on a moving reel strip.
+#[derive(Component)]
+pub struct StripDigit {
+    reel: u8,
+    slot: u8,
+    index: u8,
+}
+
+/// The prize lettered on an orb that passes by while the reel spins: the
+/// orbs that land carry their real prize; the others carry prizes in the
+/// game's range, as the machine shows them on the moving strip.
+fn passing_prize(reel: u8, n: i64) -> u64 {
+    const MULTIPLES: [u64; 17] = [1, 1, 1, 1, 2, 2, 2, 3, 3, 4, 5, 5, 10, 15, 20, 50, 100];
+    let h = (n as u64)
+        .wrapping_mul(0x9E37_79B9_7F4A_7C15)
+        .rotate_left(17)
+        ^ u64::from(reel).wrapping_mul(0xC2B2_AE3D_27D4_EB4F);
+    MULTIPLES[(h % MULTIPLES.len() as u64) as usize]
+}
+
+/// Letter the orbs on the moving strips.
+#[allow(clippy::type_complexity)]
+pub fn strip_coins(
+    fidelity: Res<Fidelity>,
+    sim: Res<Sim>,
+    denom: Res<Denom>,
+    art: Res<ArtPack>,
+    reels: Res<Reels>,
+    mut digits: Query<(&StripDigit, &mut ImageNode, &mut Visibility, &mut Node)>,
+) {
+    if !fidelity.0 {
+        return;
+    }
+    let total_bet = sim.game.total_bet();
+    let cents = denom.cents();
+    let digit_h = cell_size().1 * COIN_DIGIT_SHARE;
+    for (d, mut image, mut vis, mut node) in &mut digits {
+        let text = reels.moving(d.reel).then(|| {
+            let (n, raw) = reels.slot_entry(d.reel as usize, d.slot);
+            let multiple = match raw.strip_prefix(
+                "ORB
+",
+            ) {
+                Some(p) => p.strip_prefix('x').and_then(|m| m.parse::<u64>().ok()),
+                None if raw == "orb" => Some(passing_prize(d.reel, n)),
+                None => None,
+            };
+            multiple.map(|m| coin_text(m.saturating_mul(total_bet), cents))
+        });
+        let glyph = text
+            .flatten()
+            .as_deref()
+            .and_then(|t| t.chars().nth(d.index as usize))
+            .and_then(|c| {
+                let key = format!("coin_{c}");
+                art.ui.get(&key).cloned().zip(art.sizes.get(&key).copied())
+            });
+        match glyph {
+            Some((handle, (w, h))) => {
+                if image.image != handle {
+                    image.image = handle;
+                }
+                let scale = digit_h / 73.0;
+                node.width = Val::Px(w * scale);
+                node.height = Val::Px(h * scale);
+                *vis = Visibility::Inherited;
+            }
+            None => *vis = Visibility::Hidden,
         }
     }
 }
