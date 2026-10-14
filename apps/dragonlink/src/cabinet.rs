@@ -1830,10 +1830,6 @@ impl Sounds {
                 .id(),
         )
     }
-
-    fn seconds(&self, name: &str) -> Option<f32> {
-        self.clips.get(name).map(|(_, s)| *s)
-    }
 }
 
 /// The reels' sound: each reel's stop clink as it hits its stop (footage:
@@ -1913,14 +1909,54 @@ impl Rollup {
 
 /// Which win tune a win plays: the game's 32 tunes rise with the win's size
 /// against the bet, from a short sting to the long big-win music.
+///
+/// The real game, recorded with sound: 0.4x the bet played wintune04, 0.6x
+/// wintune05, 1.6x wintune13, 2x wintune14 (and a free game's 2.6x counted
+/// for about wintune15's length). The rule between and beyond those points is
+/// not known; tunes are interpolated through them (PARTIAL), reaching the
+/// longest tune at 100x the bet.
 pub fn win_tune(win: u64, total_bet: u64) -> u32 {
     if total_bet == 0 {
         return 1;
     }
     let ratio = win as f32 / total_bet as f32;
-    let idx = 1.0 + (ratio * 4.0 + 1.0).log2() * 3.4;
-    (idx.floor() as u32).clamp(1, 32)
+    // (win / bet, tune): the measured points, then ours to the top.
+    const POINTS: [(f32, f32); 7] = [
+        (0.0, 1.0),
+        (0.4, 4.0),
+        (0.6, 5.0),
+        (1.6, 13.0),
+        (2.0, 14.0),
+        (2.6, 15.0),
+        (100.0, 32.0),
+    ];
+    let mut idx = 32.0;
+    for w in POINTS.windows(2) {
+        let ((r0, i0), (r1, i1)) = (w[0], w[1]);
+        if ratio <= r1 {
+            // Past the measured points the tunes rise with the log of the win.
+            let k = if r0 >= 2.6 {
+                (ratio / r0).ln() / (r1 / r0).ln()
+            } else {
+                (ratio - r0) / (r1 - r0)
+            };
+            idx = i0 + (i1 - i0) * k.clamp(0.0, 1.0);
+            break;
+        }
+    }
+    (idx.round() as u32).clamp(1, 32)
 }
+
+/// How long each win tune is heard (wintune01..32), in seconds: the game's
+/// win count lasts exactly this long, not the length of the sound file, whose
+/// tail is near silence (measured on the real game: 0.4x counted 0.37 s to
+/// wintune04, 1.6x 1.90 s to wintune13, 2x 2.4 s to wintune14; these are the
+/// last 10 ms of each tune within 20 dB of its peak).
+const TUNE_AUDIBLE: [f32; 32] = [
+    0.16, 0.21, 0.29, 0.41, 0.58, 1.25, 0.62, 0.84, 0.94, 1.05, 2.12, 1.46, 1.86, 2.28, 4.09, 4.07,
+    5.24, 6.47, 7.62, 9.15, 12.38, 14.72, 14.93, 18.62, 19.47, 25.70, 30.88, 35.92, 38.94, 45.24,
+    52.33, 57.55,
+];
 
 /// Start, advance and finish the win rollup; count credits up alongside it.
 #[allow(clippy::too_many_arguments)]
@@ -1961,12 +1997,12 @@ pub fn win_rollup(
             commands.entity(id).try_despawn();
         }
         // A free game's win plays no tune; the feature music carries on
-        // (cabinet footage). It counts up over a tune's length all the same.
+        // (real game). It counts up over the tune's length all the same.
         let free_game = matches!(show.stage, Stage::FreeGames { .. });
         if !free_game {
             rollup.tune = sounds.play(&mut commands, &name);
         }
-        rollup.duration = sounds.seconds(&name).unwrap_or(1.5).max(0.3);
+        rollup.duration = TUNE_AUDIBLE[(tune as usize).clamp(1, 32) - 1];
         rollup.from = from;
         rollup.to = target;
         rollup.t = 0.0;
@@ -2460,6 +2496,8 @@ pub struct FeatureShow {
     /// counting up after the cut (seconds, total shown).
     fg_trigger: Option<f32>,
     fg_flags: bool,
+    /// Seconds since a stack on a winning line began to stand (its win waits).
+    pub wild: Option<f32>,
     fg_cut: Option<f32>,
     fg_count: Option<(f32, u32)>,
 }
@@ -2469,6 +2507,7 @@ impl FeatureShow {
     pub fn on_event(&mut self, event: &Event) {
         match event {
             Event::SpinStarted { .. } => {
+                self.wild = None;
                 self.fg_trigger = None;
                 self.fg_flags = false;
                 self.fg_cut = None;
@@ -3742,6 +3781,7 @@ impl FeatureShow {
     pub fn blocks(&self) -> bool {
         self.intro.is_some()
             || self.fg_trigger.is_some_and(|t| t < FG_COUNT)
+            || self.wild.is_some_and(|t| t < WILD_HOLD)
             || self.fg_cut.is_some()
             || self.completed_wait.is_some()
             || self.pay.is_some()
@@ -5305,10 +5345,13 @@ pub fn win_lines(
 // Stacked emperors
 // ---------------------------------------------------------------------------
 //
-// Cabinet footage: two or three emperors stacked on a reel become one tall
-// full-length emperor (the game's own Wild2UP / Wild3UP animations: the heads
-// wipe into the figure, which then burns with a fire border) and stay so
-// until the reel spins again.
+// Two or three emperors stacked on a reel become one tall full-length
+// emperor (the game's own Wild2UP / Wild3UP animations: the heads wipe into
+// the figure, which then burns with a fire border) and stay so until the reel
+// spins again. Real game (recorded with sound): only a stack on a winning
+// line does so, when the spin's win would show; it plays SND_Wild_2 or
+// SND_Wild_3 (the stack's height; 2.5 s) and the win waits for it. A stack on
+// no winning line stays as heads.
 
 /// The tiles of the game's stack animations: each 130 x 118 frame pixels,
 /// the first at (43, 39).
@@ -5317,20 +5360,51 @@ const WILD_TILE_AT: (f32, f32) = (43.0, 39.0);
 /// Frames per second of the stack animations.
 const WILD_FPS: f32 = 30.0;
 
-/// Emperor stacks landed: reel, top row, height, when (seconds of `Time`).
+/// Emperor stacks: those standing tall (reel, top row, height, since when in
+/// seconds of `Time`), and those landed (reel, top row, height).
 #[derive(Resource, Default)]
 pub struct WildStacks {
     list: Vec<(u8, u8, u8, f32)>,
-    /// When every reel came to rest (and any doors finished opening).
-    settled: Option<f32>,
+    landed: Vec<(u8, u8, u8)>,
     /// The stacks of this spin have been found.
     found: bool,
 }
 
-/// Seconds after the reels (and any doors) come to rest before stacked
-/// emperors become the tall emperor (footage: about 0.9 s after the doors
-/// finish opening, with no reveal about 1 s after the last reel stops).
-const STACK_DELAY: f32 = 0.9;
+/// Seconds the win waits for a stack to stand (the length of SND_Wild_N).
+pub const WILD_HOLD: f32 = 2.5;
+
+impl WildStacks {
+    /// This spin's stacks have been found.
+    pub fn found(&self) -> bool {
+        self.found
+    }
+
+    /// The height of the tallest landed stack on one of these winning lines
+    /// (line, symbols in a row from reel 1), if any.
+    pub fn on_lines(
+        &self,
+        paylines: &[dragonlink_model::Payline],
+        wins: impl Iterator<Item = (u16, u8)>,
+    ) -> Option<u8> {
+        let mut tallest = None;
+        for (line, count) in wins {
+            let Some(rows) = paylines.get(line as usize) else {
+                continue;
+            };
+            for &(reel, top, height) in &self.landed {
+                let on = reel < count
+                    && rows
+                        .0
+                        .get(reel as usize)
+                        .is_some_and(|&row| row >= top && row < top + height);
+                if on {
+                    tallest = tallest.max(Some(height));
+                }
+            }
+        }
+        tallest
+    }
+}
 
 /// The tall emperor drawn over one reel's stack.
 #[derive(Component)]
@@ -5369,21 +5443,25 @@ pub fn wild_stacks(
     if !fidelity.0 {
         return;
     }
-    // A spin clears the stacks; they form only once everything has stopped
-    // (cabinet footage: the emperors stand as heads until the spin is over,
-    // the doors have opened, and a moment more).
+    // A spin clears the stacks; they are found once everything has stopped
+    // (and the doors have opened), and stand when a win on them shows.
     let moving = (0..reels.states.len()).any(|r| reels.moving(r as u8));
     if moving {
         *stacks = WildStacks::default();
         return;
     }
     if show.reveal.is_some() || show.hold_and_spin() {
-        stacks.settled = None;
         return;
     }
     let now = time.elapsed_secs();
-    let since = *stacks.settled.get_or_insert(now);
-    if stacks.found || now - since < STACK_DELAY {
+    if show.wild.is_some() && stacks.list.is_empty() {
+        stacks.list = stacks
+            .landed
+            .iter()
+            .map(|&(reel, top, height)| (reel, top, height, now))
+            .collect();
+    }
+    if stacks.found {
         return;
     }
     stacks.found = true;
@@ -5406,9 +5484,7 @@ pub fn wild_stacks(
                 row += 1;
             }
             if row - start >= 2 {
-                stacks
-                    .list
-                    .push((reel, start as u8, (row - start) as u8, now));
+                stacks.landed.push((reel, start as u8, (row - start) as u8));
             }
         }
     }
@@ -5774,6 +5850,20 @@ const FG_CUT: f32 = 1.07;
 const FG_TICK: f32 = 4.0 / 30.0;
 
 impl FeatureShow {
+    /// A stack of `height` emperors on a winning line stands, with its sound;
+    /// the win waits for it. Once a spin.
+    pub fn begin_wild(&mut self, height: u8) {
+        if self.wild.is_some() {
+            return;
+        }
+        self.wild = Some(0.0);
+        self.cues.push(if height >= 3 {
+            "SND_Wild_3"
+        } else {
+            "SND_Wild_2"
+        });
+    }
+
     /// Begin the free games' trigger sequence, if a base game's flags have
     /// won the free games and it has not begun; true when it begins.
     pub fn begin_free_games_trigger(&mut self) -> bool {
@@ -5806,6 +5896,9 @@ pub fn free_games_trigger(
     }
     let dt = smoke.dt(&time);
     let crossed = |a: f32, b: f32, at: f32| a < at && b >= at;
+    if let Some(t) = show.wild {
+        show.wild = Some(t + dt);
+    }
     if let Some(t0) = show.fg_trigger {
         let t = t0 + dt;
         show.fg_trigger = Some(t);

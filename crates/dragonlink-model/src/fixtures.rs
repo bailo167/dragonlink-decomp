@@ -38,6 +38,56 @@ fn strip(ids: &[u16]) -> Vec<SymbolId> {
     ids.iter().copied().map(SymbolId).collect()
 }
 
+/// Lay a strip out from its composition (symbol, count) in a fixed,
+/// repeatable way. Symbols in `blocks` stay as the runs written, spread
+/// evenly round the strip; every other symbol is dealt out one at a time,
+/// the most numerous first, never beside itself and, where the counts allow,
+/// never one apart from itself, so no three-row window shows it twice. The
+/// strip has the same symbols in the same numbers as the composition.
+fn spread(parts: &[(u16, usize)], blocks: &[u16]) -> Vec<SymbolId> {
+    let runs: Vec<(u16, usize)> = parts
+        .iter()
+        .copied()
+        .filter(|(s, _)| blocks.contains(s))
+        .collect();
+    let mut left: Vec<(u16, usize)> = Vec::new();
+    for &(s, n) in parts.iter().filter(|(s, _)| !blocks.contains(s)) {
+        match left.iter_mut().find(|(t, _)| *t == s) {
+            Some((_, m)) => *m += n,
+            None => left.push((s, n)),
+        }
+    }
+    let total: usize = parts.iter().map(|(_, n)| n).sum();
+    let mut out: Vec<u16> = Vec::with_capacity(total);
+    let mut next_run = 0;
+    while out.len() < total {
+        // The runs fall at even spacing round the strip.
+        let due = next_run < runs.len() && out.len() * runs.len() >= next_run * total;
+        let singles_left = left.iter().any(|(_, n)| *n > 0);
+        if (due || !singles_left)
+            && let Some(&(s, n)) = runs.get(next_run)
+        {
+            out.extend(std::iter::repeat_n(s, n));
+            next_run += 1;
+            continue;
+        }
+        // The most numerous single that is clear of its own kind: three
+        // stops apart if possible, else two, else anywhere.
+        let clear = |s: u16, gap: usize| !out.iter().rev().take(gap).any(|&t| t == s);
+        let pick = [2, 1, 0].iter().find_map(|&gap| {
+            left.iter()
+                .enumerate()
+                .filter(|(_, (s, n))| *n > 0 && clear(*s, gap))
+                .max_by_key(|(i, (_, n))| (*n, usize::MAX - i))
+                .map(|(i, _)| i)
+        });
+        let Some(i) = pick else { break };
+        out.push(left[i].0);
+        left[i].1 -= 1;
+    }
+    strip(&out)
+}
+
 /// The synthetic development fixture: a 5×3 window, five paylines, eight
 /// regular symbols, a wild, a scatter and an orb, with a Hold & Spin feature.
 ///
@@ -197,7 +247,7 @@ pub fn synthetic_dev_fixture() -> MathModel {
 }
 
 /// Identifier of [`golden_century_synthetic`], written into trace headers.
-pub const GOLDEN_CENTURY_SYNTHETIC_ID: &str = "golden-century-synthetic-1";
+pub const GOLDEN_CENTURY_SYNTHETIC_ID: &str = "golden-century-synthetic-2";
 
 /// A **synthetic** Golden Century configuration: the game's *evidenced
 /// structure* with *invented* numbers.
@@ -264,14 +314,13 @@ pub fn golden_century_synthetic() -> MathModel {
 
     // One strip per reel, built from a composition so the counts are plain.
     // An orb block and (on reels 2 to 4) a wild block sit among filler royals
-    // and pictures, with one scatter. `rep` is a run of one symbol.
-    let reel = |parts: &[(u16, usize)]| -> Vec<SymbolId> {
-        parts
-            .iter()
-            .flat_map(|(sym, n)| std::iter::repeat_n(*sym, *n))
-            .map(SymbolId)
-            .collect()
-    };
+    // and pictures, with one scatter. The orbs, wilds and doors stay as the
+    // runs written; every royal and picture is dealt out singly, apart from
+    // its own kind, so a reel's window shows a mix of cards as the real game's
+    // does (its columns show the same card twice only rarely), not two or
+    // three of one card stacked. The counts, and so the return, are the same
+    // either way: a payline sees each symbol as often wherever it stands.
+    let reel = |parts: &[(u16, usize)]| spread(parts, &[ORB, EMPEROR, DOORS, PENNANT]);
 
     // Filler shaped so royals are common and pictures rarer, the top picture
     // (women) rarest. Orbs come in a block of three so a window can show two
@@ -626,7 +675,7 @@ pub fn golden_century_synthetic() -> MathModel {
             trigger_count: 3,  // three scatters (read)
             initial_games: 6,  // six free games (official)
             retrigger_count: 3,
-            retrigger_games: 6, // synthetic
+            retrigger_games: 3, // the owner: three more free games
             free_reel_strips,
             mystery: Some(SymbolId(DOORS)),
             reveal_values,
@@ -1737,5 +1786,53 @@ mod tests {
                 "A", "B", "C", "D", "E", "F", "G", "H", "WILD", "SCATTER", "ORB"
             ]
         );
+    }
+
+    /// Golden Century's strips deal the royals and pictures out: a three-row
+    /// window shows a royal or picture twice only rarely, never beside itself;
+    /// the orb, wild and door runs are kept; the symbol counts are those of
+    /// the composition.
+    #[test]
+    fn golden_century_columns_mix_their_cards() {
+        let m = golden_century_synthetic();
+        assert_eq!(m.validate(), Ok(()));
+        let key = |s: SymbolId| m.symbols[s.0 as usize].key.as_str();
+        let dealt = |k: &str| {
+            [
+                "9", "10", "J", "Q", "K", "warriors", "vase", "chest", "women",
+            ]
+            .contains(&k)
+        };
+        let fg = m.free_games.as_ref().expect("free games");
+        let (mut windows, mut doubled) = (0, 0);
+        for strip in m.reel_strips.iter().chain(&fg.free_reel_strips) {
+            let n = strip.len();
+            for i in 0..n {
+                let w = [strip[i], strip[(i + 1) % n], strip[(i + 2) % n]];
+                // Never beside itself.
+                assert!(
+                    !(dealt(key(w[0])) && w[0] == w[1]),
+                    "{} beside itself",
+                    key(w[0])
+                );
+                windows += 1;
+                if (dealt(key(w[0])) && w[0] == w[2]) || (dealt(key(w[1])) && w[1] == w[2]) {
+                    doubled += 1;
+                }
+            }
+        }
+        assert!(
+            doubled * 20 < windows,
+            "{doubled} of {windows} windows show a card twice"
+        );
+        // The orbs still come three together, and the counts are unchanged.
+        let orb = m.symbols.iter().position(|s| s.key == "orb").unwrap();
+        let orbs: usize = m
+            .reel_strips
+            .iter()
+            .map(|s| s.iter().filter(|x| x.0 as usize == orb).count())
+            .sum();
+        assert_eq!(orbs, 15);
+        assert_eq!(m.reel_strips.iter().map(Vec::len).sum::<usize>(), 261);
     }
 }

@@ -1135,6 +1135,7 @@ fn present(
     mut reels_spin: ResMut<ReelAnim>,
     reels_motion: Res<cabinet::Reels>,
     rollup: Res<cabinet::Rollup>,
+    stacks: Res<cabinet::WildStacks>,
     mut cells: Query<(&Cell, &mut BackgroundColor)>,
     mut labels: Query<(&CellLabel, &mut Text)>,
 ) {
@@ -1172,6 +1173,26 @@ fn present(
         {
             presentation.wait = 0.0;
             break;
+        }
+        // A stack of emperors on a winning line stands, with its sound, and
+        // the win waits for it (real game).
+        if fidelity.0
+            && feature.wild.is_none()
+            && reels_motion.rested_for() >= cabinet::RESULT_AFTER_REST
+            && matches!(presentation.queue.front(), Some((_, Event::LineWin { .. })))
+        {
+            // The stacks are found once the reels (and any doors) are still.
+            if !stacks.found() {
+                presentation.wait = 0.0;
+                break;
+            }
+            let wins = presentation.queue.iter().filter_map(|(_, e)| match e {
+                Event::LineWin { line, count, .. } => Some((*line, *count)),
+                _ => None,
+            });
+            if let Some(height) = stacks.on_lines(&sim.game.model().paylines, wins) {
+                feature.begin_wild(height);
+            }
         }
         // A respin spinning or the coins being counted hold what follows.
         if fidelity.0 && feature.blocks() {
@@ -2067,6 +2088,23 @@ mod tests {
         assert_eq!(money(585, 200), "$1,170.00");
         assert_eq!(money(5, 1), "$0.05");
         assert_eq!(grouped(1_234_567), "1,234,567");
+    }
+
+    /// The tunes the real game played for these wins (recorded with sound).
+    #[test]
+    fn wins_play_the_real_games_tunes() {
+        let bet = 200;
+        assert_eq!(cabinet::win_tune(80, bet), 4);
+        assert_eq!(cabinet::win_tune(120, bet), 5);
+        assert_eq!(cabinet::win_tune(320, bet), 13);
+        assert_eq!(cabinet::win_tune(400, bet), 14);
+        // Rising with the win, never past the last tune.
+        let mut last = 0;
+        for win in (0..40_000).step_by(37) {
+            let tune = cabinet::win_tune(win, bet);
+            assert!(tune >= last && (1..=32).contains(&tune));
+            last = tune;
+        }
     }
 
     #[test]

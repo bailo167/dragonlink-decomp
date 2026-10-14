@@ -73,7 +73,7 @@ fn the_free_games_feature_triggers_plays_and_returns_cleanly() {
                     reveals += 1;
                 }
                 Event::FreeGamesRetriggered { added, .. } => {
-                    assert_eq!(*added, 6);
+                    assert_eq!(*added, 3, "three more free games");
                     retriggers += 1;
                 }
                 _ => {}
