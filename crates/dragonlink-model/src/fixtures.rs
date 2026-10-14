@@ -604,7 +604,7 @@ pub fn golden_century_synthetic() -> MathModel {
         scatter_pays,
         bet: BetModel {
             credits_per_line_options: vec![1, 2, 3, 4, 5, 10],
-            line_options: vec![5, 25, 50],
+            line_options: vec![1, 5, 10, 25, 50],
         },
         hold_and_spin: Some(HoldAndSpinModel {
             orb: SymbolId(ORB),

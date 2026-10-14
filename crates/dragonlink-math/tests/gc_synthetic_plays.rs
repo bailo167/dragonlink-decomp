@@ -14,7 +14,7 @@ fn the_synthetic_golden_century_is_playable() {
     let model = golden_century_synthetic();
     model.validate().expect("the synthetic model is runnable");
     assert_eq!(model.paylines.len(), 50);
-    assert_eq!(model.bet.line_options, vec![5, 25, 50]);
+    assert_eq!(model.bet.line_options, vec![1, 5, 10, 25, 50]);
     assert_eq!(model.symbols.len(), 13);
 
     let report = simulate(&model, 1, 400_000).expect("simulate");

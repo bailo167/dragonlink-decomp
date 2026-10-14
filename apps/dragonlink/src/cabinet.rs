@@ -23,34 +23,61 @@ use bevy::window::{MonitorSelection, PrimaryWindow, WindowMode};
 
 use super::*;
 
-/// The game's design canvas.
-pub const CANVAS_W: f32 = 1680.0;
-pub const CANVAS_H: f32 = 1050.0;
+/// The cabinet canvas: the game screen plus the meter strip and button deck
+/// below it, 16:10 so it fills a desktop display.
+pub const CANVAS_W: f32 = 1920.0;
+pub const CANVAS_H: f32 = 1200.0;
 
-/// The `Slot` container: the reel panel, tabs and reels.
-const SLOT_POS: (f32, f32) = (840.0, 554.0);
-const SLOT_SCALE: (f32, f32) = (1.1, 1.08);
-/// The symbol templates' own scale on the reels.
-const SYMBOL_SCALE: (f32, f32) = (0.894, 0.909);
-/// The jackpot bar across the top of the screen: its width and top edge.
+/// The reel grid: its centre and cell pitch, proportioned like the cabinet's
+/// screen (wider reels than the phone layout the scene files describe).
+const GRID_CENTER: (f32, f32) = (960.0, 506.0);
+const PITCH: (f32, f32) = (324.0, 233.0);
+/// Symbols are drawn at their own pixel size times this; the cabinet draws
+/// them a little wider than tall.
+const SYMBOL_SCALE: (f32, f32) = (1.186, 1.059);
+/// The game's reel panel art (1240 x 629) fits a 244 x 200 pitch; it scales
+/// with the pitch.
+const PANEL_SCALE: (f32, f32) = (PITCH.0 / 244.0, PITCH.1 / 200.0);
+/// The jackpots across the top.
 const JACKPOT_BAR_W: f32 = 1640.0;
-const JACKPOT_BAR_TOP: f32 = 6.0;
+const JACKPOT_BAR_TOP: f32 = 8.0;
+/// The cabinet meter strip under the reels, and the button deck below it.
+const STRIP_TOP: f32 = 905.0;
+const STRIP_H: f32 = 100.0;
+const DECK_TOP: f32 = 1015.0;
+
+/// Denominations on the deck's top row, in cents.
+pub const DECK_DENOMS: [u64; 5] = [1, 2, 5, 10, 100];
+/// Line counts on the deck's bottom row.
+pub const DECK_LINES: [u16; 5] = [1, 5, 10, 25, 50];
+
+/// The most lines a denomination allows (Australian Golden Century: 50 at
+/// 1c and 2c, 25 at 5c and 10c, 5 at $1).
+pub fn max_lines(cents: u64) -> u16 {
+    match cents {
+        0..=2 => 50,
+        3..=10 => 25,
+        _ => 5,
+    }
+}
 
 /// UI images the cabinet screen needs from the pack (`ui/<name>.png`).
-pub const REQUIRED_UI: [&str; 13] = [
+pub const REQUIRED_UI: [&str; 15] = [
     "background",
     "reel_background",
     "payline_tab",
-    "lines_label",
     "jackpot_bar",
-    "upi_bar",
-    "btn_minus",
-    "btn_plus",
-    "btn_maxbet",
     "btn_spin_normal",
     "orb_mini",
     "orb_minor",
     "orb_major",
+    "coin_0",
+    "coin_1",
+    "coin_2",
+    "coin_5",
+    "coin_6",
+    "coin_8",
+    "coin_9",
 ];
 
 /// The fidelity build: an authentic pack is configured and complete.
@@ -67,6 +94,14 @@ pub enum CabMeter {
     Credit,
     Bet,
     Win,
+    /// The denomination badge ("2¢").
+    Denom,
+    /// "MIN BET 50" under the badge.
+    MinBet,
+    /// "Bet Multiplier 5" above the strip.
+    Multiplier,
+    /// "50" in a payline tab.
+    Lines,
 }
 
 /// Everything the pack must hold for this model, or the list of what is missing.
@@ -128,27 +163,22 @@ pub fn load_font(fonts: &mut Assets<Font>) -> Handle<Font> {
     Handle::default()
 }
 
-fn slot(x: f32, y: f32) -> (f32, f32) {
+/// The centre of a reel cell.
+fn cell_center(reel: u8, row: u8) -> (f32, f32) {
     (
-        SLOT_POS.0 + SLOT_SCALE.0 * (x - 840.0),
-        SLOT_POS.1 + SLOT_SCALE.1 * (y - 525.0),
+        GRID_CENTER.0 + (reel as f32 - 2.0) * PITCH.0,
+        GRID_CENTER.1 + (row as f32 - 1.0) * PITCH.1,
     )
 }
 
 /// The size of one reel cell on the canvas.
 pub fn cell_size() -> (f32, f32) {
-    (
-        264.0 * SYMBOL_SCALE.0 * SLOT_SCALE.0,
-        220.0 * SYMBOL_SCALE.1 * SLOT_SCALE.1,
-    )
+    PITCH
 }
 
 /// The on-canvas size of a symbol image of `src` pixels.
 pub fn symbol_size(src: (f32, f32)) -> (f32, f32) {
-    (
-        src.0 * SYMBOL_SCALE.0 * SLOT_SCALE.0,
-        src.1 * SYMBOL_SCALE.1 * SLOT_SCALE.1,
-    )
+    (src.0 * SYMBOL_SCALE.0, src.1 * SYMBOL_SCALE.1)
 }
 
 /// An image centred at `(cx, cy)` on the canvas, `w` by `h`.
@@ -199,11 +229,11 @@ fn label(
     )
 }
 
-/// Build the base-game screen.
+/// Build the cabinet: the game screen, the meter strip and the button deck.
 pub fn spawn(commands: &mut Commands, model: &MathModel, art: &ArtPack, font: &Handle<Font>) {
     let ui = |k: &str| art.ui.get(k).cloned().unwrap_or_default();
-    let gold = Color::srgb(1.0, 0.84, 0.35);
-    let white = Color::srgb(1.0, 1.0, 0.96);
+    let gold = Color::srgb(0.98, 0.82, 0.16);
+    let pale = Color::srgb(0.88, 0.93, 1.0);
     commands
         .spawn((
             CanvasRoot,
@@ -217,42 +247,39 @@ pub fn spawn(commands: &mut Commands, model: &MathModel, art: &ArtPack, font: &H
             BackgroundColor(Color::BLACK),
         ))
         .with_children(|c| {
-            // The Great Wall backdrop (overscanned past the canvas).
-            c.spawn(sprite(ui("background"), 840.0, 525.0, 1800.0, 1164.0));
+            // The Great Wall backdrop behind the screen.
+            c.spawn(sprite(
+                ui("background"),
+                960.0,
+                -30.0 + 621.0,
+                1920.0,
+                1242.0,
+            ));
 
-            // The reel panel, payline tabs and "5 LINES" labels.
-            let (x, y) = slot(840.0, 539.5);
+            // The reel panel and the payline tabs either side.
+            let (gx, gy) = GRID_CENTER;
             c.spawn(sprite(
                 ui("reel_background"),
-                x,
-                y,
-                1240.0 * SLOT_SCALE.0,
-                629.0 * SLOT_SCALE.1,
+                gx,
+                gy + 4.5 * PANEL_SCALE.1,
+                1240.0 * PANEL_SCALE.0,
+                629.0 * PANEL_SCALE.1,
             ));
-            for (tab_x, label_x) in [(204.5, 192.5), (1472.0, 1485.0)] {
-                let (x, y) = slot(tab_x, 535.0);
-                c.spawn(sprite(
-                    ui("payline_tab"),
-                    x,
-                    y,
-                    112.0 * SLOT_SCALE.0,
-                    227.0 * SLOT_SCALE.1,
+            for side in [-1.0f32, 1.0] {
+                let x = gx + side * (2.0 * PITCH.0 + 196.0);
+                c.spawn(sprite(ui("payline_tab"), x, gy, 134.0, 272.0));
+                c.spawn((
+                    CabMeter::Lines,
+                    label("50", font, 64.0, gold, x, gy - 34.0, 134.0),
                 ));
-                let (x, y) = slot(label_x, 535.0);
-                c.spawn(sprite(
-                    ui("lines_label"),
-                    x,
-                    y,
-                    112.0 * 0.5 * SLOT_SCALE.0,
-                    206.0 * 0.5 * SLOT_SCALE.1,
-                ));
+                c.spawn(label("LINES", font, 34.0, gold, x, gy + 34.0, 134.0));
             }
 
-            // The reels: one cell per window position, at the game's grid.
+            // The reels: one cell per window position.
             let (cw, ch) = cell_size();
             for reel in 0..model.grid.reels {
                 for row in 0..model.grid.rows {
-                    let (x, y) = slot(352.0 + 244.0 * reel as f32, 335.0 + 200.0 * row as f32);
+                    let (x, y) = cell_center(reel, row);
                     let key0 = initial_key(model, reel, row);
                     c.spawn((
                         Cell { reel, row },
@@ -291,7 +318,7 @@ pub fn spawn(commands: &mut Commands, model: &MathModel, art: &ArtPack, font: &H
                             },
                             Visibility::Hidden,
                         ));
-                        spawn_orb_overlay(cell, reel, row, font);
+                        spawn_orb_overlay(cell, reel, row);
                     });
                 }
             }
@@ -299,19 +326,16 @@ pub fn spawn(commands: &mut Commands, model: &MathModel, art: &ArtPack, font: &H
             // The moving reels, drawn over the landed cells while they spin.
             spawn_strips(c, model.grid.reels);
 
-            // The jackpots across the top of the screen, as on the machine:
-            // the game's jackpot bar spanning the full width.
+            // The jackpots across the top.
             let (bar_w, bar_top) = (JACKPOT_BAR_W, JACKPOT_BAR_TOP);
             let bar_h = bar_w * 104.0 / 1225.0;
             c.spawn(sprite(
                 ui("jackpot_bar"),
-                840.0,
+                960.0,
                 bar_top + bar_h / 2.0,
                 bar_w,
                 bar_h,
             ));
-            // Amounts sit in each tier's black display window (the window
-            // centres in the bar image, in its own pixels).
             let k = bar_w / 1225.0;
             for (tier, bar_x) in [
                 (JackpotTier::Grand, 171.0),
@@ -325,72 +349,95 @@ pub fn spawn(commands: &mut Commands, model: &MathModel, art: &ArtPack, font: &H
                         "-",
                         font,
                         56.0,
-                        white,
-                        840.0 - bar_w / 2.0 + bar_x * k,
+                        Color::srgb(1.0, 1.0, 0.96),
+                        960.0 - bar_w / 2.0 + bar_x * k,
                         bar_top + 70.0 * k,
                         420.0,
                     ),
                 ));
             }
 
-            // The bottom player bar, bottom-anchored at y = 1050.
-            c.spawn(sprite(ui("upi_bar"), 850.0, 975.0, 1878.0, 150.0));
-            for (button, img, x, y, w, h) in [
-                (
-                    CabButton::BetDown,
-                    "btn_minus",
-                    281.0,
-                    993.0,
-                    67.0 * 0.935,
-                    104.0,
+            // Above the strip: the bet multiplier, as the machine shows it.
+            c.spawn((
+                CabMeter::Multiplier,
+                label(
+                    "Bet Multiplier 1",
+                    font,
+                    30.0,
+                    pale,
+                    gx,
+                    STRIP_TOP - 18.0,
+                    700.0,
                 ),
-                (
-                    CabButton::BetUp,
-                    "btn_plus",
-                    534.0,
-                    993.0,
-                    68.0 * 0.935,
-                    104.0,
-                ),
-                (
-                    CabButton::MaxBet,
-                    "btn_maxbet",
-                    1222.0,
-                    994.5,
-                    257.0 * 0.935,
-                    104.0,
-                ),
-                (
-                    CabButton::Spin,
-                    "btn_spin_normal",
-                    1510.5,
-                    990.5,
-                    322.0 * 0.935,
-                    115.0,
-                ),
+            ));
+
+            // The cabinet meter strip.
+            c.spawn((
+                Node {
+                    position_type: PositionType::Absolute,
+                    left: Val::Px(0.0),
+                    top: Val::Px(STRIP_TOP),
+                    width: Val::Px(CANVAS_W),
+                    height: Val::Px(STRIP_H),
+                    ..default()
+                },
+                BackgroundColor(Color::srgba(0.0, 0.0, 0.04, 0.82)),
+            ));
+            let sy = STRIP_TOP + STRIP_H / 2.0;
+            for (text, x, w) in [
+                ("CREDIT", 300.0, 280.0),
+                ("BET", 830.0, 160.0),
+                ("WIN", 1225.0, 160.0),
             ] {
-                c.spawn((button, sprite(ui(img), x, y, w, h))).observe(
-                    move |_press: On<PointerPress>, mut input: ResMut<CabinetInput>| match button {
-                        CabButton::Spin => input.spin = true,
-                        CabButton::MaxBet => input.max_bet = true,
-                        CabButton::BetUp => input.bet_up = true,
-                        CabButton::BetDown => input.bet_down = true,
-                    },
-                );
+                c.spawn(label(text, font, 70.0, gold, x, sy, w));
             }
             c.spawn((
+                CabMeter::Credit,
+                label("-", font, 70.0, pale, 575.0, sy, 340.0),
+            ));
+            c.spawn((
                 CabMeter::Bet,
-                label("-", font, 44.0, white, 407.5, 993.0, 190.0),
+                label("-", font, 70.0, pale, 1010.0, sy, 260.0),
             ));
             c.spawn((
                 CabMeter::Win,
-                label("-", font, 50.0, white, 837.0, 990.0, 400.0),
+                label("-", font, 70.0, pale, 1445.0, sy, 340.0),
             ));
-            c.spawn(label("CREDIT", font, 22.0, gold, 120.0, 940.0, 200.0));
+            // The denomination badge and the GAMES MENU tab above it.
             c.spawn((
-                CabMeter::Credit,
-                label("-", font, 34.0, white, 120.0, 985.0, 220.0),
+                Node {
+                    position_type: PositionType::Absolute,
+                    left: Val::Px(1672.0),
+                    top: Val::Px(STRIP_TOP + 6.0),
+                    width: Val::Px(228.0),
+                    height: Val::Px(STRIP_H - 12.0),
+                    border: UiRect::all(Val::Px(2.0)),
+                    border_radius: BorderRadius::all(Val::Px(10.0)),
+                    ..default()
+                },
+                BackgroundColor(Color::srgb(0.13, 0.13, 0.15)),
+                BorderColor::all(Color::srgb(0.35, 0.35, 0.4)),
             ));
+            c.spawn((
+                CabMeter::Denom,
+                label("1¢", font, 62.0, gold, 1786.0, STRIP_TOP + 40.0, 228.0),
+            ));
+            c.spawn((
+                CabMeter::MinBet,
+                label(
+                    "MIN BET 50",
+                    font,
+                    22.0,
+                    pale,
+                    1786.0,
+                    STRIP_TOP + 82.0,
+                    228.0,
+                ),
+            ));
+            pill(c, font, "GAMES MENU", 1786.0, STRIP_TOP - 24.0, 210.0);
+            pill(c, font, "GAME RULES", 105.0, sy, 170.0);
+
+            spawn_deck(c, font);
 
             // The shared presentation systems still expect these; unused here.
             c.spawn((
@@ -410,6 +457,218 @@ pub fn spawn(commands: &mut Commands, model: &MathModel, art: &ArtPack, font: &H
                 },
             ));
         });
+}
+
+/// A small rounded on-screen tab ("GAMES MENU", "GAME RULES").
+fn pill(c: &mut ChildSpawnerCommands, font: &Handle<Font>, text: &str, cx: f32, cy: f32, w: f32) {
+    c.spawn((
+        Node {
+            position_type: PositionType::Absolute,
+            left: Val::Px(cx - w / 2.0),
+            top: Val::Px(cy - 19.0),
+            width: Val::Px(w),
+            height: Val::Px(38.0),
+            border: UiRect::all(Val::Px(2.0)),
+            border_radius: BorderRadius::all(Val::Px(19.0)),
+            justify_content: JustifyContent::Center,
+            align_items: AlignItems::Center,
+            ..default()
+        },
+        BackgroundColor(Color::srgb(0.86, 0.88, 0.95)),
+        BorderColor::all(Color::srgb(0.95, 0.75, 0.2)),
+    ))
+    .with_children(|p| {
+        p.spawn((
+            Text::new(text),
+            TextFont {
+                font: bevy::text::FontSource::Handle(font.clone()),
+                font_size: FontSize::Px(24.0),
+                ..default()
+            },
+            TextColor(Color::srgb(0.12, 0.2, 0.55)),
+        ));
+    });
+}
+
+/// A lit physical button on the deck.
+#[derive(Component)]
+pub struct DeckButton(pub CabButton);
+
+/// The pub-style button deck below the screen: denominations on the top row,
+/// line counts on the bottom row, BET -/+ on the left, SPIN on the right.
+fn spawn_deck(c: &mut ChildSpawnerCommands, font: &Handle<Font>) {
+    c.spawn((
+        Node {
+            position_type: PositionType::Absolute,
+            left: Val::Px(0.0),
+            top: Val::Px(DECK_TOP),
+            width: Val::Px(CANVAS_W),
+            height: Val::Px(CANVAS_H - DECK_TOP),
+            border: UiRect::top(Val::Px(3.0)),
+            ..default()
+        },
+        BackgroundColor(Color::srgb(0.07, 0.07, 0.08)),
+        BorderColor::all(Color::srgb(0.55, 0.45, 0.2)),
+    ));
+    let row_y = [DECK_TOP + 22.0, DECK_TOP + 105.0];
+    let (bw, bh, gap, left) = (232.0, 70.0, 22.0, 236.0);
+    for (i, cents) in DECK_DENOMS.into_iter().enumerate() {
+        let text = if cents >= 100 {
+            format!("${}", cents / 100)
+        } else {
+            format!("{cents}¢")
+        };
+        deck_button(
+            c,
+            font,
+            CabButton::Denom(i),
+            &text,
+            left + i as f32 * (bw + gap),
+            row_y[0],
+            bw,
+            bh,
+        );
+    }
+    for (i, lines) in DECK_LINES.into_iter().enumerate() {
+        let text = if lines == 1 {
+            "1 LINE".to_string()
+        } else {
+            format!("{lines} LINES")
+        };
+        deck_button(
+            c,
+            font,
+            CabButton::Lines(lines),
+            &text,
+            left + i as f32 * (bw + gap),
+            row_y[1],
+            bw,
+            bh,
+        );
+    }
+    deck_button(
+        c,
+        font,
+        CabButton::BetDown,
+        "BET -",
+        30.0,
+        row_y[1],
+        180.0,
+        bh,
+    );
+    deck_button(
+        c,
+        font,
+        CabButton::BetUp,
+        "BET +",
+        30.0,
+        row_y[0],
+        180.0,
+        bh,
+    );
+    deck_button(
+        c,
+        font,
+        CabButton::Spin,
+        "SPIN",
+        1520.0,
+        row_y[0],
+        370.0,
+        row_y[1] + bh - row_y[0],
+    );
+}
+
+#[allow(clippy::too_many_arguments)]
+fn deck_button(
+    c: &mut ChildSpawnerCommands,
+    font: &Handle<Font>,
+    button: CabButton,
+    text: &str,
+    left: f32,
+    top: f32,
+    w: f32,
+    h: f32,
+) {
+    let size = if button == CabButton::Spin {
+        84.0
+    } else {
+        36.0
+    };
+    c.spawn((
+        DeckButton(button),
+        button,
+        Node {
+            position_type: PositionType::Absolute,
+            left: Val::Px(left),
+            top: Val::Px(top),
+            width: Val::Px(w),
+            height: Val::Px(h),
+            border: UiRect::all(Val::Px(3.0)),
+            border_radius: BorderRadius::all(Val::Px(12.0)),
+            justify_content: JustifyContent::Center,
+            align_items: AlignItems::Center,
+            ..default()
+        },
+        BackgroundColor(Color::srgb(0.3, 0.3, 0.32)),
+        BorderColor::all(Color::srgb(0.6, 0.6, 0.62)),
+    ))
+    .with_children(|b| {
+        b.spawn((
+            Text::new(text),
+            TextFont {
+                font: bevy::text::FontSource::Handle(font.clone()),
+                font_size: FontSize::Px(size),
+                ..default()
+            },
+            TextColor(Color::srgb(0.12, 0.1, 0.06)),
+        ));
+    })
+    .observe(
+        move |_press: On<PointerPress>, mut input: ResMut<CabinetInput>| match button {
+            CabButton::Spin => input.spin = true,
+            CabButton::BetUp => input.bet_up = true,
+            CabButton::BetDown => input.bet_down = true,
+            CabButton::Denom(i) => input.denom = Some(i),
+            CabButton::Lines(n) => input.lines = Some(n),
+        },
+    );
+}
+
+/// Light the deck: the chosen denomination and line count lit bright, lines
+/// above the denomination's maximum dark, SPIN lit when a game can start.
+pub fn light_deck(
+    fidelity: Res<Fidelity>,
+    sim: Res<Sim>,
+    denom: Res<Denom>,
+    presentation: Res<Presentation>,
+    mut buttons: Query<(&DeckButton, &mut BackgroundColor, &mut BorderColor)>,
+) {
+    if !fidelity.0 {
+        return;
+    }
+    let cents = denom.cents();
+    let idle = sim.game.is_idle() && presentation.queue.is_empty();
+    let lines = sim.game.lines();
+    let lit = Color::srgb(1.0, 0.93, 0.62);
+    let on = Color::srgb(0.95, 0.72, 0.18);
+    let dim = Color::srgb(0.34, 0.33, 0.3);
+    let dark = Color::srgb(0.16, 0.16, 0.17);
+    for (button, mut bg, mut border) in &mut buttons {
+        let (face, edge) = match button.0 {
+            CabButton::Denom(i) if DECK_DENOMS[i] == cents => (on, lit),
+            CabButton::Denom(_) => (lit, dim),
+            CabButton::Lines(n) if n > max_lines(cents) => (dark, dark),
+            CabButton::Lines(n) if n == lines => (on, lit),
+            CabButton::Lines(_) => (lit, dim),
+            CabButton::Spin if idle => (Color::srgb(0.25, 0.85, 0.3), lit),
+            CabButton::Spin => (Color::srgb(0.12, 0.35, 0.14), dim),
+            CabButton::BetUp | CabButton::BetDown => (lit, dim),
+        };
+        if bg.0 != face {
+            bg.0 = face;
+        }
+        *border = BorderColor::all(edge);
+    }
 }
 
 /// The symbol the window shows before the first spin, from the strips.
@@ -482,6 +741,16 @@ pub fn update_meters(
             CabMeter::Credit => money(presentation.shown_credits.saturating_sub(pending), cents),
             CabMeter::Bet => money(sim.game.total_bet(), cents),
             CabMeter::Win => money(rollup.shown(), cents),
+            CabMeter::Denom => {
+                if cents >= 100 {
+                    format!("${}", cents / 100)
+                } else {
+                    format!("{cents}¢")
+                }
+            }
+            CabMeter::MinBet => format!("MIN BET {}", sim.game.lines()),
+            CabMeter::Multiplier => format!("Bet Multiplier {}", sim.game.credits_per_line()),
+            CabMeter::Lines => sim.game.lines().to_string(),
         };
         if text.0 != value {
             text.0 = value;
@@ -493,22 +762,26 @@ pub fn update_meters(
 // Controls
 // ---------------------------------------------------------------------------
 
-/// The on-screen buttons of the player bar.
-#[derive(Component, Clone, Copy, PartialEq, Eq)]
+/// The cabinet's buttons.
+#[derive(Component, Clone, Copy, PartialEq, Eq, Debug)]
 pub enum CabButton {
     Spin,
-    MaxBet,
     BetUp,
     BetDown,
+    /// A denomination, by index into [`DECK_DENOMS`].
+    Denom(usize),
+    /// A line count.
+    Lines(u16),
 }
 
 /// Button presses this frame, read by `input` alongside the keyboard.
 #[derive(Resource, Default)]
 pub struct CabinetInput {
     pub spin: bool,
-    pub max_bet: bool,
     pub bet_up: bool,
     pub bet_down: bool,
+    pub denom: Option<usize>,
+    pub lines: Option<u16>,
     /// A SPIN press that completed a win rollup rather than start a game.
     pub skip_spin: bool,
 }
@@ -619,19 +892,19 @@ pub struct StripColumn {
 }
 
 fn reel_center_x(reel: u8) -> f32 {
-    slot(352.0 + 244.0 * reel as f32, 0.0).0
+    GRID_CENTER.0 + (reel as f32 - 2.0) * PITCH.0
 }
 
 fn row_center_y(row: f32) -> f32 {
-    slot(0.0, 335.0 + 200.0 * row).1
+    GRID_CENTER.1 + (row - 1.0) * PITCH.1
 }
 
 fn pitch() -> f32 {
-    200.0 * SLOT_SCALE.1
+    PITCH.1
 }
 
 fn column_width() -> f32 {
-    244.0 * SLOT_SCALE.0
+    PITCH.0
 }
 
 /// The strips the reels scroll through, as symbol keys.
@@ -729,8 +1002,9 @@ pub fn spin_reels(
         state.stopped_now = false;
         match state.motion {
             Motion::Idle if spinning => {
+                // Start from the last result: the landed symbols stay on the
+                // strip and scroll away.
                 state.pos = state.pos.round();
-                state.landing.clear();
                 state.motion = Motion::Spinning { t: 0.0 };
             }
             Motion::Idle => {}
@@ -1040,11 +1314,12 @@ pub fn rollup_skip(
 // Orb prizes
 // ---------------------------------------------------------------------------
 
-/// The prize shown on an orb: its credit value, red with a gold rim.
+/// One digit slot of the prize lettered on an orb.
 #[derive(Component)]
-pub struct OrbText {
+pub struct CoinGlyph {
     reel: u8,
     row: u8,
+    index: u8,
 }
 
 /// A jackpot-tier label (MINI / MINOR / MAJOR) drawn over an orb.
@@ -1054,23 +1329,24 @@ pub struct OrbTier {
     row: u8,
 }
 
-const ORB_RED: Color = Color::srgb(0.78, 0.04, 0.04);
-const ORB_RIM: Color = Color::srgb(1.0, 0.86, 0.25);
-const ORB_FONT_PX: f32 = 58.0;
+/// Digit slots per orb.
+const COIN_SLOTS: u8 = 6;
+/// Digit height as a share of the reel cell's height (as on the machine).
+const COIN_DIGIT_SHARE: f32 = 0.30;
 
-/// Money as the meters on the machine show it: whole dollars without cents.
-pub fn money_short(credits: u64, cents: u64) -> String {
-    let total = credits.saturating_mul(cents);
-    if total.is_multiple_of(100) {
-        format!("${}", total / 100)
+/// An orb's prize as the machine letters it: credits at cent denominations,
+/// whole dollars at a dollar or more.
+pub fn coin_text(credits: u64, cents: u64) -> String {
+    if cents >= 100 {
+        (credits * cents / 100).to_string()
     } else {
-        format!("${}.{:02}", total / 100, total % 100)
+        credits.to_string()
     }
 }
 
-/// The orb prize overlay of one cell: a tier label image, then the value
-/// text drawn eight times in gold around a red face (an outline).
-pub fn spawn_orb_overlay(cell: &mut ChildSpawnerCommands, reel: u8, row: u8, font: &Handle<Font>) {
+/// The orb prize overlay of one cell: a tier label image, and a centred row of
+/// digit images in the game's own coin face.
+pub fn spawn_orb_overlay(cell: &mut ChildSpawnerCommands, reel: u8, row: u8) {
     let (cw, ch) = cell_size();
     cell.spawn((
         OrbTier { reel, row },
@@ -1086,46 +1362,31 @@ pub fn spawn_orb_overlay(cell: &mut ChildSpawnerCommands, reel: u8, row: u8, fon
         },
         Visibility::Hidden,
     ));
-    let offsets = [
-        (-3.0, 0.0),
-        (3.0, 0.0),
-        (0.0, -3.0),
-        (0.0, 3.0),
-        (-2.0, -2.0),
-        (2.0, -2.0),
-        (-2.0, 2.0),
-        (2.0, 2.0),
-        (0.0, 0.0),
-    ];
-    for (i, (dx, dy)) in offsets.into_iter().enumerate() {
-        let colour = if i == offsets.len() - 1 {
-            ORB_RED
-        } else {
-            ORB_RIM
-        };
-        cell.spawn((
-            OrbText { reel, row },
-            Text::new(""),
-            TextFont {
-                font: bevy::text::FontSource::Handle(font.clone()),
-                font_size: FontSize::Px(ORB_FONT_PX),
-                ..default()
-            },
-            TextColor(colour),
-            TextLayout::justify(Justify::Center),
-            Node {
-                position_type: PositionType::Absolute,
-                left: Val::Px(dx),
-                top: Val::Px(ch / 2.0 - ORB_FONT_PX * 0.62 + dy),
-                width: Val::Px(cw),
-                ..default()
-            },
-            Visibility::Hidden,
-        ));
-    }
+    cell.spawn(Node {
+        position_type: PositionType::Absolute,
+        width: Val::Px(cw),
+        height: Val::Px(ch),
+        flex_direction: FlexDirection::Row,
+        justify_content: JustifyContent::Center,
+        align_items: AlignItems::Center,
+        ..default()
+    })
+    .with_children(|row_node| {
+        for index in 0..COIN_SLOTS {
+            row_node.spawn((
+                CoinGlyph { reel, row, index },
+                Node::default(),
+                ImageNode {
+                    image_mode: NodeImageMode::Stretch,
+                    ..default()
+                },
+                Visibility::Hidden,
+            ));
+        }
+    });
 }
 
-/// Show each landed orb's prize: its credit value, or its jackpot tier.
+/// Show each landed orb's prize: its value in the coin digits, or its tier.
 #[allow(clippy::type_complexity, clippy::too_many_arguments)]
 pub fn orb_overlay(
     fidelity: Res<Fidelity>,
@@ -1133,15 +1394,17 @@ pub fn orb_overlay(
     denom: Res<Denom>,
     art: Res<ArtPack>,
     reels: Res<Reels>,
-    labels: Query<(&CellLabel, &Text), (Without<OrbText>, Without<OrbTier>)>,
-    mut texts: Query<(&OrbText, &mut Text, &mut Visibility), Without<OrbTier>>,
-    mut tiers: Query<(&OrbTier, &mut ImageNode, &mut Visibility), Without<OrbText>>,
+    labels: Query<(&CellLabel, &Text)>,
+    mut glyphs: Query<(&CoinGlyph, &mut ImageNode, &mut Visibility, &mut Node), Without<OrbTier>>,
+    mut tiers: Query<(&OrbTier, &mut ImageNode, &mut Visibility), Without<CoinGlyph>>,
 ) {
     if !fidelity.0 {
         return;
     }
     let total_bet = sim.game.total_bet();
     let cents = denom.cents();
+    let (_, ch) = cell_size();
+    let digit_h = ch * COIN_DIGIT_SHARE;
     let prize = |reel: u8, row: u8| -> Option<&str> {
         if reels.moving(reel) {
             return None;
@@ -1151,16 +1414,26 @@ pub fn orb_overlay(
             .find(|(l, _)| l.reel == reel && l.row == row)
             .and_then(|(_, t)| t.0.strip_prefix("ORB\n"))
     };
-    for (o, mut text, mut vis) in &mut texts {
-        let value = prize(o.reel, o.row)
+    for (g, mut image, mut vis, mut node) in &mut glyphs {
+        let text = prize(g.reel, g.row)
             .and_then(|p| p.strip_prefix('x'))
             .and_then(|m| m.parse::<u64>().ok())
-            .map(|m| money_short(m.saturating_mul(total_bet), cents));
-        match value {
-            Some(v) => {
-                if text.0 != v {
-                    text.0 = v;
+            .map(|m| coin_text(m.saturating_mul(total_bet), cents));
+        let glyph = text
+            .as_deref()
+            .and_then(|t| t.chars().nth(g.index as usize))
+            .and_then(|c| {
+                let key = format!("coin_{c}");
+                art.ui.get(&key).zip(art.sizes.get(&key))
+            });
+        match glyph {
+            Some((handle, (w, h))) => {
+                if image.image != *handle {
+                    image.image = handle.clone();
                 }
+                let scale = digit_h / 73.0;
+                node.width = Val::Px(w * scale);
+                node.height = Val::Px(h * scale);
                 *vis = Visibility::Visible;
             }
             None => *vis = Visibility::Hidden,

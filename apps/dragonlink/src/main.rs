@@ -782,9 +782,30 @@ fn input(
     cabinet_input: Res<cabinet::CabinetInput>,
 ) {
     // Denomination (display only) cycles with D, while idle.
-    if keys.just_pressed(KeyCode::KeyD) && sim.game.is_idle() && presentation.queue.is_empty() {
+    let at_rest = sim.game.is_idle() && presentation.queue.is_empty();
+    if keys.just_pressed(KeyCode::KeyD) && at_rest {
         denom.index = (denom.index + 1) % DENOM_CENTS.len();
     }
+    if let Some(i) = cabinet_input.denom
+        && at_rest
+        && let Some(pos) = DENOM_CENTS
+            .iter()
+            .position(|c| *c == cabinet::DECK_DENOMS[i])
+    {
+        denom.index = pos;
+    }
+    // A denomination allows a number of lines; more than that are dropped.
+    let max_lines = cabinet::max_lines(denom.cents());
+    let lines_request = cabinet_input.lines.filter(|n| *n <= max_lines);
+    let lines_clamp = (at_rest && sim.game.lines() > max_lines).then(|| {
+        sim.game
+            .model()
+            .line_counts()
+            .into_iter()
+            .filter(|n| *n <= max_lines)
+            .max()
+            .unwrap_or(1)
+    });
     // In a browser, leaving the event loop would only freeze the page.
     if cfg!(not(target_arch = "wasm32")) && keys.just_pressed(KeyCode::Escape) {
         exit.write(AppExit::Success);
@@ -818,8 +839,8 @@ fn input(
         .unwrap_or(0);
     let command = if go {
         Some(Command::Spin)
-    } else if cabinet_input.max_bet && bet_index + 1 < bets {
-        Some(Command::SetBet { index: bets - 1 })
+    } else if let Some(lines) = lines_clamp.or(lines_request) {
+        Some(Command::SetLines { lines })
     } else if (keys.just_pressed(KeyCode::ArrowUp) || cabinet_input.bet_up) && bet_index + 1 < bets
     {
         Some(Command::SetBet {
@@ -1623,6 +1644,7 @@ fn main() -> AppExit {
             cabinet::win_rollup,
             render_symbols,
             cabinet::orb_overlay,
+            cabinet::light_deck,
             cabinet::clear_cells,
             cabinet::update_meters,
             cabinet::fit,
