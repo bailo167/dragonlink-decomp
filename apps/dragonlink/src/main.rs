@@ -1512,14 +1512,23 @@ fn render_symbols(
                         .sizes
                         .get(k)
                         .map_or((cw, ch), |s| cabinet::symbol_size(k, *s));
-                    // A dimmed symbol on an open Hold & Spin position stays
-                    // inside its position (large ones otherwise overhang).
-                    let (w, h) = if dim {
-                        let k = (cw / w).min(ch / h).min(1.0) * 0.96;
-                        (w * k, h * k)
+                    // A dimmed symbol on an open Hold & Spin position keeps
+                    // its size but is cut off at its position's edges, as
+                    // if behind the grid (large ones otherwise overhang).
+                    let src = art.sizes.get(k).copied().unwrap_or((w, h));
+                    let crop = if dim && (w > cw || h > ch) {
+                        let (vw, vh) = (w.min(cw), h.min(ch));
+                        let (sx, sy) = (src.0 * vw / w, src.1 * vh / h);
+                        let (x0, y0) = ((src.0 - sx) / 2.0, (src.1 - sy) / 2.0);
+                        Some((vw, vh, Rect::new(x0, y0, x0 + sx, y0 + sy)))
                     } else {
-                        (w, h)
+                        None
                     };
+                    let rect = crop.map(|c| c.2);
+                    if image.rect != rect {
+                        image.rect = rect;
+                    }
+                    let (w, h) = crop.map_or((w, h), |c| (c.0, c.1));
                     if node.width != Val::Px(w) || node.height != Val::Px(h) {
                         node.left = Val::Px((cw - w) / 2.0);
                         node.top = Val::Px((ch - h) / 2.0);

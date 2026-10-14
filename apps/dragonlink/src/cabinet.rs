@@ -3875,14 +3875,7 @@ pub fn hold_and_spin_draw(
                 .sizes
                 .get(key)
                 .map_or((cw, ch), |s| symbol_size(key, *s));
-            // Symbols taller than the position shrink to fit it; a coin keeps
-            // its size, so it lands without a jump.
-            let fit = if key == "orb" {
-                1.0
-            } else {
-                (ch * 0.96 / h).min(1.0)
-            };
-            let (w, h) = (w * fit, h * fit);
+            // Full size; the position clips what runs past its edges.
             if let Some(handle) = art.symbols.get(key)
                 && image.image != *handle
             {
