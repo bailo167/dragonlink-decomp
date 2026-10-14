@@ -2139,6 +2139,10 @@ pub struct FeatureShow {
     transition_at: Option<f32>,
     /// The WINNER total while the coins are counted.
     pub winner: Option<u64>,
+    /// The bolt in flight (its coin, its start on `clock`), and the last
+    /// splash on the WINNER box.
+    bolt: Option<(u8, u8, f32)>,
+    splash_at: Option<f32>,
     /// The doors reveal under way: seconds in, the symbol, the positions.
     pub reveal: Option<Reveal>,
     /// The current free game has paid (its win shows on the banner).
@@ -2201,6 +2205,8 @@ impl FeatureShow {
                 self.bursts.clear();
                 self.winner = None;
                 self.transition_at = None;
+                self.bolt = None;
+                self.splash_at = None;
             }
             Event::HoldAndSpinRespin {
                 respins_left,
@@ -2419,10 +2425,13 @@ pub fn spawn_hs_cell(cell: &mut ChildSpawnerCommands, art: &ArtPack, reel: u8, r
             height: Val::Px(ch),
             ..default()
         },
+        // A slate veil (a white tile, tinted), part see-through over the
+        // faded symbol (footage: open positions go dark slate, the symbol
+        // faintly visible through).
         ImageNode {
-            image: art.ui.get("hs_cell").cloned().unwrap_or_default(),
+            image: art.ui.get("white").cloned().unwrap_or_default(),
             image_mode: NodeImageMode::Stretch,
-            color: Color::srgba(1.0, 1.0, 1.0, 0.30),
+            color: HS_VEIL,
             ..default()
         },
         Visibility::Hidden,
@@ -2649,7 +2658,13 @@ const RESPIN_SYMBOLS: [&str; 12] = [
     "9", "10", "J", "Q", "K", "vase", "chest", "women", "warriors", "emperor", "pennant", "orb",
 ];
 /// The tint of a dimmed symbol on an open Hold & Spin position.
-pub const DIM_TINT: Color = Color::srgb(0.20, 0.22, 0.34);
+pub const DIM_TINT: Color = Color::srgb(0.62, 0.62, 0.68);
+/// The veil over an open Hold & Spin position.
+const HS_VEIL: Color = Color::srgba(0.17, 0.19, 0.26, 0.72);
+/// An open position while it respins: the veiled reel face, and the tint of
+/// the symbols passing through it.
+const HS_SPIN_FACE: Color = Color::srgb(0.13, 0.15, 0.24);
+const HS_SPIN_TINT: Color = Color::srgb(0.36, 0.37, 0.43);
 
 /// A respin in motion: each open position spins, then stops in turn.
 #[derive(Clone, Debug, Default)]
@@ -2667,8 +2682,44 @@ pub struct Collect {
     t: f32,
     /// Each coin's position and amount, in counting order.
     coins: Vec<(u8, u8, u64)>,
+    /// Bolts sent, and coins added to the total.
+    launched: usize,
     counted: usize,
 }
+
+/// Seconds a collection bolt takes from its coin to the WINNER box.
+const BOLT_FLIGHT: f32 = 0.55;
+/// The bolt animations cover the whole reel window: their frame (464 x 288)
+/// spans the grid at this many canvas pixels per frame pixel, and each one
+/// starts its fire ring on the position it is named for (frame pixels).
+const BOLT_SCALE: (f32, f32) = (PITCH.0 / 78.5, PITCH.1 / 65.5);
+const BOLT_RINGS: [(f32, f32); 5] = [
+    (75.0, 134.0),
+    (74.0, 201.0),
+    (269.0, 70.0),
+    (309.0, 201.0),
+    (153.0, 201.0),
+];
+
+/// The bolt animation for a coin, and where its frame's top-left goes so its
+/// ring sits on the coin.
+fn bolt_for(reel: u8, row: u8) -> (usize, f32, f32) {
+    let k = match row {
+        0 => 2,
+        1 => 0,
+        _ => [1, 4, 3][reel as usize % 3],
+    };
+    let (cx, cy) = cell_center(reel, row);
+    let (ax, ay) = BOLT_RINGS[k];
+    (k, cx - ax * BOLT_SCALE.0, cy - ay * BOLT_SCALE.1)
+}
+
+/// The collection bolt over the reels.
+#[derive(Component)]
+pub struct HsBolt;
+/// The splash on the WINNER box as a bolt lands.
+#[derive(Component)]
+pub struct WinnerSplash;
 
 /// A label that marks an open position's dimmed symbol.
 const DIM: &str = "DIM:";
@@ -2758,7 +2809,13 @@ pub fn spawn_hs_spin(cell: &mut ChildSpawnerCommands, art: &ArtPack, reel: u8, r
             overflow: Overflow::clip(),
             ..default()
         },
-        BackgroundColor(Color::srgb(0.02, 0.03, 0.10)),
+        // The slate face, covering the symbol resting under it.
+        ImageNode {
+            image: art.ui.get("white").cloned().unwrap_or_default(),
+            image_mode: NodeImageMode::Stretch,
+            color: HS_SPIN_FACE,
+            ..default()
+        },
         Visibility::Hidden,
     ))
     .with_children(|s| {
@@ -2816,7 +2873,39 @@ pub fn spawn_hs_overlays(c: &mut ChildSpawnerCommands, font: &Handle<Font>) {
         GlobalZIndex(30),
         Visibility::Hidden,
     ));
+    c.spawn((
+        HsBolt,
+        Node {
+            position_type: PositionType::Absolute,
+            width: Val::Px(464.0 * BOLT_SCALE.0),
+            height: Val::Px(288.0 * BOLT_SCALE.1),
+            ..default()
+        },
+        ImageNode {
+            image_mode: NodeImageMode::Stretch,
+            ..default()
+        },
+        GlobalZIndex(22),
+        Visibility::Hidden,
+    ));
     let (w, h) = (1040.0, 230.0);
+    c.spawn((
+        WinnerSplash,
+        Node {
+            position_type: PositionType::Absolute,
+            left: Val::Px(960.0 - w * 0.6),
+            top: Val::Px(JACKPOT_BAR_TOP - 40.0 - h * 0.1),
+            width: Val::Px(w * 1.2),
+            height: Val::Px(h * 1.2),
+            ..default()
+        },
+        ImageNode {
+            image_mode: NodeImageMode::Stretch,
+            ..default()
+        },
+        GlobalZIndex(21),
+        Visibility::Hidden,
+    ));
     c.spawn((
         WinnerBox,
         Node {
@@ -3038,10 +3127,19 @@ pub fn hold_and_spin_motion(
     let mut done = None;
     if let Some(mut c) = show.collect.take() {
         c.t += dt;
-        while c.counted < c.coins.len() && c.t >= (c.counted as f32 + 0.5) * COLLECT_STEP {
-            let (reel, row, amount) = c.coins[c.counted];
+        // Each coin in turn: its fire bolt leaves the coin, and when it
+        // reaches the WINNER box the box splashes and the total rises.
+        while c.launched < c.coins.len() && c.t >= c.launched as f32 * COLLECT_STEP + 0.2 {
+            let (reel, row, _) = c.coins[c.launched];
+            show.bolt = Some((reel, row, clock));
+            c.launched += 1;
+        }
+        while c.counted < c.coins.len()
+            && c.t >= c.counted as f32 * COLLECT_STEP + 0.2 + BOLT_FLIGHT
+        {
+            let (_, _, amount) = c.coins[c.counted];
             show.winner = Some(show.winner.unwrap_or(0) + amount);
-            show.bursts.push((reel, row, clock));
+            show.splash_at = Some(clock);
             sounds.play(
                 &mut commands,
                 &format!("SND_HandSDoonk{}", 1 + c.counted % 5),
@@ -3101,6 +3199,32 @@ pub fn hold_and_spin_draw(
         ),
     >,
     mut winner_text: Query<&mut Text, With<WinnerText>>,
+    mut bolt: Query<
+        (&mut ImageNode, &mut Visibility, &mut Node),
+        (
+            With<HsBolt>,
+            Without<WinnerSplash>,
+            Without<WinnerBox>,
+            Without<HsTransition>,
+            Without<HsSpin>,
+            Without<HsSpinImage>,
+            Without<HsRing>,
+            Without<HsBurst>,
+        ),
+    >,
+    mut splash: Query<
+        (&mut ImageNode, &mut Visibility),
+        (
+            With<WinnerSplash>,
+            Without<HsBolt>,
+            Without<WinnerBox>,
+            Without<HsTransition>,
+            Without<HsSpin>,
+            Without<HsSpinImage>,
+            Without<HsRing>,
+            Without<HsBurst>,
+        ),
+    >,
 ) {
     if !fidelity.0 {
         return;
@@ -3161,12 +3285,19 @@ pub fn hold_and_spin_draw(
                 .sizes
                 .get(key)
                 .map_or((cw, ch), |s| symbol_size(key, *s));
+            // Symbols taller than the position shrink to fit it.
+            let fit = (ch * 0.96 / h).min(1.0);
+            let (w, h) = (w * fit, h * fit);
             if let Some(handle) = art.symbols.get(key)
                 && image.image != *handle
             {
                 image.image = handle.clone();
             }
-            image.color = if key == "orb" { Color::WHITE } else { DIM_TINT };
+            image.color = if key == "orb" {
+                Color::WHITE
+            } else {
+                HS_SPIN_TINT
+            };
             // Symbols move down through the position.
             let cy = ch / 2.0 + (pos - n as f32) * ch;
             node.left = Val::Px((cw - w) / 2.0);
@@ -3222,6 +3353,39 @@ pub fn hold_and_spin_draw(
         match show
             .transition_at
             .and_then(|s| frame("transition", clock - s, false))
+        {
+            Some(h) => {
+                if image.image != h {
+                    image.image = h;
+                }
+                set(&mut vis, true);
+            }
+            None => set(&mut vis, false),
+        }
+    }
+
+    // The collection bolt and the splash it makes on the WINNER box.
+    for (mut image, mut vis, mut node) in &mut bolt {
+        let f = show.bolt.and_then(|(reel, row, s)| {
+            let (k, left, top) = bolt_for(reel, row);
+            frame(&format!("bolt{k}"), clock - s, false).map(|h| (h, left, top))
+        });
+        match f {
+            Some((h, left, top)) => {
+                if image.image != h {
+                    image.image = h;
+                }
+                node.left = Val::Px(left);
+                node.top = Val::Px(top);
+                set(&mut vis, true);
+            }
+            None => set(&mut vis, false),
+        }
+    }
+    for (mut image, mut vis) in &mut splash {
+        match show
+            .splash_at
+            .and_then(|s| frame("splash", clock - s, false))
         {
             Some(h) => {
                 if image.image != h {
