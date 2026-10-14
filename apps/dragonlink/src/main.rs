@@ -46,6 +46,43 @@ use dragonlink_model::{JackpotTier, OrbValue, SymbolKind};
 
 mod cabinet;
 
+/// Testing only (`DRAGONLINK_FEATURE_TEST`): one orb inserted after every this
+/// many stops of each base reel, and one scatter after every this many, so a
+/// feature starts about one game in five. Synthetic either way; never a
+/// claim about the original.
+const FEATURE_TEST_ORB: usize = 4;
+const FEATURE_TEST_SCATTER: usize = 9;
+
+/// The model with extra orbs and scatters spread through its base reels (see
+/// [`FEATURE_TEST_ORB`]).
+fn feature_test(mut model: MathModel, orb_every: usize, scatter_every: usize) -> MathModel {
+    let id = |key: &str| {
+        model
+            .symbols
+            .iter()
+            .position(|s| s.key == key)
+            .and_then(|i| u16::try_from(i).ok())
+            .map(dragonlink_model::SymbolId)
+    };
+    let (Some(orb), Some(scatter)) = (id("orb"), id("pennant")) else {
+        return model;
+    };
+    for strip in &mut model.reel_strips {
+        let mut padded = Vec::with_capacity(strip.len() * 2);
+        for (i, &s) in strip.iter().enumerate() {
+            padded.push(s);
+            if (i + 1) % orb_every == 0 {
+                padded.push(orb);
+            }
+            if (i + 1) % scatter_every == 0 {
+                padded.push(scatter);
+            }
+        }
+        *strip = padded;
+    }
+    model
+}
+
 /// Seconds between one reel stopping and the next. Presentation only; ours.
 const REEL_STOP_INTERVAL: f32 = 0.18;
 /// Seconds before the first reel stops. Presentation only; ours.
@@ -83,6 +120,13 @@ enum GameChoice {
 impl GameChoice {
     fn model(self) -> MathModel {
         match self {
+            GameChoice::GoldenCentury if std::env::var_os("DRAGONLINK_FEATURE_TEST").is_some() => {
+                feature_test(
+                    golden_century_synthetic(),
+                    FEATURE_TEST_ORB,
+                    FEATURE_TEST_SCATTER,
+                )
+            }
             GameChoice::GoldenCentury => golden_century_synthetic(),
             GameChoice::AutumnMoon => autumn_moon_synthetic(),
             GameChoice::HappyProsperous => happy_prosperous_synthetic(),
@@ -453,11 +497,11 @@ fn setup(
     load_art(&asset_server, &mut art);
     let model = sim.game.model();
     if fidelity.0 {
-        let font = cabinet::load_font(&mut fonts);
+        let cab_fonts = cabinet::load_fonts(&mut fonts);
         if let Ok(dir) = std::env::var("DRAGONLINK_ART") {
             *sounds = cabinet::Sounds::load(&asset_server, &dir);
         }
-        cabinet::spawn(&mut commands, model, &art, &font);
+        cabinet::spawn(&mut commands, model, &art, &cab_fonts);
         return;
     }
     let art = &*art;
@@ -841,12 +885,11 @@ fn input(
         Some(Command::Spin)
     } else if let Some(lines) = lines_clamp.or(lines_request) {
         Some(Command::SetLines { lines })
-    } else if (keys.just_pressed(KeyCode::ArrowUp) || cabinet_input.bet_up) && bet_index + 1 < bets
-    {
+    } else if keys.just_pressed(KeyCode::ArrowUp) && bet_index + 1 < bets {
         Some(Command::SetBet {
             index: bet_index + 1,
         })
-    } else if (keys.just_pressed(KeyCode::ArrowDown) || cabinet_input.bet_down) && bet_index > 0 {
+    } else if keys.just_pressed(KeyCode::ArrowDown) && bet_index > 0 {
         Some(Command::SetBet {
             index: bet_index - 1,
         })
@@ -1662,6 +1705,7 @@ fn main() -> AppExit {
             render_symbols,
             cabinet::orb_overlay,
             cabinet::light_deck,
+            cabinet::start_prompts,
             cabinet::clear_cells,
             cabinet::update_meters,
             cabinet::fit,
@@ -1746,6 +1790,35 @@ mod tests {
         assert!(parse_args(&args(&["--seed", "x"])).is_err());
         assert!(parse_args(&args(&["--fullscreen"])).is_err());
         assert!(parse_args(&args(&["--help"])).is_err());
+    }
+
+    #[test]
+    fn the_feature_test_model_starts_a_feature_about_one_game_in_five() {
+        let model = feature_test(
+            golden_century_synthetic(),
+            FEATURE_TEST_ORB,
+            FEATURE_TEST_SCATTER,
+        );
+        model.validate().expect("valid");
+        let mut game = Game::new(model, 1_000_000_000).unwrap();
+        let mut rng = DevRng::new(9);
+        let (mut free, mut hold) = (0u32, 0u32);
+        let n = 20_000;
+        for _ in 0..n {
+            for e in &game.play_spin(&mut rng).unwrap() {
+                match e {
+                    Event::FreeGamesStarted { .. } => free += 1,
+                    Event::HoldAndSpinStarted { .. } => hold += 1,
+                    _ => {}
+                }
+            }
+        }
+        let rate = (free + hold) as f64 / n as f64;
+        eprintln!(
+            "feature test: free {free}, hold {hold}, rate 1 in {:.1}",
+            1.0 / rate
+        );
+        assert!((0.14..0.27).contains(&rate), "rate {rate}");
     }
 
     #[test]

@@ -23,10 +23,10 @@ use bevy::window::{MonitorSelection, PrimaryWindow, WindowMode};
 
 use super::*;
 
-/// The cabinet canvas: the game screen plus the meter strip and button deck
-/// below it, 16:10 so it fills a desktop display.
+/// The cabinet canvas: the game screen (down to [`SCREEN_BOTTOM`]) and the
+/// pub button deck below it.
 pub const CANVAS_W: f32 = 1920.0;
-pub const CANVAS_H: f32 = 1200.0;
+pub const CANVAS_H: f32 = 1300.0;
 
 /// The reel grid: its centre and cell pitch, proportioned like the cabinet's
 /// screen (wider reels than the phone layout the scene files describe).
@@ -41,10 +41,17 @@ const PANEL_SCALE: (f32, f32) = (PITCH.0 / 244.0, PITCH.1 / 200.0);
 /// The jackpots across the top.
 const JACKPOT_BAR_W: f32 = 1640.0;
 const JACKPOT_BAR_TOP: f32 = 8.0;
-/// The cabinet meter strip under the reels, and the button deck below it.
-const STRIP_TOP: f32 = 905.0;
-const STRIP_H: f32 = 100.0;
-const DECK_TOP: f32 = 1015.0;
+/// The screen below the reels, measured against cabinet footage (the screen
+/// is 1920 wide; each offset is the footage's, scaled to it).
+const REEL_BOTTOM: f32 = GRID_CENTER.1 + 1.5 * PITCH.1;
+/// The dark meter band: its top, and the centre line of its meters.
+const BAND_TOP: f32 = REEL_BOTTOM + 77.0;
+const METER_Y: f32 = REEL_BOTTOM + 140.0;
+/// "Tap here for player information and promotion".
+const TAP_Y: f32 = REEL_BOTTOM + 214.0;
+const SCREEN_BOTTOM: f32 = REEL_BOTTOM + 248.0;
+/// The button deck under the screen's bezel.
+const DECK_TOP: f32 = SCREEN_BOTTOM + 14.0;
 
 /// Denominations on the deck's top row, in cents.
 pub const DECK_DENOMS: [u64; 5] = [1, 2, 5, 10, 100];
@@ -149,18 +156,39 @@ pub fn window() -> Window {
     }
 }
 
-/// Load the meter font from the operating system, if it has one.
-pub fn load_font(fonts: &mut Assets<Font>) -> Handle<Font> {
-    for p in [
-        "/System/Library/Fonts/Supplemental/Impact.ttf",
-        "/Library/Fonts/Impact.ttf",
-        "C:/Windows/Fonts/impact.ttf",
-    ] {
-        if let Ok(bytes) = std::fs::read(p) {
-            return fonts.add(Font::from_bytes(bytes));
+/// The cabinet screen's three faces: the condensed meter face, the bold sans
+/// of its small captions, and the serif of its promotion line.
+pub struct CabFonts {
+    pub meter: Handle<Font>,
+    pub sans: Handle<Font>,
+    pub serif: Handle<Font>,
+}
+
+/// Load the cabinet's fonts from the operating system, where it has them.
+pub fn load_fonts(fonts: &mut Assets<Font>) -> CabFonts {
+    let mut first = |paths: &[&str]| {
+        for p in paths {
+            if let Ok(bytes) = std::fs::read(p) {
+                return fonts.add(Font::from_bytes(bytes));
+            }
         }
+        Handle::default()
+    };
+    CabFonts {
+        meter: first(&[
+            "/System/Library/Fonts/Supplemental/Impact.ttf",
+            "/Library/Fonts/Impact.ttf",
+            "C:/Windows/Fonts/impact.ttf",
+        ]),
+        sans: first(&[
+            "/System/Library/Fonts/Supplemental/Arial Bold.ttf",
+            "C:/Windows/Fonts/arialbd.ttf",
+        ]),
+        serif: first(&[
+            "/System/Library/Fonts/Supplemental/Times New Roman Bold.ttf",
+            "C:/Windows/Fonts/timesbd.ttf",
+        ]),
     }
-    Handle::default()
 }
 
 /// The centre of a reel cell.
@@ -230,10 +258,11 @@ fn label(
 }
 
 /// Build the cabinet: the game screen, the meter strip and the button deck.
-pub fn spawn(commands: &mut Commands, model: &MathModel, art: &ArtPack, font: &Handle<Font>) {
+pub fn spawn(commands: &mut Commands, model: &MathModel, art: &ArtPack, fonts: &CabFonts) {
+    let font = &fonts.meter;
     let ui = |k: &str| art.ui.get(k).cloned().unwrap_or_default();
-    let gold = Color::srgb(0.98, 0.82, 0.16);
-    let pale = Color::srgb(0.88, 0.93, 1.0);
+    let gold = Color::srgb(1.0, 0.86, 0.12);
+    let pale = Color::srgb(0.86, 0.9, 1.0);
     commands
         .spawn((
             CanvasRoot,
@@ -357,87 +386,9 @@ pub fn spawn(commands: &mut Commands, model: &MathModel, art: &ArtPack, font: &H
                 ));
             }
 
-            // Above the strip: the bet multiplier, as the machine shows it.
-            c.spawn((
-                CabMeter::Multiplier,
-                label(
-                    "Bet Multiplier 1",
-                    font,
-                    30.0,
-                    pale,
-                    gx,
-                    STRIP_TOP - 18.0,
-                    700.0,
-                ),
-            ));
+            spawn_meter_band(c, fonts, art, gold, pale);
 
-            // The cabinet meter strip.
-            c.spawn((
-                Node {
-                    position_type: PositionType::Absolute,
-                    left: Val::Px(0.0),
-                    top: Val::Px(STRIP_TOP),
-                    width: Val::Px(CANVAS_W),
-                    height: Val::Px(STRIP_H),
-                    ..default()
-                },
-                BackgroundColor(Color::srgba(0.0, 0.0, 0.04, 0.82)),
-            ));
-            let sy = STRIP_TOP + STRIP_H / 2.0;
-            for (text, x, w) in [
-                ("CREDIT", 300.0, 280.0),
-                ("BET", 830.0, 160.0),
-                ("WIN", 1225.0, 160.0),
-            ] {
-                c.spawn(label(text, font, 70.0, gold, x, sy, w));
-            }
-            c.spawn((
-                CabMeter::Credit,
-                label("-", font, 70.0, pale, 575.0, sy, 340.0),
-            ));
-            c.spawn((
-                CabMeter::Bet,
-                label("-", font, 70.0, pale, 1010.0, sy, 260.0),
-            ));
-            c.spawn((
-                CabMeter::Win,
-                label("-", font, 70.0, pale, 1445.0, sy, 340.0),
-            ));
-            // The denomination badge and the GAMES MENU tab above it.
-            c.spawn((
-                Node {
-                    position_type: PositionType::Absolute,
-                    left: Val::Px(1672.0),
-                    top: Val::Px(STRIP_TOP + 6.0),
-                    width: Val::Px(228.0),
-                    height: Val::Px(STRIP_H - 12.0),
-                    border: UiRect::all(Val::Px(2.0)),
-                    border_radius: BorderRadius::all(Val::Px(10.0)),
-                    ..default()
-                },
-                BackgroundColor(Color::srgb(0.13, 0.13, 0.15)),
-                BorderColor::all(Color::srgb(0.35, 0.35, 0.4)),
-            ));
-            c.spawn((
-                CabMeter::Denom,
-                label("1¢", font, 62.0, gold, 1786.0, STRIP_TOP + 40.0, 228.0),
-            ));
-            c.spawn((
-                CabMeter::MinBet,
-                label(
-                    "MIN BET 50",
-                    font,
-                    22.0,
-                    pale,
-                    1786.0,
-                    STRIP_TOP + 82.0,
-                    228.0,
-                ),
-            ));
-            pill(c, font, "GAMES MENU", 1786.0, STRIP_TOP - 24.0, 210.0);
-            pill(c, font, "GAME RULES", 105.0, sy, 170.0);
-
-            spawn_deck(c, font);
+            spawn_deck(c, &fonts.sans);
 
             // The shared presentation systems still expect these; unused here.
             c.spawn((
@@ -459,44 +410,299 @@ pub fn spawn(commands: &mut Commands, model: &MathModel, art: &ArtPack, font: &H
         });
 }
 
-/// A small rounded on-screen tab ("GAMES MENU", "GAME RULES").
-fn pill(c: &mut ChildSpawnerCommands, font: &Handle<Font>, text: &str, cx: f32, cy: f32, w: f32) {
+/// A small rounded on-screen tab ("GAMES MENU", "GAME RULES"): a gold-rimmed
+/// yellow pill with dark lettering, as on the cabinet.
+#[allow(clippy::too_many_arguments)]
+fn pill(
+    c: &mut ChildSpawnerCommands,
+    font: &Handle<Font>,
+    text: &str,
+    cx: f32,
+    cy: f32,
+    w: f32,
+    face: Color,
+    ink: Color,
+) {
+    let h = 42.0;
     c.spawn((
         Node {
             position_type: PositionType::Absolute,
             left: Val::Px(cx - w / 2.0),
-            top: Val::Px(cy - 19.0),
+            top: Val::Px(cy - h / 2.0),
             width: Val::Px(w),
-            height: Val::Px(38.0),
-            border: UiRect::all(Val::Px(2.0)),
-            border_radius: BorderRadius::all(Val::Px(19.0)),
+            height: Val::Px(h),
+            border: UiRect::all(Val::Px(3.0)),
+            border_radius: BorderRadius::all(Val::Px(h / 2.0)),
             justify_content: JustifyContent::Center,
             align_items: AlignItems::Center,
+            overflow: Overflow::clip(),
             ..default()
         },
-        BackgroundColor(Color::srgb(0.86, 0.88, 0.95)),
-        BorderColor::all(Color::srgb(0.95, 0.75, 0.2)),
+        BackgroundColor(face),
+        BorderColor::all(Color::srgb(0.85, 0.55, 0.08)),
     ))
     .with_children(|p| {
+        // The tab's glossy upper half.
+        p.spawn((
+            Node {
+                position_type: PositionType::Absolute,
+                left: Val::Px(0.0),
+                top: Val::Px(0.0),
+                width: Val::Percent(100.0),
+                height: Val::Percent(48.0),
+                ..default()
+            },
+            BackgroundColor(Color::srgba(1.0, 1.0, 1.0, 0.28)),
+        ));
         p.spawn((
             Text::new(text),
             TextFont {
                 font: bevy::text::FontSource::Handle(font.clone()),
-                font_size: FontSize::Px(24.0),
+                font_size: FontSize::Px(21.0),
                 ..default()
             },
-            TextColor(Color::srgb(0.12, 0.2, 0.55)),
+            TextLayout::no_wrap(),
+            TextColor(ink),
         ));
     });
 }
 
-/// A lit physical button on the deck.
+/// The rotating prompt above the meters ("3 [scatter] Start FREE GAMES",
+/// "6 [orb] Start HOLD & SPIN FEATURE").
 #[derive(Component)]
-pub struct DeckButton(pub CabButton);
+pub struct StartPrompt {
+    /// Which of the two prompts this is.
+    which: u8,
+}
+
+/// The screen below the reels: the bet multiplier, the start prompts, the
+/// dark meter band with CREDIT / BET / WIN, the GAME RULES and GAMES MENU tabs,
+/// the denomination box and the promotion line, placed as the cabinet places
+/// them.
+fn spawn_meter_band(
+    c: &mut ChildSpawnerCommands,
+    fonts: &CabFonts,
+    art: &ArtPack,
+    gold: Color,
+    pale: Color,
+) {
+    let font = &fonts.meter;
+    let white = Color::srgb(0.97, 0.97, 0.97);
+    let dark = Color::srgba(0.015, 0.01, 0.03, 0.96);
+    let rect = |l: f32, t: f32, w: f32, h: f32| Node {
+        position_type: PositionType::Absolute,
+        left: Val::Px(l),
+        top: Val::Px(t),
+        width: Val::Px(w),
+        height: Val::Px(h),
+        ..default()
+    };
+    // The band, and the promotion row under the denomination box.
+    c.spawn((
+        rect(0.0, BAND_TOP, 1735.0, SCREEN_BOTTOM - BAND_TOP),
+        BackgroundColor(dark),
+    ));
+    c.spawn((
+        rect(
+            1735.0,
+            METER_Y + 46.0,
+            CANVAS_W - 1735.0,
+            SCREEN_BOTTOM - METER_Y - 46.0,
+        ),
+        BackgroundColor(dark),
+    ));
+
+    // "Bet Multiplier 5", centred under the reels.
+    c.spawn((
+        CabMeter::Multiplier,
+        label(
+            "Bet Multiplier 1",
+            &fonts.sans,
+            25.0,
+            white,
+            GRID_CENTER.0 + 31.0,
+            REEL_BOTTOM + 34.0,
+            700.0,
+        ),
+    ));
+
+    // The start prompts, right of centre above the band.
+    for (which, count, key, text) in [
+        (0u8, "3", "pennant", "Start FREE GAMES"),
+        (1u8, "6", "orb", "Start HOLD & SPIN FEATURE"),
+    ] {
+        c.spawn((
+            StartPrompt { which },
+            Node {
+                position_type: PositionType::Absolute,
+                left: Val::Px(1200.0),
+                top: Val::Px(REEL_BOTTOM + 41.0),
+                width: Val::Px(510.0),
+                height: Val::Px(36.0),
+                flex_direction: FlexDirection::Row,
+                justify_content: JustifyContent::FlexEnd,
+                align_items: AlignItems::Center,
+                column_gap: Val::Px(8.0),
+                ..default()
+            },
+            if which == 0 {
+                Visibility::Inherited
+            } else {
+                Visibility::Hidden
+            },
+        ))
+        .with_children(|row| {
+            let caption = |s: &str| {
+                (
+                    Text::new(s),
+                    TextFont {
+                        font: bevy::text::FontSource::Handle(fonts.sans.clone()),
+                        font_size: FontSize::Px(25.0),
+                        ..default()
+                    },
+                    TextColor(white),
+                )
+            };
+            row.spawn(caption(count));
+            row.spawn((
+                Node {
+                    width: Val::Px(34.0),
+                    height: Val::Px(30.0),
+                    ..default()
+                },
+                ImageNode {
+                    image: art.symbols.get(key).cloned().unwrap_or_default(),
+                    image_mode: NodeImageMode::Stretch,
+                    ..default()
+                },
+            ));
+            row.spawn(caption(text));
+        });
+    }
+
+    // The player-information button at the far left.
+    c.spawn((
+        Node {
+            border: UiRect::all(Val::Px(3.0)),
+            border_radius: BorderRadius::all(Val::Px(16.0)),
+            ..rect(10.0, METER_Y - 46.0, 48.0, 92.0)
+        },
+        BackgroundColor(Color::srgb(0.98, 0.8, 0.14)),
+        BorderColor::all(Color::srgb(0.75, 0.45, 0.05)),
+    ));
+    pill(
+        c,
+        &fonts.sans,
+        "GAME RULES",
+        152.0,
+        METER_Y + 30.0,
+        164.0,
+        Color::srgb(1.0, 0.95, 0.72),
+        Color::srgb(0.2, 0.22, 0.62),
+    );
+
+    // CREDIT / BET / WIN and their values.
+    for (text, x, w) in [
+        ("CREDIT", 326.0, 240.0),
+        ("BET", 841.0, 140.0),
+        ("WIN", 1280.0, 140.0),
+    ] {
+        c.spawn(label(text, font, 68.0, gold, x, METER_Y, w));
+    }
+    for (meter, x) in [
+        (CabMeter::Credit, 598.0),
+        (CabMeter::Bet, 1045.0),
+        (CabMeter::Win, 1529.0),
+    ] {
+        c.spawn((meter, label("-", font, 74.0, pale, x, METER_Y, 360.0)));
+    }
+
+    // GAMES MENU and the denomination box at the right.
+    pill(
+        c,
+        &fonts.sans,
+        "GAMES MENU",
+        1827.0,
+        REEL_BOTTOM + 44.0,
+        168.0,
+        Color::srgb(0.99, 0.82, 0.25),
+        Color::srgb(0.24, 0.14, 0.04),
+    );
+    c.spawn((
+        Node {
+            border: UiRect::all(Val::Px(2.0)),
+            border_radius: BorderRadius::all(Val::Px(12.0)),
+            ..rect(1745.0, REEL_BOTTOM + 74.0, 168.0, 100.0)
+        },
+        BackgroundColor(Color::srgba(0.07, 0.06, 0.06, 0.92)),
+        BorderColor::all(Color::srgb(0.42, 0.38, 0.3)),
+    ));
+    c.spawn((
+        CabMeter::Denom,
+        label("1¢", font, 74.0, gold, 1829.0, REEL_BOTTOM + 116.0, 168.0),
+    ));
+    c.spawn((
+        CabMeter::MinBet,
+        label(
+            "MIN BET 50",
+            &fonts.sans,
+            19.0,
+            white,
+            1829.0,
+            REEL_BOTTOM + 160.0,
+            168.0,
+        ),
+    ));
+
+    c.spawn(label(
+        "Tap here for player information and promotion",
+        &fonts.serif,
+        27.0,
+        Color::srgb(0.93, 0.2, 0.42),
+        GRID_CENTER.0 + 50.0,
+        TAP_Y,
+        1000.0,
+    ));
+}
+
+/// Alternate the two start prompts every few seconds.
+pub fn start_prompts(
+    fidelity: Res<Fidelity>,
+    time: Res<Time>,
+    mut prompts: Query<(&StartPrompt, &mut Visibility)>,
+) {
+    if !fidelity.0 {
+        return;
+    }
+    let shown = ((time.elapsed_secs() / 3.0) as u32 % 2) as u8;
+    for (p, mut vis) in &mut prompts {
+        let want = if p.which == shown {
+            Visibility::Inherited
+        } else {
+            Visibility::Hidden
+        };
+        if *vis != want {
+            *vis = want;
+        }
+    }
+}
 
 /// The pub-style button deck below the screen: denominations on the top row,
-/// line counts on the bottom row, BET -/+ on the left, SPIN on the right.
+/// line counts on the bottom row, SPIN on the right. The
+/// buttons are lit plastic caps in chrome bezels on a dark steel panel.
 fn spawn_deck(c: &mut ChildSpawnerCommands, font: &Handle<Font>) {
+    // The black bezel under the screen, and the deck panel.
+    c.spawn((
+        Node {
+            position_type: PositionType::Absolute,
+            left: Val::Px(0.0),
+            top: Val::Px(SCREEN_BOTTOM),
+            width: Val::Px(CANVAS_W),
+            height: Val::Px(CANVAS_H - SCREEN_BOTTOM),
+            ..default()
+        },
+        BackgroundColor(Color::srgb(0.02, 0.02, 0.02)),
+    ));
     c.spawn((
         Node {
             position_type: PositionType::Absolute,
@@ -504,14 +710,30 @@ fn spawn_deck(c: &mut ChildSpawnerCommands, font: &Handle<Font>) {
             top: Val::Px(DECK_TOP),
             width: Val::Px(CANVAS_W),
             height: Val::Px(CANVAS_H - DECK_TOP),
-            border: UiRect::top(Val::Px(3.0)),
+            border: UiRect::top(Val::Px(4.0)),
             ..default()
         },
-        BackgroundColor(Color::srgb(0.07, 0.07, 0.08)),
-        BorderColor::all(Color::srgb(0.55, 0.45, 0.2)),
-    ));
-    let row_y = [DECK_TOP + 22.0, DECK_TOP + 105.0];
-    let (bw, bh, gap, left) = (232.0, 70.0, 22.0, 236.0);
+        BackgroundColor(Color::srgb(0.11, 0.11, 0.12)),
+        BorderColor::all(Color::srgb(0.5, 0.5, 0.53)),
+    ))
+    .with_children(|d| {
+        // The brushed steel's sheen along the panel's top.
+        d.spawn((
+            Node {
+                position_type: PositionType::Absolute,
+                left: Val::Px(0.0),
+                top: Val::Px(0.0),
+                width: Val::Percent(100.0),
+                height: Val::Percent(35.0),
+                ..default()
+            },
+            BackgroundColor(Color::srgba(1.0, 1.0, 1.0, 0.05)),
+        ));
+    });
+    let gap_y = 14.0;
+    let bh = (CANVAS_H - DECK_TOP - 4.0 - 3.0 * gap_y) / 2.0;
+    let row_y = [DECK_TOP + 4.0 + gap_y, DECK_TOP + 4.0 + 2.0 * gap_y + bh];
+    let (bw, gap, left) = (274.0, 22.0, 30.0);
     for (i, cents) in DECK_DENOMS.into_iter().enumerate() {
         let text = if cents >= 100 {
             format!("${}", cents / 100)
@@ -549,26 +771,6 @@ fn spawn_deck(c: &mut ChildSpawnerCommands, font: &Handle<Font>) {
     deck_button(
         c,
         font,
-        CabButton::BetDown,
-        "BET -",
-        30.0,
-        row_y[1],
-        180.0,
-        bh,
-    );
-    deck_button(
-        c,
-        font,
-        CabButton::BetUp,
-        "BET +",
-        30.0,
-        row_y[0],
-        180.0,
-        bh,
-    );
-    deck_button(
-        c,
-        font,
         CabButton::Spin,
         "SPIN",
         1520.0,
@@ -577,6 +779,10 @@ fn spawn_deck(c: &mut ChildSpawnerCommands, font: &Handle<Font>) {
         row_y[1] + bh - row_y[0],
     );
 }
+
+/// The lit cap of a deck button (its colour is set by [`light_deck`]).
+#[derive(Component)]
+pub struct DeckCap(pub CabButton);
 
 #[allow(clippy::too_many_arguments)]
 fn deck_button(
@@ -589,13 +795,13 @@ fn deck_button(
     w: f32,
     h: f32,
 ) {
-    let size = if button == CabButton::Spin {
-        84.0
-    } else {
-        36.0
+    let size = match button {
+        CabButton::Spin => 88.0,
+        CabButton::Denom(_) => 38.0,
+        _ => 28.0,
     };
+    // The chrome bezel, and the backlit cap inside it.
     c.spawn((
-        DeckButton(button),
         button,
         Node {
             position_type: PositionType::Absolute,
@@ -603,45 +809,84 @@ fn deck_button(
             top: Val::Px(top),
             width: Val::Px(w),
             height: Val::Px(h),
-            border: UiRect::all(Val::Px(3.0)),
+            padding: UiRect::all(Val::Px(6.0)),
+            border: UiRect::all(Val::Px(2.0)),
             border_radius: BorderRadius::all(Val::Px(12.0)),
-            justify_content: JustifyContent::Center,
-            align_items: AlignItems::Center,
             ..default()
         },
-        BackgroundColor(Color::srgb(0.3, 0.3, 0.32)),
-        BorderColor::all(Color::srgb(0.6, 0.6, 0.62)),
+        BackgroundColor(Color::srgb(0.52, 0.53, 0.56)),
+        BorderColor::all(Color::srgb(0.82, 0.83, 0.86)),
     ))
     .with_children(|b| {
         b.spawn((
-            Text::new(text),
-            TextFont {
-                font: bevy::text::FontSource::Handle(font.clone()),
-                font_size: FontSize::Px(size),
+            DeckCap(button),
+            Node {
+                width: Val::Percent(100.0),
+                height: Val::Percent(100.0),
+                border: UiRect::all(Val::Px(2.0)),
+                border_radius: BorderRadius::all(Val::Px(8.0)),
+                justify_content: JustifyContent::Center,
+                align_items: AlignItems::Center,
+                overflow: Overflow::clip(),
                 ..default()
             },
-            TextColor(Color::srgb(0.12, 0.1, 0.06)),
-        ));
+            BackgroundColor(Color::srgb(0.3, 0.3, 0.3)),
+            BorderColor::all(Color::srgba(0.0, 0.0, 0.0, 0.45)),
+        ))
+        .with_children(|cap| {
+            // The light falls brightest on the cap's upper half.
+            cap.spawn((
+                Node {
+                    position_type: PositionType::Absolute,
+                    left: Val::Px(0.0),
+                    top: Val::Px(0.0),
+                    width: Val::Percent(100.0),
+                    height: Val::Percent(46.0),
+                    ..default()
+                },
+                BackgroundColor(Color::srgba(1.0, 1.0, 1.0, 0.3)),
+            ));
+            cap.spawn((
+                Node {
+                    position_type: PositionType::Absolute,
+                    left: Val::Px(0.0),
+                    bottom: Val::Px(0.0),
+                    width: Val::Percent(100.0),
+                    height: Val::Percent(22.0),
+                    ..default()
+                },
+                BackgroundColor(Color::srgba(0.0, 0.0, 0.0, 0.12)),
+            ));
+            cap.spawn((
+                Text::new(text),
+                TextFont {
+                    font: bevy::text::FontSource::Handle(font.clone()),
+                    font_size: FontSize::Px(size),
+                    ..default()
+                },
+                TextColor(Color::srgb(0.08, 0.07, 0.05)),
+            ));
+        });
     })
     .observe(
         move |_press: On<PointerPress>, mut input: ResMut<CabinetInput>| match button {
             CabButton::Spin => input.spin = true,
-            CabButton::BetUp => input.bet_up = true,
-            CabButton::BetDown => input.bet_down = true,
             CabButton::Denom(i) => input.denom = Some(i),
             CabButton::Lines(n) => input.lines = Some(n),
         },
     );
 }
 
-/// Light the deck: the chosen denomination and line count lit bright, lines
-/// above the denomination's maximum dark, SPIN lit when a game can start.
+/// Light the deck: the chosen denomination and line count lit gold, the
+/// others lit white, lines above the denomination's maximum dark, and SPIN
+/// glowing while a game can start.
 pub fn light_deck(
     fidelity: Res<Fidelity>,
+    time: Res<Time>,
     sim: Res<Sim>,
     denom: Res<Denom>,
     presentation: Res<Presentation>,
-    mut buttons: Query<(&DeckButton, &mut BackgroundColor, &mut BorderColor)>,
+    mut caps: Query<(&DeckCap, &mut BackgroundColor)>,
 ) {
     if !fidelity.0 {
         return;
@@ -649,25 +894,23 @@ pub fn light_deck(
     let cents = denom.cents();
     let idle = sim.game.is_idle() && presentation.queue.is_empty();
     let lines = sim.game.lines();
-    let lit = Color::srgb(1.0, 0.93, 0.62);
-    let on = Color::srgb(0.95, 0.72, 0.18);
-    let dim = Color::srgb(0.34, 0.33, 0.3);
-    let dark = Color::srgb(0.16, 0.16, 0.17);
-    for (button, mut bg, mut border) in &mut buttons {
-        let (face, edge) = match button.0 {
-            CabButton::Denom(i) if DECK_DENOMS[i] == cents => (on, lit),
-            CabButton::Denom(_) => (lit, dim),
-            CabButton::Lines(n) if n > max_lines(cents) => (dark, dark),
-            CabButton::Lines(n) if n == lines => (on, lit),
-            CabButton::Lines(_) => (lit, dim),
-            CabButton::Spin if idle => (Color::srgb(0.25, 0.85, 0.3), lit),
-            CabButton::Spin => (Color::srgb(0.12, 0.35, 0.14), dim),
-            CabButton::BetUp | CabButton::BetDown => (lit, dim),
+    let lit = Color::srgb(0.95, 0.93, 0.84);
+    let chosen = Color::srgb(1.0, 0.8, 0.16);
+    let dark = Color::srgb(0.2, 0.2, 0.2);
+    let glow = 0.82 + 0.18 * (time.elapsed_secs() * 4.0).sin().abs();
+    for (cap, mut bg) in &mut caps {
+        let face = match cap.0 {
+            CabButton::Denom(i) if DECK_DENOMS[i] == cents => chosen,
+            CabButton::Denom(_) => lit,
+            CabButton::Lines(n) if n > max_lines(cents) => dark,
+            CabButton::Lines(n) if n == lines => chosen,
+            CabButton::Lines(_) => lit,
+            CabButton::Spin if idle => Color::srgb(0.2 * glow, 0.88 * glow, 0.26 * glow),
+            CabButton::Spin => Color::srgb(0.1, 0.3, 0.12),
         };
         if bg.0 != face {
             bg.0 = face;
         }
-        *border = BorderColor::all(edge);
     }
 }
 
@@ -766,8 +1009,6 @@ pub fn update_meters(
 #[derive(Component, Clone, Copy, PartialEq, Eq, Debug)]
 pub enum CabButton {
     Spin,
-    BetUp,
-    BetDown,
     /// A denomination, by index into [`DECK_DENOMS`].
     Denom(usize),
     /// A line count.
@@ -778,8 +1019,6 @@ pub enum CabButton {
 #[derive(Resource, Default)]
 pub struct CabinetInput {
     pub spin: bool,
-    pub bet_up: bool,
-    pub bet_down: bool,
     pub denom: Option<usize>,
     pub lines: Option<u16>,
     /// A SPIN press that completed a win rollup rather than start a game.
