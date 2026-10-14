@@ -1708,8 +1708,10 @@ pub struct Sounds {
     clips: std::collections::HashMap<String, (Handle<AudioSource>, f32)>,
     /// Whether any reel was moving last frame.
     reels_were_moving: bool,
-    /// Reels of this spin that have landed coins.
+    /// Reels of this spin that have landed coins (while six were reachable),
+    /// and coins landed so far.
     coin_reels: u32,
+    coins_seen: u32,
 }
 
 /// An Ogg Vorbis clip's length in seconds, from its last page's granule
@@ -1757,6 +1759,18 @@ impl Sounds {
         )
     }
 
+    /// Play a clip once from `from` seconds into it.
+    pub fn play_from(&self, commands: &mut Commands, name: &str, from: f32) -> Option<Entity> {
+        let (clip, _) = self.clips.get(name)?;
+        let mut settings = PlaybackSettings::DESPAWN;
+        settings.start_position = Some(std::time::Duration::from_secs_f32(from));
+        Some(
+            commands
+                .spawn((AudioPlayer::new(clip.clone()), settings))
+                .id(),
+        )
+    }
+
     /// Play a clip on a loop at `volume`; returns the playing entity.
     pub fn play_loop(&self, commands: &mut Commands, name: &str, volume: f32) -> Option<Entity> {
         let (clip, _) = self.clips.get(name)?;
@@ -1790,20 +1804,28 @@ pub fn reel_audio(
     let moving = (0..reels.states.len()).any(|r| reels.moving(r as u8));
     if moving && !sounds.reels_were_moving {
         sounds.coin_reels = 0;
+        sounds.coins_seen = 0;
     }
     sounds.reels_were_moving = moving;
     let stopped: Vec<usize> = reels.just_stopped().collect();
+    let last = reels.states.len().saturating_sub(1);
     for reel in stopped {
-        // A reel that lands coins sounds the Hold & Spin "doonk" (footage),
-        // rising with each reel of coins.
+        // Measured on cabinet footage (audio audit, 283 plain landings and
+        // 80+ coin landings): every landing clinks, except a reel that lands
+        // coins while six can still be reached (coins on screen after it +
+        // 3 x reels still to land >= 6). That reel plays SND_JPDoonk{n}, n
+        // the count of such coin reels this spin. Flags just clink.
         let coins = reels.states[reel]
             .landing
             .iter()
-            .any(|l| l.starts_with("ORB"));
-        if coins {
+            .filter(|l| l.starts_with("ORB"))
+            .count() as u32;
+        sounds.coins_seen += coins;
+        let reachable = sounds.coins_seen + 3 * (last - reel) as u32 >= 6;
+        if coins > 0 && reachable {
             sounds.coin_reels += 1;
             let n = sounds.coin_reels.min(5);
-            sounds.play(&mut commands, &format!("SND_HandSDoonk{n}"));
+            sounds.play(&mut commands, &format!("SND_JPDoonk{n}"));
         } else {
             sounds.play(&mut commands, &format!("reel_clink{}", (reel + 1).min(5)));
         }
@@ -1891,7 +1913,12 @@ pub fn win_rollup(
         if let Some(id) = rollup.tune.take() {
             commands.entity(id).try_despawn();
         }
-        rollup.tune = sounds.play(&mut commands, &name);
+        // A free game's win plays no tune; the feature music carries on
+        // (cabinet footage). It counts up over a tune's length all the same.
+        let free_game = matches!(show.stage, Stage::FreeGames { .. });
+        if !free_game {
+            rollup.tune = sounds.play(&mut commands, &name);
+        }
         rollup.duration = sounds.seconds(&name).unwrap_or(1.5).max(0.3);
         rollup.from = from;
         rollup.to = target;
@@ -2349,6 +2376,8 @@ pub struct FeatureShow {
     pub winner: Option<u64>,
     /// Respins run so far (each starts a fresh stretch of strip).
     respins_run: i64,
+    /// Sounds the presentation has cued, played by `feature_cues`.
+    cues: Vec<&'static str>,
     /// The bolt in flight (its coin, its start on `clock`), and the last
     /// splash on the WINNER box.
     bolt: Option<(u8, u8, f32)>,
@@ -2392,6 +2421,10 @@ impl FeatureShow {
                 self.scatter_paid = true;
             }
             Event::FreeGamesStarted { games } => {
+                // Footage: the feature bell after the last reel, the scatter
+                // sound as the flags wave and "FREE GAMES WON" shows.
+                self.cues.push("feature_bell");
+                self.cues.push("SND_Scatter");
                 self.games_won = *games;
                 self.wait_for(Await::Start(Feature::FreeGames));
             }
@@ -2460,6 +2493,9 @@ impl FeatureShow {
                 }
             }
             Event::HoldAndSpinCompleted { .. } => {
+                // Footage: SND_Fea_End with "FREE SPINS COMPLETED"; the music
+                // stops at the same moment.
+                self.cues.push("SND_Fea_End");
                 self.awaiting = None;
                 self.stage = Stage::HoldSpinDone;
                 self.collect_start = true;
@@ -2884,7 +2920,7 @@ pub fn feature_screen(
 // counted in turn into a flame-bordered WINNER total.
 
 /// Seconds into the trigger sequence for each step.
-const INTRO_BELL: f32 = 0.4;
+const INTRO_BELL: f32 = 0.01;
 const INTRO_BURST: f32 = 3.2;
 const INTRO_TRANSITION: f32 = 4.0;
 const INTRO_GRID: f32 = 4.75;
@@ -2924,16 +2960,18 @@ pub struct RespinAnim {
     base: i64,
     /// Positions spinning, with the time each stops and whether a coin lands.
     stops: Vec<(u8, u8, f32, bool)>,
-    /// Stops already made.
+    /// Stops already made, and coins landed so far in this respin.
     done: usize,
+    coins: u32,
 }
 
 /// The coins being counted into the WINNER total.
 #[derive(Clone, Debug, Default)]
 pub struct Collect {
     t: f32,
-    /// Each coin's position and amount, in counting order.
-    coins: Vec<(u8, u8, u64)>,
+    /// Each coin's position, amount and whether it is a jackpot coin, in
+    /// counting order.
+    coins: Vec<(u8, u8, u64, bool)>,
     /// Bolts sent, and coins added to the total.
     launched: usize,
     counted: usize,
@@ -3529,7 +3567,7 @@ impl FeatureShow {
         match &self.collect {
             Some(c) => c.coins[..c.launched]
                 .iter()
-                .any(|(r, w, _)| *r == reel && *w == row),
+                .any(|(r, w, _, _)| *r == reel && *w == row),
             None => self.winner.is_some(),
         }
     }
@@ -3630,7 +3668,6 @@ pub fn hold_and_spin_motion(
         let steps = (t / COUNT_STEP) as u8;
         while show.counter < target && show.counter < steps {
             show.counter += 1;
-            sounds.play(&mut commands, "SND_Fea_Inc");
         }
         if show.counter >= target && t >= f32::from(target) * COUNT_STEP + COUNT_HOLD {
             show.count_up = None;
@@ -3651,6 +3688,7 @@ pub fn hold_and_spin_motion(
             }
         }
         show.respins_run += 1;
+        sounds.play(&mut commands, "SND_Button");
         show.respin = Some(RespinAnim {
             stops,
             base: show.respins_run * 1009,
@@ -3665,13 +3703,13 @@ pub fn hold_and_spin_motion(
                 break;
             }
             if coin {
+                anim.coins += 1;
                 sounds.play(
                     &mut commands,
-                    &format!("SND_HandSDoonk{}", 1 + anim.done % 5),
+                    &format!("SND_HandSDoonk{}", anim.coins.min(5)),
                 );
                 show.bursts.push((reel, row, clock));
             } else {
-                sounds.play(&mut commands, "reel_clink1");
                 // The position comes to rest on the strip's landing symbol.
                 let end = anim.end_of(at);
                 for (l, mut text) in &mut labels {
@@ -3689,9 +3727,6 @@ pub fn hold_and_spin_motion(
         }
     }
     if finished {
-        if show.pending_left > show.counter {
-            sounds.play(&mut commands, "SND_Fea_Inc");
-        }
         show.counter = show.pending_left;
     }
 
@@ -3714,7 +3749,7 @@ pub fn hold_and_spin_motion(
                         .map(|i| jackpots.remove(i).1)
                         .unwrap_or(0)
                 });
-                coins.push((reel, row, amount));
+                coins.push((reel, row, amount, face_credits(face, total_bet).is_none()));
             }
         }
         show.winner = Some(0);
@@ -3726,20 +3761,21 @@ pub fn hold_and_spin_motion(
         // Each coin in turn: its fire bolt leaves the coin, and when it
         // reaches the WINNER box the box splashes and the total rises.
         while c.launched < c.coins.len() && c.t >= c.launched as f32 * COLLECT_STEP + 0.2 {
-            let (reel, row, _) = c.coins[c.launched];
+            let (reel, row, _, _) = c.coins[c.launched];
             show.bolt = Some((reel, row, clock));
             c.launched += 1;
         }
         while c.counted < c.coins.len()
             && c.t >= c.counted as f32 * COLLECT_STEP + 0.2 + BOLT_FLIGHT
         {
-            let (_, _, amount) = c.coins[c.counted];
+            let (_, _, amount, jackpot) = c.coins[c.counted];
             show.winner = Some(show.winner.unwrap_or(0) + amount);
             show.splash_at = Some(clock);
-            sounds.play(
-                &mut commands,
-                &format!("SND_HandSDoonk{}", 1 + c.counted % 5),
-            );
+            if jackpot {
+                sounds.play(&mut commands, "SND_Credit1");
+            } else {
+                sounds.play_from(&mut commands, "SND_Medium_1", 0.40);
+            }
             c.counted += 1;
         }
         if c.counted >= c.coins.len() && c.t >= c.coins.len() as f32 * COLLECT_STEP + COLLECT_HOLD {
@@ -4234,8 +4270,6 @@ pub fn gamble_control(
     mut presentation: ResMut<Presentation>,
     show: Res<FeatureShow>,
     rollup: Res<Rollup>,
-    sounds: Res<Sounds>,
-    mut commands: Commands,
 ) {
     if !fidelity.0 {
         return;
@@ -4350,9 +4384,6 @@ pub fn gamble_control(
                         gamble.history.insert(0, *card);
                         gamble.history.truncate(HISTORY);
                         gamble.stake = *award;
-                        if *won {
-                            sounds.play(&mut commands, "wintune02");
-                        }
                     }
                     Event::CreditsChanged { to, .. } => presentation.shown_credits = *to,
                     _ => {}
@@ -5202,15 +5233,20 @@ pub fn feature_music(
     fidelity: Res<Fidelity>,
     show: Res<FeatureShow>,
     sounds: Res<Sounds>,
+    labels: Query<&Text, With<CellLabel>>,
     mut music: ResMut<Music>,
     mut commands: Commands,
 ) {
     if !fidelity.0 {
         return;
     }
+    let held = labels.iter().filter(|t| t.0.starts_with("ORB")).count();
     let want = match show.stage {
         Stage::FreeGames { .. } => Some("SND_Fea_BGM"),
-        Stage::HoldSpin { .. } if show.started => Some("SND_FreeSpin_BGM"),
+        Stage::HoldSpin { .. } if show.grid && show.intro.is_none() && held >= 13 => {
+            Some("SND_FreeSpin_BGMFast")
+        }
+        Stage::HoldSpin { .. } if show.grid && show.intro.is_none() => Some("SND_FreeSpin_BGM"),
         _ => None,
     };
     if music.0.map(|(n, _)| n) == want {
@@ -5223,5 +5259,20 @@ pub fn feature_music(
         && let Some(id) = sounds.play_loop(&mut commands, name, 0.75)
     {
         music.0 = Some((name, id));
+    }
+}
+
+/// Play the sounds the presentation has cued.
+pub fn feature_cues(
+    fidelity: Res<Fidelity>,
+    mut show: ResMut<FeatureShow>,
+    sounds: Res<Sounds>,
+    mut commands: Commands,
+) {
+    if !fidelity.0 {
+        return;
+    }
+    for name in std::mem::take(&mut show.cues) {
+        sounds.play(&mut commands, name);
     }
 }
