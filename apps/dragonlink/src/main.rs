@@ -430,6 +430,20 @@ fn setup(mut commands: Commands, sim: Res<Sim>, art: Res<ArtPack>) {
         (JackpotTier::Minor, Color::srgb(0.30, 0.55, 0.90)),
         (JackpotTier::Mini, Color::srgb(0.90, 0.60, 0.20)),
     ];
+    // Full-screen themed background (the Great Wall scene), behind everything,
+    // when the pack supplies it.
+    if let Some(bg) = art.ui.get("background") {
+        commands.spawn((
+            Node {
+                position_type: PositionType::Absolute,
+                width: Val::Percent(100.0),
+                height: Val::Percent(100.0),
+                ..default()
+            },
+            ImageNode::new(bg.clone()),
+            GlobalZIndex(-1),
+        ));
+    }
     commands
         .spawn(Node {
             width: Val::Percent(100.0),
