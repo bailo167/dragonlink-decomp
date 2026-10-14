@@ -4011,7 +4011,7 @@ pub fn hold_and_spin_draw(
         ),
     >,
     mut winner: Query<
-        (&mut ImageNode, &mut Visibility),
+        (&mut ImageNode, &mut Node, &mut Visibility),
         (
             With<WinnerBox>,
             Without<HsSpin>,
@@ -4021,7 +4021,15 @@ pub fn hold_and_spin_draw(
             Without<HsTransition>,
         ),
     >,
-    mut winner_text: Query<(&mut Text, &mut TextColor), With<WinnerText>>,
+    mut winner_text: Query<
+        (&mut Text, &mut TextColor, &mut TextFont, &mut Node),
+        (
+            With<WinnerText>,
+            Without<WinnerBox>,
+            Without<HsSpinImage>,
+            Without<HsBolt>,
+        ),
+    >,
     mut bolt: Query<
         (&mut ImageNode, &mut Visibility, &mut Node),
         (
@@ -4223,15 +4231,23 @@ pub fn hold_and_spin_draw(
         }
     }
 
-    // The WINNER total.
-    for (mut image, mut vis) in &mut winner {
+    // The WINNER total; on a Grand, the GRAND JACKPOT plaque (its own
+    // 729 x 108 shape, the title across its top, the amount below).
+    let grand = show.grand_showing();
+    for (mut image, mut node, mut vis) in &mut winner {
         // The gamble shows the jackpots, not the WINNER total.
         let winner = show.winner.filter(|_| !gamble.active);
-        let key = if show.grand_showing() {
+        let key = if grand {
             art.ui.get("grand_plaque").cloned()
         } else {
             frame("flameborder_sm", clock, true)
         };
+        let (w, h) = WINNER_BOX;
+        let w = if grand { h * 729.0 / 108.0 } else { w };
+        if node.width != Val::Px(w) {
+            node.width = Val::Px(w);
+            node.left = Val::Px(960.0 - w / 2.0);
+        }
         match winner.and(key) {
             Some(h) => {
                 if image.image != h {
@@ -4248,9 +4264,19 @@ pub fn hold_and_spin_draw(
         .map(|w| money(w, denom.cents()))
         .unwrap_or_default();
     let red = show.grand_showing();
-    for (mut t, mut color) in &mut winner_text {
+    for (mut t, mut color, mut font, mut node) in &mut winner_text {
         if t.0 != amount {
             t.0 = amount.clone();
+        }
+        // On the plaque the amount sits in the band under GRAND JACKPOT.
+        let (size, drop) = if red {
+            (WINNER_BOX.1 * 0.5, WINNER_BOX.1 * 0.17)
+        } else {
+            (54.0, 0.0)
+        };
+        if font.font_size != FontSize::Px(size) {
+            font.font_size = FontSize::Px(size);
+            node.top = Val::Px(drop);
         }
         let want = if red {
             Color::srgb(0.95, 0.12, 0.1)
