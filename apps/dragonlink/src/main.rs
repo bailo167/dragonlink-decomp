@@ -591,7 +591,16 @@ fn setup(mut commands: Commands, sim: Res<Sim>, art: Res<ArtPack>) {
                                             justify_content: JustifyContent::Center,
                                             ..default()
                                         },
-                                        BackgroundColor(cell_color(kind0, &key0)),
+                                        // On the authentic reel panel the
+                                        // symbol sits directly on the face, with
+                                        // no coloured tile behind it.
+                                        BackgroundColor(
+                                            if art.ui.contains_key("reel_background") {
+                                                Color::srgba(0.0, 0.0, 0.0, 0.0)
+                                            } else {
+                                                cell_color(kind0, &key0)
+                                            },
+                                        ),
                                     ))
                                     .with_children(|cell| {
                                         cell.spawn((
