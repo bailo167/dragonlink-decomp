@@ -2946,9 +2946,10 @@ const RESPIN_SYMBOLS: [&str; 12] = [
 /// The tint of a dimmed symbol on an open Hold & Spin position.
 pub const DIM_TINT: Color = Color::srgb(0.62, 0.62, 0.68);
 /// The slate under the whole Hold & Spin grid.
-const HS_BACKDROP: Color = Color::srgb(0.17, 0.16, 0.23);
-/// The veil over an open Hold & Spin position.
-const HS_VEIL: Color = Color::srgba(0.24, 0.21, 0.30, 0.74);
+const HS_BACKDROP: Color = Color::srgb(0.035, 0.04, 0.075);
+/// The veil over an open Hold & Spin position: near black with a hint of
+/// navy, the symbol only just showing (cabinet photo: about RGB 10,12,20).
+const HS_VEIL: Color = Color::srgba(0.03, 0.035, 0.07, 0.965);
 
 /// A respin in motion: each open position spins, then stops in turn.
 #[derive(Clone, Debug, Default)]
