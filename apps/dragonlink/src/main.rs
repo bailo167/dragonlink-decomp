@@ -1414,7 +1414,7 @@ fn render_symbols(
                     let (w, h) = art
                         .sizes
                         .get(k)
-                        .map_or((cw, ch), |s| cabinet::symbol_size(*s));
+                        .map_or((cw, ch), |s| cabinet::symbol_size(k, *s));
                     if node.width != Val::Px(w) || node.height != Val::Px(h) {
                         node.left = Val::Px((cw - w) / 2.0);
                         node.top = Val::Px((ch - h) / 2.0);

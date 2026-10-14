@@ -204,9 +204,15 @@ pub fn cell_size() -> (f32, f32) {
     PITCH
 }
 
-/// The on-canvas size of a symbol image of `src` pixels.
-pub fn symbol_size(src: (f32, f32)) -> (f32, f32) {
-    (src.0 * SYMBOL_SCALE.0, src.1 * SYMBOL_SCALE.1)
+/// The orb is drawn wider than its image's own proportions: on cabinet
+/// footage the coin spans about 0.88 of the reel's width and 0.90 of a row's
+/// height.
+const ORB_SCALE: (f32, f32) = (1.12, 1.02);
+
+/// The on-canvas size of symbol `key`'s image of `src` pixels.
+pub fn symbol_size(key: &str, src: (f32, f32)) -> (f32, f32) {
+    let k = if key == "orb" { ORB_SCALE } else { (1.0, 1.0) };
+    (src.0 * SYMBOL_SCALE.0 * k.0, src.1 * SYMBOL_SCALE.1 * k.1)
 }
 
 /// An image centred at `(cx, cy)` on the canvas, `w` by `h`.
@@ -1366,7 +1372,7 @@ pub fn spin_reels(
         let (w, h) = art
             .sizes
             .get(key.as_str())
-            .map_or((cw, ch), |s| symbol_size(*s));
+            .map_or((cw, ch), |s| symbol_size(&key, *s));
         if let Some(handle) = art.symbols.get(key.as_str())
             && image.image != *handle
         {
@@ -1603,8 +1609,10 @@ pub struct OrbTier {
 
 /// Digit slots per orb.
 const COIN_SLOTS: u8 = 6;
-/// Digit height as a share of the reel cell's height (as on the machine).
-const COIN_DIGIT_SHARE: f32 = 0.30;
+/// Digit image height as a share of the reel cell's height (cabinet footage:
+/// a coin's digits stand about 0.29 of a row tall; the glyph images carry a
+/// little padding around the ink).
+const COIN_DIGIT_SHARE: f32 = 0.33;
 
 /// An orb's prize as the machine letters it: credits at cent denominations,
 /// whole dollars at a dollar or more.
