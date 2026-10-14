@@ -1441,6 +1441,29 @@ pub fn spawn_strips(c: &mut ChildSpawnerCommands, reels: u8) {
             Visibility::Hidden,
         ))
         .with_children(|col| {
+            // Faint copies above and below each symbol: the smear of a reel
+            // at full speed (cabinet footage), drawn behind the symbols.
+            for index in 0..STRIP_SLOTS as u8 {
+                for offset in BLUR_OFFSETS {
+                    col.spawn((
+                        StripGhost {
+                            reel,
+                            index,
+                            offset,
+                        },
+                        Node {
+                            position_type: PositionType::Absolute,
+                            ..default()
+                        },
+                        ImageNode {
+                            image_mode: NodeImageMode::Stretch,
+                            color: Color::srgba(1.0, 1.0, 1.0, BLUR_ALPHA),
+                            ..default()
+                        },
+                        Visibility::Hidden,
+                    ));
+                }
+            }
             for index in 0..STRIP_SLOTS as u8 {
                 col.spawn((
                     StripSlot { reel, index },
@@ -1514,6 +1537,10 @@ pub fn spin_reels(
     labels: Query<(&CellLabel, &Text)>,
     mut columns: Query<(&StripColumn, &mut Visibility)>,
     mut slots: Query<(&StripSlot, &mut ImageNode, &mut Node), Without<StripColumn>>,
+    mut ghosts: Query<
+        (&StripGhost, &mut ImageNode, &mut Node, &mut Visibility),
+        (Without<StripColumn>, Without<StripSlot>),
+    >,
 ) {
     if !fidelity.0 || reels.states.is_empty() {
         return;
@@ -1627,6 +1654,55 @@ pub fn spin_reels(
         node.width = Val::Px(w);
         node.left = Val::Px((column_width() - w) / 2.0);
     }
+    for (g, mut image, mut node, mut vis) in &mut ghosts {
+        let reel = g.reel as usize;
+        // Only at full speed: spinning, or running on to its stop.
+        let fast = matches!(
+            reels.states[reel].motion,
+            Motion::Spinning { .. } | Motion::Stopping { bounce: None, .. }
+        );
+        let want = if fast {
+            Visibility::Inherited
+        } else {
+            Visibility::Hidden
+        };
+        if *vis != want {
+            *vis = want;
+        }
+        if !fast {
+            continue;
+        }
+        let pos = reels.states[reel].pos;
+        let (n, raw) = reels.slot_entry(reel, g.index);
+        let key = symbol_of(raw).to_string();
+        let cy = p / 2.0 + (n as f32 - pos + g.offset) * p;
+        let (w, h) = art
+            .sizes
+            .get(key.as_str())
+            .map_or((cw, ch), |s| symbol_size(&key, *s));
+        if let Some(handle) = art.symbols.get(key.as_str())
+            && image.image != *handle
+        {
+            image.image = handle.clone();
+        }
+        node.top = Val::Px(cy - h / 2.0);
+        node.height = Val::Px(h);
+        node.width = Val::Px(w);
+        node.left = Val::Px((column_width() - w) / 2.0);
+    }
+}
+
+/// The motion smear: copies this far (in symbols) from each symbol, and how
+/// strongly they show.
+const BLUR_OFFSETS: [f32; 2] = [-0.16, 0.16];
+const BLUR_ALPHA: f32 = 0.38;
+
+/// A faint copy of a moving symbol, for the motion smear.
+#[derive(Component)]
+pub struct StripGhost {
+    reel: u8,
+    index: u8,
+    offset: f32,
 }
 
 // ---------------------------------------------------------------------------
