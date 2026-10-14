@@ -326,12 +326,14 @@ struct CellImage {
     row: u8,
 }
 
-/// Authentic symbol artwork loaded from a local asset pack, keyed by the
-/// model's symbol key (e.g. "emperor", "warriors", "9"). Empty when no pack is
-/// configured, in which case the placeholder tiles show instead.
+/// Authentic artwork loaded from a local asset pack. `symbols` is keyed by the
+/// model's symbol key (e.g. "emperor", "warriors", "9"); `ui` by the UI image
+/// stem ("jackpot_bar", "reel_background"). Empty when no pack is configured,
+/// in which case the placeholder presentation shows instead.
 #[derive(Resource, Default)]
 struct ArtPack {
     symbols: std::collections::HashMap<String, Handle<Image>>,
+    ui: std::collections::HashMap<String, Handle<Image>>,
 }
 
 #[derive(Component)]
@@ -407,7 +409,7 @@ fn cell_color(kind: Option<SymbolKind>, key: &str) -> Color {
     }
 }
 
-fn setup(mut commands: Commands, sim: Res<Sim>) {
+fn setup(mut commands: Commands, sim: Res<Sim>, art: Res<ArtPack>) {
     let model = sim.game.model();
     let title = if model.id.starts_with("golden-century") {
         "GOLDEN CENTURY"
@@ -488,8 +490,21 @@ fn setup(mut commands: Commands, sim: Res<Sim>) {
                     });
                 }
             });
-            // Reels, on a framed panel.
-            root.spawn((
+            // An initial reel window, drawn from the strips, so the machine
+            // shows symbols the moment it opens instead of blanks.
+            let initial = |reel: u8, row: u8| -> (String, Option<SymbolKind>) {
+                let strip = &model.reel_strips[reel as usize];
+                if strip.is_empty() {
+                    return ("-".to_string(), None);
+                }
+                let stop = (reel as usize * 7 + 2) % strip.len();
+                let id = strip[(stop + row as usize) % strip.len()];
+                let def = &model.symbols[id.0 as usize];
+                (def.key.clone(), Some(def.kind))
+            };
+            // Reels, on the authentic reel backdrop when the pack supplies it,
+            // otherwise a plain dark panel.
+            let mut reel_panel = root.spawn((
                 Node {
                     flex_direction: FlexDirection::Row,
                     column_gap: Val::Px(6.0),
@@ -497,8 +512,11 @@ fn setup(mut commands: Commands, sim: Res<Sim>) {
                     ..default()
                 },
                 BackgroundColor(Color::srgb(0.06, 0.07, 0.10)),
-            ))
-            .with_children(|reels| {
+            ));
+            if let Some(backdrop) = art.ui.get("reel_background") {
+                reel_panel.insert(ImageNode::new(backdrop.clone()));
+            }
+            reel_panel.with_children(|reels| {
                 for reel in 0..model.grid.reels {
                     reels
                         .spawn(Node {
@@ -508,6 +526,7 @@ fn setup(mut commands: Commands, sim: Res<Sim>) {
                         })
                         .with_children(|column| {
                             for row in 0..model.grid.rows {
+                                let (key0, kind0) = initial(reel, row);
                                 column
                                     .spawn((
                                         Cell { reel, row },
@@ -518,12 +537,12 @@ fn setup(mut commands: Commands, sim: Res<Sim>) {
                                             justify_content: JustifyContent::Center,
                                             ..default()
                                         },
-                                        BackgroundColor(Color::srgb(0.12, 0.13, 0.16)),
+                                        BackgroundColor(cell_color(kind0, &key0)),
                                     ))
                                     .with_children(|cell| {
                                         cell.spawn((
                                             CellLabel { reel, row },
-                                            Text::new("-"),
+                                            Text::new(key0.clone()),
                                             TextFont {
                                                 font_size: FontSize::Px(20.0),
                                                 ..default()
@@ -1097,30 +1116,46 @@ fn spawn_camera(mut commands: Commands) {
 /// Only files that exist are loaded; a symbol with no file keeps its
 /// placeholder tile. Nothing proprietary ships in the repository: the pack is
 /// a local, git-ignored set built from the owner's own source material.
-fn load_art(asset_server: Res<AssetServer>, mut commands: Commands) {
-    let mut pack = ArtPack::default();
+fn load_art(asset_server: Res<AssetServer>, mut pack: ResMut<ArtPack>) {
     if let Ok(dir) = std::env::var("DRAGONLINK_ART") {
-        let symbols = std::path::Path::new(&dir).join("symbols");
-        if let Ok(entries) = std::fs::read_dir(&symbols) {
-            for entry in entries.flatten() {
-                let path = entry.path();
-                if path.extension().and_then(|e| e.to_str()) != Some("png") {
-                    continue;
-                }
-                if let Some(stem) = path.file_stem().and_then(|s| s.to_str()) {
-                    pack.symbols.insert(
-                        stem.to_string(),
-                        asset_server.load(format!("symbols/{stem}.png")),
-                    );
-                }
-            }
-        }
+        let root = std::path::Path::new(&dir);
+        load_pngs(
+            &asset_server,
+            &root.join("symbols"),
+            "symbols",
+            &mut pack.symbols,
+        );
+        load_pngs(&asset_server, &root.join("ui"), "ui", &mut pack.ui);
         eprintln!(
-            "authentic art: loaded {} symbol images from {dir}",
-            pack.symbols.len()
+            "authentic art: {} symbols, {} ui images from {dir}",
+            pack.symbols.len(),
+            pack.ui.len()
         );
     }
-    commands.insert_resource(pack);
+}
+
+/// Load every `*.png` in `dir` into `map`, keyed by file stem, through the
+/// asset server at `<sub>/<stem>.png`.
+fn load_pngs(
+    asset_server: &AssetServer,
+    dir: &std::path::Path,
+    sub: &str,
+    map: &mut std::collections::HashMap<String, Handle<Image>>,
+) {
+    if let Ok(entries) = std::fs::read_dir(dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.extension().and_then(|e| e.to_str()) != Some("png") {
+                continue;
+            }
+            if let Some(stem) = path.file_stem().and_then(|s| s.to_str()) {
+                map.insert(
+                    stem.to_string(),
+                    asset_server.load(format!("{sub}/{stem}.png")),
+                );
+            }
+        }
+    }
 }
 
 /// Show the authentic symbol image on each cell whose current symbol has art,
@@ -1350,6 +1385,7 @@ fn main() -> AppExit {
             ..default()
         })
         .insert_resource(Denom::default())
+        .insert_resource(ArtPack::default())
         .insert_resource(ReelAnim::default())
         .insert_resource(Smoke {
             frames_left: cli.smoke_frames,
