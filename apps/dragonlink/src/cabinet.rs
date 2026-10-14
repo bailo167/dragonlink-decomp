@@ -1045,6 +1045,12 @@ pub fn update_meters(
     let pending = rollup.to.saturating_sub(rollup.shown());
     for (meter, mut text) in &mut meters {
         let value = match meter {
+            CabMeter::Credit if show.in_feature() => money(
+                presentation
+                    .shown_credits
+                    .saturating_sub(presentation.shown_win),
+                cents,
+            ),
             CabMeter::Credit => money(presentation.shown_credits.saturating_sub(pending), cents),
             CabMeter::Bet => money(sim.game.total_bet(), cents),
             CabMeter::Win => match &show.collect {
@@ -1294,6 +1300,22 @@ pub fn spawn_strips(c: &mut ChildSpawnerCommands, reels: u8) {
                     },
                 ))
                 .with_children(|slot_node| {
+                    slot_node.spawn((
+                        StripTier { reel, slot: index },
+                        Node {
+                            position_type: PositionType::Absolute,
+                            left: Val::Px(0.0),
+                            top: Val::Px(0.0),
+                            width: Val::Percent(100.0),
+                            height: Val::Percent(100.0),
+                            ..default()
+                        },
+                        ImageNode {
+                            image_mode: NodeImageMode::Stretch,
+                            ..default()
+                        },
+                        Visibility::Hidden,
+                    ));
                     for digit in 0..COIN_SLOTS {
                         slot_node.spawn((
                             StripDigit {
@@ -1606,7 +1628,8 @@ pub fn win_rollup(
         rollup.duration = 0.0;
     } else if target > rollup.seen {
         let from = rollup.shown();
-        let tune = win_tune(target, sim.game.total_bet());
+        // The tune follows this win, not what the feature has paid so far.
+        let tune = win_tune(target - rollup.seen, sim.game.total_bet());
         let name = format!("wintune{tune:02}");
         if let Some(id) = rollup.tune.take() {
             commands.entity(id).try_despawn();
@@ -1734,7 +1757,7 @@ pub fn orb_overlay(
     reels: Res<Reels>,
     labels: Query<(&CellLabel, &Text)>,
     mut glyphs: Query<(&CoinGlyph, &mut ImageNode, &mut Visibility, &mut Node), Without<OrbTier>>,
-    mut tiers: Query<(&OrbTier, &mut ImageNode, &mut Visibility), Without<CoinGlyph>>,
+    mut tiers: Query<(&OrbTier, &mut ImageNode, &mut Visibility, &mut Node), Without<CoinGlyph>>,
 ) {
     if !fidelity.0 {
         return;
@@ -1743,34 +1766,29 @@ pub fn orb_overlay(
     let cents = denom.cents();
     let (_, ch) = cell_size();
     let digit_h = ch * COIN_DIGIT_SHARE;
-    let prize = |reel: u8, row: u8| -> Option<&str> {
-        if reels.moving(reel) {
-            return None;
-        }
-        labels
-            .iter()
-            .find(|(l, _)| l.reel == reel && l.row == row)
-            .and_then(|(_, t)| t.0.strip_prefix("ORB\n"))
-    };
     // An orb shown before any game was played (drawn from the strips) has no
-    // drawn prize; it carries the same cosmetic prize it shows on the moving
+    // drawn prize; it carries the same cosmetic face it shows on the moving
     // strip, so every coin on screen is lettered, as on the machine.
-    let resting = |reel: u8, row: u8| -> Option<u64> {
+    let face = |reel: u8, row: u8| -> Option<String> {
         if reels.moving(reel) {
             return None;
         }
         let state = reels.states.get(reel as usize)?;
-        labels
+        let (_, text) = labels
             .iter()
-            .any(|(l, t)| l.reel == reel && l.row == row && t.0 == "orb")
-            .then(|| passing_prize(reel, state.pos.round() as i64 + i64::from(row)))
+            .find(|(l, _)| l.reel == reel && l.row == row)?;
+        match text.0.strip_prefix("ORB\n") {
+            Some(f) => Some(f.to_string()),
+            None if text.0 == "orb" => {
+                Some(passing_face(reel, state.pos.round() as i64 + i64::from(row)).to_string())
+            }
+            None => None,
+        }
     };
     for (g, mut image, mut vis, mut node) in &mut glyphs {
-        let text = prize(g.reel, g.row)
-            .and_then(|p| p.strip_prefix('x'))
-            .and_then(|m| m.parse::<u64>().ok())
-            .or_else(|| resting(g.reel, g.row))
-            .map(|m| coin_text(m.saturating_mul(total_bet), cents));
+        let text = face(g.reel, g.row)
+            .and_then(|f| face_credits(&f, total_bet))
+            .map(|c| coin_text(c, cents));
         let glyph = text
             .as_deref()
             .and_then(|t| t.chars().nth(g.index as usize))
@@ -1796,22 +1814,29 @@ pub fn orb_overlay(
             }
         }
     }
-    for (o, mut image, mut vis) in &mut tiers {
-        let tier = match prize(o.reel, o.row) {
-            Some("Mini") => "orb_mini",
-            Some("Minor") => "orb_minor",
-            Some("Major") => "orb_major",
-            _ => {
-                *vis = Visibility::Hidden;
-                continue;
-            }
+    // The tier plate covers the coin itself, at the coin's drawn size.
+    let (cw, ch) = cell_size();
+    let (pw, ph) = art
+        .sizes
+        .get("orb")
+        .map_or((cw, ch), |s| symbol_size("orb", *s));
+    for (o, mut image, mut vis, mut node) in &mut tiers {
+        let Some(h) = face(o.reel, o.row)
+            .as_deref()
+            .and_then(tier_image)
+            .and_then(|k| art.ui.get(k))
+        else {
+            *vis = Visibility::Hidden;
+            continue;
         };
-        if let Some(h) = art.ui.get(tier) {
-            if image.image != *h {
-                image.image = h.clone();
-            }
-            *vis = Visibility::Visible;
+        if image.image != *h {
+            image.image = h.clone();
         }
+        node.width = Val::Px(pw);
+        node.height = Val::Px(ph);
+        node.left = Val::Px((cw - pw) / 2.0);
+        node.top = Val::Px((ch - ph) / 2.0);
+        *vis = Visibility::Visible;
     }
 }
 
@@ -1826,13 +1851,81 @@ pub struct StripDigit {
 /// The prize lettered on an orb that passes by while the reel spins: the
 /// orbs that land carry their real prize; the others carry prizes in the
 /// game's range, as the machine shows them on the moving strip.
-fn passing_prize(reel: u8, n: i64) -> u64 {
-    const MULTIPLES: [u64; 17] = [1, 1, 1, 1, 2, 2, 2, 3, 3, 4, 5, 5, 10, 15, 20, 50, 100];
+fn passing_face(reel: u8, n: i64) -> &'static str {
+    const FACES: [&str; 20] = [
+        "x1", "x1", "x1", "x1", "x2", "x2", "x2", "x3", "x3", "x4", "x5", "x5", "x10", "x15",
+        "x20", "x50", "x100", "Mini", "Mini", "Minor",
+    ];
     let h = (n as u64)
         .wrapping_mul(0x9E37_79B9_7F4A_7C15)
         .rotate_left(17)
         ^ u64::from(reel).wrapping_mul(0xC2B2_AE3D_27D4_EB4F);
-    MULTIPLES[(h % MULTIPLES.len() as u64) as usize]
+    FACES[(h % FACES.len() as u64) as usize]
+}
+
+/// The tier plate image of a coin face ("Mini" and so on), if it has one.
+fn tier_image(face: &str) -> Option<&'static str> {
+    match face {
+        "Mini" => Some("orb_mini"),
+        "Minor" => Some("orb_minor"),
+        "Major" => Some("orb_major"),
+        _ => None,
+    }
+}
+
+/// The face's prize in credits, for a bet-multiple face ("x5").
+fn face_credits(face: &str, total_bet: u64) -> Option<u64> {
+    face.strip_prefix('x')
+        .and_then(|m| m.parse::<u64>().ok())
+        .map(|m| m.saturating_mul(total_bet))
+}
+
+/// The face of the strip entry `raw` at strip index `n`: a landing orb's
+/// drawn prize, or a passing orb's cosmetic one.
+fn strip_face(raw: &str, reel: u8, n: i64) -> Option<&str> {
+    match raw.strip_prefix("ORB\n") {
+        Some(f) => Some(f),
+        None if raw == "orb" => Some(passing_face(reel, n)),
+        None => None,
+    }
+}
+
+/// The tier plate on an orb passing on a moving reel strip.
+#[derive(Component)]
+pub struct StripTier {
+    reel: u8,
+    slot: u8,
+}
+
+/// Put the tier plates on the moving strips' tier coins.
+pub fn strip_tiers(
+    fidelity: Res<Fidelity>,
+    art: Res<ArtPack>,
+    reels: Res<Reels>,
+    mut plates: Query<(&StripTier, &mut ImageNode, &mut Visibility)>,
+) {
+    if !fidelity.0 {
+        return;
+    }
+    for (p, mut image, mut vis) in &mut plates {
+        let plate = reels
+            .moving(p.reel)
+            .then(|| {
+                let (n, raw) = reels.slot_entry(p.reel as usize, p.slot);
+                strip_face(raw, p.reel, n).and_then(tier_image)
+            })
+            .flatten()
+            .and_then(|k| art.ui.get(k));
+        match plate {
+            Some(h) => {
+                if image.image != *h {
+                    image.image = h.clone();
+                }
+                *vis = Visibility::Inherited;
+            }
+            None => *vis = Visibility::Hidden,
+        }
+    }
 }
 
 /// Letter the orbs on the moving strips.
@@ -1854,15 +1947,9 @@ pub fn strip_coins(
     for (d, mut image, mut vis, mut node) in &mut digits {
         let text = reels.moving(d.reel).then(|| {
             let (n, raw) = reels.slot_entry(d.reel as usize, d.slot);
-            let multiple = match raw.strip_prefix(
-                "ORB
-",
-            ) {
-                Some(p) => p.strip_prefix('x').and_then(|m| m.parse::<u64>().ok()),
-                None if raw == "orb" => Some(passing_prize(d.reel, n)),
-                None => None,
-            };
-            multiple.map(|m| coin_text(m.saturating_mul(total_bet), cents))
+            strip_face(raw, d.reel, n)
+                .and_then(|f| face_credits(f, total_bet))
+                .map(|c| coin_text(c, cents))
         });
         let glyph = text
             .flatten()
@@ -2001,6 +2088,17 @@ impl FeatureShow {
     fn wait_for(&mut self, what: Await) {
         self.awaiting = Some(what);
         self.waited = 0.0;
+    }
+
+    /// A feature is under way: the credit meter holds still and its wins
+    /// collect on the win meter, paid to credit when the feature completes
+    /// (footage: CREDIT unchanged through the free games, then raised by the
+    /// whole win after "FEATURE COMPLETED").
+    pub fn in_feature(&self) -> bool {
+        matches!(self.awaiting, Some(Await::Start(_)))
+            || matches!(self.stage, Stage::FreeGames { .. } | Stage::HoldSpin { .. })
+            || self.collect_start
+            || self.collect.is_some()
     }
 
     /// The Hold & Spin grid is showing.

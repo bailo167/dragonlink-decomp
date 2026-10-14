@@ -460,7 +460,8 @@ fn schedule_with(events: Vec<Event>, timing: &Timing) -> Vec<(f32, Event)> {
                     timing.lead_in
                 }
                 Event::ReelStopped { .. } => timing.reel_interval,
-                Event::OrbValueShown { .. } => 0.0,
+                // Line wins are lit together, not one by one.
+                Event::OrbValueShown { .. } | Event::LineWin { .. } => 0.0,
                 _ => timing.event_interval,
             };
             (delay, event)
@@ -994,9 +995,11 @@ fn drive_features(
     mut presentation: ResMut<Presentation>,
     timing: Res<Timing>,
     feature: Res<cabinet::FeatureShow>,
+    rollup: Res<cabinet::Rollup>,
 ) {
-    // The cabinet waits for START FEATURE, and for SPIN between respins.
-    if feature.awaiting.is_some() || feature.blocks() {
+    // The cabinet waits for START FEATURE, for SPIN between respins, and for
+    // a free game's win to count up before the next game.
+    if feature.awaiting.is_some() || feature.blocks() || rollup.active() {
         presentation.step_timer = FEATURE_STEP_PAUSE;
         return;
     }
@@ -1722,6 +1725,7 @@ fn main() -> AppExit {
             (
                 cabinet::spin_reels,
                 cabinet::strip_coins,
+                cabinet::strip_tiers,
                 cabinet::reel_audio,
                 cabinet::hold_and_spin_motion,
                 cabinet::win_rollup,
