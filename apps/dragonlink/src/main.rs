@@ -1955,6 +1955,7 @@ fn main() -> AppExit {
                 cabinet::rollup_skip,
                 cabinet::feature_press,
                 cabinet::free_games_trigger,
+                cabinet::hs_medallion,
                 cabinet::gamble_control,
                 input,
                 cabinet::clear_buttons,

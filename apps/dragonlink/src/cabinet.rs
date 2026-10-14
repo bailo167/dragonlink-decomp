@@ -395,6 +395,7 @@ pub fn spawn(commands: &mut Commands, model: &MathModel, art: &ArtPack, fonts: &
             spawn_hs_overlays(c, &fonts.meter);
             spawn_win_lines(c, &fonts.sans);
             spawn_coin_shower(c);
+            spawn_medallion(c, art);
 
             // The jackpots across the top.
             let (bar_w, bar_top) = (JACKPOT_BAR_W, JACKPOT_BAR_TOP);
@@ -2457,6 +2458,8 @@ pub struct FeatureShow {
     transition_at: Option<f32>,
     /// The WINNER total while the coins are counted.
     pub winner: Option<u64>,
+    /// When the burst on the banner's counter began (`clock`).
+    banner_burst: Option<f32>,
     /// A full grid's Grand jackpot, while it is shown and after.
     pub grand: Option<u64>,
     grand_done: bool,
@@ -2646,7 +2649,7 @@ impl FeatureShow {
                 Some(format!("{} FREE GAMES WON!", self.games_won))
             }
             (Some(Await::Start(_)), _) => Some("Press START FEATURE button".into()),
-            (Some(Await::Respin), _) => Some("Press SPIN button".into()),
+            (Some(Await::Respin), _) if self.respin.is_none() => Some("Press SPIN button".into()),
             (_, Stage::FreeGames { number, total }) => Some(format!(
                 "Free Game {number} of {}",
                 self.counter_total(total)
@@ -2995,6 +2998,9 @@ pub fn feature_screen(
     }
     // The Hold & Spin grid: lines over the reels, dark empty positions.
     let hs = show.grid && show.hold_and_spin();
+    // The other positions are dark from the moment the coins burst (real
+    // game: one frame after), before the board itself shows.
+    let dark = show.hold_and_spin() && (show.grid || show.since_burst(1.0 / 30.0));
     for mut vis in &mut frame {
         let want = if hs {
             Visibility::Inherited
@@ -3009,7 +3015,7 @@ pub fn feature_screen(
         let empty = labels
             .iter()
             .any(|(l, t)| l.reel == cell.reel && l.row == cell.row && open(&t.0));
-        let want = if hs && empty {
+        let want = if dark && empty {
             Visibility::Inherited
         } else {
             Visibility::Hidden
@@ -3042,16 +3048,36 @@ pub fn feature_screen(
 // starts and returns to 3 when a coin has landed. At the end each coin is
 // counted in turn into a flame-bordered WINNER total.
 
-/// Seconds into the trigger sequence for each step.
+/// Seconds into the trigger sequence for each step (it begins when the
+/// result shows, 0.17 s after the last reel is still). Real game, recorded
+/// with sound and measured frame by frame (the sound's 0.09 s lag removed):
+/// the feature bell as the reels settle; 2.8 s later every coin bursts into
+/// flame and the other positions dim, to SND_FeatureTrigger; 0.2 s on the
+/// fire dragons rise and fill the screen with fire, which clears to the HOLD &
+/// SPIN medallion over the dimmed board; a second fire clears to the Hold &
+/// Spin board; 0.57 s later SELECT SPIN TO START FEATURE and the Hold & Spin
+/// music. The real game holds the medallion 3.8 s and then shows "COLLECT 15
+/// TO WIN GRAND JACKPOT"; the owner wants the medallion for about a second
+/// and no COLLECT screen, so the second fire follows the first at once.
 const INTRO_BELL: f32 = 0.01;
-const INTRO_BURST: f32 = 3.2;
-const INTRO_TRANSITION: f32 = 4.0;
-const INTRO_GRID: f32 = 4.75;
-const INTRO_END: f32 = 6.6;
-/// The counter's count-up after START FEATURE: seconds per step, and the
-/// pause before the first respin.
-const COUNT_STEP: f32 = 0.14;
-const COUNT_HOLD: f32 = 0.6;
+const INTRO_BURST: f32 = 2.63;
+const INTRO_TRANSITION: f32 = INTRO_BURST + 0.2;
+/// The fire (54 frames) runs at 25 fps (2.15 s on the real game's screen).
+const FIRE_FPS: f32 = 25.0;
+/// The medallion stands from the first fire's turning see-through until the
+/// second fire covers it.
+const INTRO_MEDALLION: f32 = INTRO_TRANSITION + 1.4;
+const INTRO_FIRE2: f32 = INTRO_TRANSITION + 2.0;
+const INTRO_GRID: f32 = INTRO_FIRE2 + 0.9;
+const INTRO_END: f32 = INTRO_FIRE2 + 1.87 + 0.57;
+/// The counter's count-up after START FEATURE (real game: a SND_Fea_Inc tick
+/// a step, the first 0.27 s after the press, then every 0.2 s; a burst on the
+/// banner's 3), and the pause before the first respin, which starts by
+/// itself 1.9 s after the count reaches 3 (the feature's step pause of 0.5 s
+/// follows this).
+const COUNT_FIRST: f32 = 0.27;
+const COUNT_STEP: f32 = 0.2;
+const COUNT_HOLD: f32 = 1.4;
 /// A respin, from the real game (9 position stops measured frame by frame):
 /// every open position of a reel stops together. The first reel passes its
 /// stop 16 frames (0.53 s) after the press and each further reel 14 frames
@@ -3069,9 +3095,19 @@ const RESPIN_BOUNCE: [f32; 12] = [
     0.0, 0.512, 0.36, 0.326, 0.285, 0.244, 0.209, 0.163, 0.116, 0.081, 0.047, 0.0,
 ];
 const RESPIN_SETTLE: f32 = 11.0 / 30.0;
-/// A coin that lands bursts into flame, and the counter goes back to three,
-/// 7 frames after it passes its stop (measured).
+/// A coin that lands puts the counter back to three 6 frames after it passes
+/// its stop, and bursts into flame the frame after (measured).
+const RESPIN_RESET: f32 = 6.0 / 30.0;
 const RESPIN_FLARE: f32 = 7.0 / 30.0;
+/// A respin's sounds (real game, measured with the sound's lag removed):
+/// every reel with positions spinning clinks at the bottom of their
+/// overshoot, 2 frames after they pass their stop; a new coin sounds
+/// SND_HandSDoonk1 a little after its reel's clink, and the first coin of the
+/// respin, the one that puts the counter back to three, SND_GrandStrike
+/// 0.07 s after that. A reel of coins only, with nothing spinning, is silent.
+const RESPIN_CLINK: f32 = 2.0 / 30.0;
+const RESPIN_DOONK: f32 = RESPIN_CLINK + 0.06;
+const RESPIN_STRIKE: f32 = RESPIN_DOONK + 0.07;
 /// The respin is over 4 to 5 frames after the last position settles.
 const RESPIN_DONE: f32 = 4.5 / 30.0;
 /// The count at the end: seconds per coin, and the hold after the last.
@@ -3106,6 +3142,10 @@ pub struct RespinAnim {
     coins: u32,
     /// Landed coins still to burst into flame: when, and where.
     flares: Vec<(f32, u8, u8)>,
+    /// When the counter goes back to three.
+    resets: Vec<f32>,
+    /// Sounds still to play: when, and which.
+    sounds: Vec<(f32, &'static str)>,
 }
 
 /// The coins being counted into the WINNER total.
@@ -3631,7 +3671,7 @@ pub fn spawn_hs_spin(cell: &mut ChildSpawnerCommands, art: &ArtPack, reel: u8, r
     ));
     cell.spawn((
         HsBurst { reel, row },
-        centred(ow * 1.3, oh * 1.3),
+        centred(ow * 1.6, oh * 1.6),
         ImageNode {
             image_mode: NodeImageMode::Stretch,
             ..default()
@@ -3849,7 +3889,7 @@ pub fn hold_and_spin_motion(
                 }
             }
         }
-        if crossed(t0, t, INTRO_TRANSITION) {
+        if crossed(t0, t, INTRO_TRANSITION) || crossed(t0, t, INTRO_FIRE2) {
             show.transition_at = Some(clock);
         }
         if crossed(t0, t, INTRO_GRID) {
@@ -3876,11 +3916,15 @@ pub fn hold_and_spin_motion(
         let t = t0 + dt;
         show.count_up = Some(t);
         let target = show.pending_left;
-        let steps = (t / COUNT_STEP) as u8;
-        while show.counter < target && show.counter < steps {
+        let step_at = |n: u8| COUNT_FIRST + f32::from(n) * COUNT_STEP;
+        while show.counter < target && t >= step_at(show.counter) {
             show.counter += 1;
+            sounds.play(&mut commands, "SND_Fea_Inc");
+            if show.counter == target {
+                show.banner_burst = Some(clock);
+            }
         }
-        if show.counter >= target && t >= f32::from(target) * COUNT_STEP + COUNT_HOLD {
+        if show.counter >= target && t >= step_at(target.saturating_sub(1)) + COUNT_HOLD {
             show.count_up = None;
         }
     }
@@ -3913,12 +3957,18 @@ pub fn hold_and_spin_motion(
             if anim.t < at {
                 break;
             }
+            // The reel's clink, once for its positions.
+            let first_of_reel = anim.stops[..anim.done].iter().all(|s| s.0 != reel);
+            if first_of_reel {
+                anim.sounds.push((at + RESPIN_CLINK, "reel_clink1"));
+            }
             if coin {
                 anim.coins += 1;
-                sounds.play(
-                    &mut commands,
-                    &format!("SND_HandSDoonk{}", anim.coins.min(5)),
-                );
+                anim.sounds.push((at + RESPIN_DOONK, "SND_HandSDoonk1"));
+                if anim.coins == 1 {
+                    anim.sounds.push((at + RESPIN_STRIKE, "SND_GrandStrike"));
+                }
+                anim.resets.push(at + RESPIN_RESET);
                 anim.flares.push((at + RESPIN_FLARE, reel, row));
             } else {
                 // The position comes to rest on the strip's landing symbol.
@@ -3931,9 +3981,17 @@ pub fn hold_and_spin_motion(
             }
             anim.done += 1;
         }
-        // A landed coin bursts into flame and the counter is back at three
-        // at once, while the respin is still settling (real game).
+        // A landed coin puts the counter back at three and bursts into
+        // flame, while the respin is still settling (real game).
         let now = anim.t;
+        for (_, name) in anim.sounds.iter().filter(|s| s.0 <= now) {
+            sounds.play(&mut commands, name);
+        }
+        anim.sounds.retain(|s| s.0 > now);
+        if anim.resets.iter().any(|&r| r <= now) {
+            anim.resets.retain(|&r| r > now);
+            show.counter = show.counter.max(show.pending_left);
+        }
         let due: Vec<(u8, u8)> = anim
             .flares
             .iter()
@@ -3945,11 +4003,11 @@ pub fn hold_and_spin_motion(
             for (reel, row) in due {
                 show.bursts.push((reel, row, clock));
             }
-            show.counter = show.counter.max(show.pending_left);
         }
         let last = anim.stops.iter().map(|s| s.2).fold(0.0, f32::max);
         if anim.done >= anim.stops.len()
             && anim.flares.is_empty()
+            && anim.sounds.is_empty()
             && anim.t >= last + RESPIN_SETTLE + RESPIN_DONE
         {
             finished = true;
@@ -4266,16 +4324,18 @@ pub fn hold_and_spin_draw(
     }
 
     // Fire rings on held coins, and bursts.
-    let hs = show.grid && show.hold_and_spin();
+    // The coins burn in their rings once their burst has opened (real game:
+    // 0.2 s after it), through the medallion and the board.
+    let hs = show.hold_and_spin() && (show.grid || show.since_burst(0.2));
     for (r, mut image, mut vis) in &mut rings {
         let held = hs
             && !show.fire_taken(r.reel, r.row)
             && !open(label(r.reel, r.row))
             && spinning(r.reel, r.row).is_none()
             && !label(r.reel, r.row).is_empty();
-        let phase = f32::from(r.reel * 3 + r.row) * 0.21;
+        // Every held coin's flame runs in step (real game).
         let f = if held {
-            frame("ring", clock + phase, true)
+            frame("ring", clock, true)
         } else {
             None
         };
@@ -4311,7 +4371,7 @@ pub fn hold_and_spin_draw(
     for (mut image, mut vis) in &mut fx {
         match show
             .transition_at
-            .and_then(|s| frame("transition", clock - s, false))
+            .and_then(|s| frame("transition", (clock - s) * FIRE_FPS / ANIM_FPS, false))
         {
             Some(h) => {
                 if image.image != h {
@@ -5850,6 +5910,12 @@ const FG_CUT: f32 = 1.07;
 const FG_TICK: f32 = 4.0 / 30.0;
 
 impl FeatureShow {
+    /// The trigger sequence is at least `after` seconds past the coins'
+    /// burst.
+    fn since_burst(&self, after: f32) -> bool {
+        self.intro.is_some_and(|t| t >= INTRO_BURST + after)
+    }
+
     /// A stack of `height` emperors on a winning line stands, with its sound;
     /// the win waits for it. Once a spin.
     pub fn begin_wild(&mut self, height: u8) {
@@ -5941,5 +6007,147 @@ pub fn free_games_trigger(
             sounds.play(&mut commands, "SND_Fea_Inc");
         }
         show.fg_count = if n >= total { None } else { Some((t, n)) };
+    }
+}
+
+// ---------------------------------------------------------------------------
+// The Hold & Spin medallion and the counter's burst
+// ---------------------------------------------------------------------------
+
+/// The HOLD & SPIN medallion: the burning gold disc over the reels with the
+/// feature's title on it (real game: centred on the reels, about 2.3 reels
+/// wide and the reels' full height).
+#[derive(Component)]
+pub struct HsMedallion;
+/// The burst on the banner's counter as it reaches 3.
+#[derive(Component)]
+pub struct BannerBurst;
+
+const MEDALLION: (f32, f32) = (2.33 * PITCH.0, 3.0 * PITCH.1);
+
+/// Spawn the medallion (hidden) and the banner's burst.
+pub fn spawn_medallion(c: &mut ChildSpawnerCommands, art: &ArtPack) {
+    let (w, h) = MEDALLION;
+    c.spawn((
+        HsMedallion,
+        Node {
+            position_type: PositionType::Absolute,
+            left: Val::Px(GRID_CENTER.0 - w / 2.0),
+            top: Val::Px(GRID_CENTER.1 - h / 2.0),
+            width: Val::Px(w),
+            height: Val::Px(h),
+            ..default()
+        },
+        ImageNode {
+            image_mode: NodeImageMode::Stretch,
+            ..default()
+        },
+        GlobalZIndex(25),
+        Visibility::Hidden,
+    ))
+    .with_children(|m| {
+        m.spawn((
+            Node {
+                position_type: PositionType::Absolute,
+                left: Val::Px(w * 0.22),
+                top: Val::Px(h * 0.21),
+                width: Val::Px(w * 0.56),
+                height: Val::Px(h * 0.58),
+                ..default()
+            },
+            ImageNode {
+                image: art.ui.get("hs_title").cloned().unwrap_or_default(),
+                image_mode: NodeImageMode::Stretch,
+                ..default()
+            },
+        ));
+    });
+    // The banner's counter digit sits near its left end (real game).
+    let bw = BANNER_SIZE.0;
+    let (sw, sh) = (1.2 * PITCH.0, 1.4 * PITCH.1);
+    let (x, y) = (GRID_CENTER.0 - bw / 2.0 + bw * 0.083, BANNER_Y);
+    c.spawn((
+        BannerBurst,
+        Node {
+            position_type: PositionType::Absolute,
+            left: Val::Px(x - sw / 2.0),
+            top: Val::Px(y - sh / 2.0),
+            width: Val::Px(sw),
+            height: Val::Px(sh),
+            ..default()
+        },
+        ImageNode {
+            image_mode: NodeImageMode::Stretch,
+            ..default()
+        },
+        GlobalZIndex(26),
+        Visibility::Hidden,
+    ));
+}
+
+/// Show the medallion during the trigger sequence, and the banner's burst.
+#[allow(clippy::type_complexity)]
+pub fn hs_medallion(
+    fidelity: Res<Fidelity>,
+    art: Res<ArtPack>,
+    show: Res<FeatureShow>,
+    mut medallion: Query<
+        (&mut ImageNode, &mut Visibility),
+        (With<HsMedallion>, Without<BannerBurst>),
+    >,
+    mut burst: Query<(&mut ImageNode, &mut Visibility), (With<BannerBurst>, Without<HsMedallion>)>,
+) {
+    if !fidelity.0 {
+        return;
+    }
+    let clock = show.clock;
+    let frame = |name: &str, t: f32, looped: bool| -> Option<Handle<Image>> {
+        let frames = art.anims.get(name)?;
+        let n = (t.max(0.0) * ANIM_FPS) as usize;
+        let i = if looped {
+            n % frames.len().max(1)
+        } else if n < frames.len() {
+            n
+        } else {
+            return None;
+        };
+        frames.get(i).cloned()
+    };
+    let on = show
+        .intro
+        .is_some_and(|t| (INTRO_MEDALLION..INTRO_GRID).contains(&t));
+    for (mut image, mut vis) in &mut medallion {
+        let f = if on { frame("coin", clock, true) } else { None };
+        let want = if f.is_some() {
+            Visibility::Inherited
+        } else {
+            Visibility::Hidden
+        };
+        if let Some(h) = f
+            && image.image != h
+        {
+            image.image = h;
+        }
+        if *vis != want {
+            *vis = want;
+        }
+    }
+    for (mut image, mut vis) in &mut burst {
+        let f = show
+            .banner_burst
+            .and_then(|s| frame("burst", clock - s, false));
+        let want = if f.is_some() {
+            Visibility::Inherited
+        } else {
+            Visibility::Hidden
+        };
+        if let Some(h) = f
+            && image.image != h
+        {
+            image.image = h;
+        }
+        if *vis != want {
+            *vis = want;
+        }
     }
 }
