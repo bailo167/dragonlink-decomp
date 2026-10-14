@@ -51,7 +51,51 @@ pub enum Command {
     Spin,
     /// Play the next step of the feature in progress.
     Advance,
+    /// Gamble the last win on the colour or suit of a card. Only while idle,
+    /// with a win to gamble and the gamble limit not reached.
+    Gamble { pick: GamblePick },
+    /// Keep the last win and end the gamble.
+    TakeWin,
 }
+
+/// A gamble choice: a colour pays double, a suit four times.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum GamblePick {
+    Red,
+    Black,
+    Hearts,
+    Diamonds,
+    Clubs,
+    Spades,
+}
+
+impl GamblePick {
+    /// What the pick multiplies the stake by when it wins.
+    pub fn multiplier(self) -> u64 {
+        match self {
+            GamblePick::Red | GamblePick::Black => 2,
+            _ => 4,
+        }
+    }
+
+    /// Whether the pick wins against `card` (0..52: suit = card / 13 in the
+    /// order hearts, diamonds, clubs, spades; rank = card % 13, ace first).
+    pub fn wins(self, card: u8) -> bool {
+        let suit = card / 13;
+        match self {
+            GamblePick::Red => suit < 2,
+            GamblePick::Black => suit >= 2,
+            GamblePick::Hearts => suit == 0,
+            GamblePick::Diamonds => suit == 1,
+            GamblePick::Clubs => suit == 2,
+            GamblePick::Spades => suit == 3,
+        }
+    }
+}
+
+/// Gambles allowed in a row on one win. Synthetic: our own limit, not a
+/// recovered cabinet rule.
+pub const GAMBLE_LIMIT: u8 = 5;
 
 /// Why a command was refused. The state is unchanged.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
@@ -62,6 +106,8 @@ pub enum GameError {
     Rng(#[from] RngError),
     #[error("a feature is in progress")]
     FeatureInProgress,
+    #[error("there is no win to gamble")]
+    NothingToGamble,
     #[error("no feature is in progress")]
     NoFeatureInProgress,
     #[error("the bet is {needed} credits but only {available} are available")]
@@ -141,6 +187,12 @@ pub struct GameState {
     pub spins: u64,
     /// The window left by the last spin.
     pub last_grid: Option<Grid>,
+    /// The win that may be gambled (already in `credits`), and the gambles
+    /// taken on it so far.
+    #[serde(default)]
+    pub gamble_stake: u64,
+    #[serde(default)]
+    pub gambles: u8,
 }
 
 /// A game: a math model and the state of play under it.
@@ -210,6 +262,8 @@ impl Game {
                 phase: Phase::Idle,
                 spins: 0,
                 last_grid: None,
+                gamble_stake: 0,
+                gambles: 0,
             },
         })
     }
@@ -299,9 +353,83 @@ impl Game {
             }
             Command::Spin => self.spin(&mut next, rng, &mut events)?,
             Command::Advance => self.advance(&mut next, rng, &mut events)?,
+            Command::Gamble { pick } => Self::gamble(&mut next, pick, rng, &mut events)?,
+            Command::TakeWin => {
+                if next.gamble_stake > 0 {
+                    events.push(Event::WinTaken {
+                        award: next.gamble_stake,
+                    });
+                }
+                next.gamble_stake = 0;
+                next.gambles = 0;
+            }
+        }
+        // A completed game's win may be gambled.
+        if let Some(Event::SpinCompleted { total_award, .. }) = events
+            .iter()
+            .rev()
+            .find(|e| matches!(e, Event::SpinCompleted { .. }))
+        {
+            next.gamble_stake = *total_award;
+            next.gambles = 0;
         }
         self.state = next;
         Ok(events)
+    }
+
+    /// Whether the last win can be gambled now.
+    pub fn can_gamble(&self) -> bool {
+        self.is_idle() && self.state.gamble_stake > 0 && self.state.gambles < GAMBLE_LIMIT
+    }
+
+    fn gamble(
+        next: &mut GameState,
+        pick: GamblePick,
+        rng: &mut dyn OutcomeRng,
+        events: &mut Vec<Event>,
+    ) -> Result<(), GameError> {
+        if next.phase != Phase::Idle {
+            return Err(GameError::FeatureInProgress);
+        }
+        if next.gamble_stake == 0 || next.gambles >= GAMBLE_LIMIT {
+            return Err(GameError::NothingToGamble);
+        }
+        let card = rng.below(52)? as u8;
+        let stake = next.gamble_stake;
+        let won = pick.wins(card);
+        let to = if won {
+            stake
+                .checked_mul(pick.multiplier())
+                .ok_or(GameError::Overflow)?
+        } else {
+            0
+        };
+        // The stake is already in credits: a win adds the difference, a loss
+        // takes the stake back.
+        let credits = if won {
+            add(next.credits, to - stake)?
+        } else {
+            next.credits.checked_sub(stake).ok_or(GameError::Overflow)?
+        };
+        events.push(Event::GambleResolved {
+            pick,
+            card,
+            won,
+            stake,
+            award: to,
+        });
+        events.push(Event::CreditsChanged {
+            from: next.credits,
+            to: credits,
+            reason: CreditReason::Gamble,
+        });
+        next.credits = credits;
+        next.gambles += 1;
+        next.gamble_stake = to;
+        if !won || next.gambles >= GAMBLE_LIMIT {
+            next.gamble_stake = if won { to } else { 0 };
+        }
+        Ok(())
     }
 
     /// Spin, then play any feature to its end. For headless runs.
@@ -358,6 +486,8 @@ impl Game {
                 available: next.credits,
             });
         }
+        next.gamble_stake = 0;
+        next.gambles = 0;
         events.push(Event::BetPlaced { total_bet });
         events.push(Event::CreditsChanged {
             from: next.credits,
@@ -1334,5 +1464,87 @@ mod tests {
         let mut model = tiny();
         model.reel_strips.pop();
         assert!(matches!(Game::new(model, 1), Err(GameError::Model(_))));
+    }
+
+    #[test]
+    fn a_gamble_doubles_on_colour_quadruples_on_suit_and_loses_the_stake() {
+        let mut game = Game::new(synthetic_dev_fixture(), 1000).unwrap();
+        // Nothing to gamble before a win.
+        let mut rng = ScriptedRng::new(vec![d(52, 0)]);
+        assert_eq!(
+            game.apply(
+                Command::Gamble {
+                    pick: GamblePick::Red
+                },
+                &mut rng
+            ),
+            Err(GameError::NothingToGamble)
+        );
+        // A win of 10 credits, already paid.
+        game.state.gamble_stake = 10;
+        // Ace of hearts: red wins double.
+        let mut rng = ScriptedRng::new(vec![d(52, 0)]);
+        let ev = game
+            .apply(
+                Command::Gamble {
+                    pick: GamblePick::Red,
+                },
+                &mut rng,
+            )
+            .unwrap();
+        assert!(ev.contains(&Event::GambleResolved {
+            pick: GamblePick::Red,
+            card: 0,
+            won: true,
+            stake: 10,
+            award: 20,
+        }));
+        assert_eq!(game.credits(), 1010);
+        assert_eq!(game.state().gamble_stake, 20);
+        // Ace of spades: spades wins four times.
+        let mut rng = ScriptedRng::new(vec![d(52, 39)]);
+        game.apply(
+            Command::Gamble {
+                pick: GamblePick::Spades,
+            },
+            &mut rng,
+        )
+        .unwrap();
+        assert_eq!(game.credits(), 1070);
+        assert_eq!(game.state().gamble_stake, 80);
+        // Two of diamonds: black loses the stake.
+        let mut rng = ScriptedRng::new(vec![d(52, 14)]);
+        game.apply(
+            Command::Gamble {
+                pick: GamblePick::Black,
+            },
+            &mut rng,
+        )
+        .unwrap();
+        assert_eq!(game.credits(), 990);
+        assert_eq!(game.state().gamble_stake, 0);
+        assert!(!game.can_gamble());
+    }
+
+    #[test]
+    fn the_gamble_stops_at_its_limit_and_take_win_keeps_the_win() {
+        let mut game = Game::new(synthetic_dev_fixture(), 1000).unwrap();
+        game.state.gamble_stake = 1;
+        for _ in 0..GAMBLE_LIMIT {
+            let mut rng = ScriptedRng::new(vec![d(52, 0)]);
+            game.apply(
+                Command::Gamble {
+                    pick: GamblePick::Red,
+                },
+                &mut rng,
+            )
+            .unwrap();
+        }
+        assert!(!game.can_gamble());
+        let credits = game.credits();
+        game.apply(Command::TakeWin, &mut ScriptedRng::new(vec![]))
+            .unwrap();
+        assert_eq!(game.credits(), credits);
+        assert_eq!(game.state().gamble_stake, 0);
     }
 }

@@ -24,6 +24,8 @@ pub enum CreditReason {
     Bet,
     Win,
     FeatureAward,
+    /// A gamble won (credits up) or lost (the stake taken back).
+    Gamble,
 }
 
 /// An orb held in place during Hold & Spin.
@@ -140,6 +142,21 @@ pub enum Event {
         /// Everything the spin paid, features included.
         total_award: u64,
     },
+    /// A gamble's card is turned.
+    GambleResolved {
+        pick: crate::game::GamblePick,
+        /// 0..52: suit = card / 13 (hearts, diamonds, clubs, spades), rank =
+        /// card % 13 (ace first).
+        card: u8,
+        won: bool,
+        /// What was gambled, and what the gamble now holds (0 when lost).
+        stake: u64,
+        award: u64,
+    },
+    /// The player kept the win.
+    WinTaken {
+        award: u64,
+    },
 }
 
 impl Event {
@@ -166,6 +183,8 @@ impl Event {
             Event::FreeGameCompleted { .. } => "free_game_completed",
             Event::FreeGamesCompleted { .. } => "free_games_completed",
             Event::SpinCompleted { .. } => "spin_completed",
+            Event::GambleResolved { .. } => "gamble_resolved",
+            Event::WinTaken { .. } => "win_taken",
         }
     }
 }

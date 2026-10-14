@@ -26,6 +26,8 @@ pub mod rng;
 
 pub use eval::{Win, evaluate, evaluate_lines, line_run};
 pub use event::{CreditReason, Event, Feature, LockedOrb};
-pub use game::{Command, Game, GameError, GameState, HoldAndSpinState, Phase};
+pub use game::{
+    Command, GAMBLE_LIMIT, GamblePick, Game, GameError, GameState, HoldAndSpinState, Phase,
+};
 pub use grid::Grid;
 pub use rng::{DevRng, Draw, OutcomeRng, RecordingRng, RngError, ScriptedRng};

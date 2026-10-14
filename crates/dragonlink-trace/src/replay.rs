@@ -798,7 +798,11 @@ pub fn reconstruct(model: &MathModel, observation: &Trace) -> Result<Reconstruct
             | Event::FeatureTriggered { .. }
             | Event::HoldAndSpinStarted { .. }
             | Event::JackpotAwarded { .. }
-            | Event::SpinCompleted { .. } => {}
+            | Event::SpinCompleted { .. }
+            // A gamble is not replayed from a recording (no gamble draws are
+            // observed); its outcome is the game's own.
+            | Event::GambleResolved { .. }
+            | Event::WinTaken { .. } => {}
             // Free-game events are not yet modelled by reconstruction: replay
             // of a trace with free games is out of scope for this tool, which
             // is secondary research tooling (docs/PARITY.md).

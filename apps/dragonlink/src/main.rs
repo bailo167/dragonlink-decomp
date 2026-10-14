@@ -838,9 +838,10 @@ fn input(
     timing: Res<Timing>,
     cabinet_input: Res<cabinet::CabinetInput>,
     feature: Res<cabinet::FeatureShow>,
+    mut gamble: ResMut<cabinet::GambleShow>,
 ) {
     // Denomination (display only) cycles with D, while idle.
-    let at_rest = sim.game.is_idle() && presentation.queue.is_empty();
+    let at_rest = sim.game.is_idle() && presentation.queue.is_empty() && !gamble.active;
     if keys.just_pressed(KeyCode::KeyD) && at_rest {
         denom.index = (denom.index + 1) % DENOM_CENTS.len();
     }
@@ -877,6 +878,7 @@ fn input(
         && smoke.frame.is_multiple_of(SMOKE_PRESS_EVERY);
     // Features play by themselves (see `drive_features`); the player spins and
     // sets the stake.
+    let auto = auto && !gamble.holds_autospin(sim.game.can_gamble());
     let go = (auto
         || keys.just_pressed(KeyCode::Space)
         || keys.just_pressed(KeyCode::Enter)
@@ -886,7 +888,12 @@ fn input(
         // A feature still on screen (its count, its banner) finishes first.
         && presentation.queue.is_empty()
         && feature.awaiting.is_none()
-        && !feature.blocks();
+        && !feature.blocks()
+        && !gamble.active;
+    if go {
+        // A new game: the gamble's result leaves the WIN meter.
+        gamble.result = None;
+    }
     // In the cabinet build an unattended run pauses between games, so each
     // result and win can be seen (and captured) at rest.
     if go && auto && timing.lead_in > SPIN_LEAD_IN {
@@ -1728,6 +1735,7 @@ fn main() -> AppExit {
     .insert_resource(cabinet::Sounds::default())
     .insert_resource(cabinet::Rollup::default())
     .insert_resource(cabinet::FeatureShow::default())
+    .insert_resource(cabinet::GambleShow::default())
     .insert_resource(if fidelity {
         cabinet::reel_strips(&cli.game.model())
     } else {
@@ -1762,6 +1770,7 @@ fn main() -> AppExit {
                 smoke,
                 cabinet::rollup_skip,
                 cabinet::feature_press,
+                cabinet::gamble_control,
                 input,
                 cabinet::clear_buttons,
                 drive_features,
@@ -1778,6 +1787,7 @@ fn main() -> AppExit {
                 cabinet::reel_audio,
                 cabinet::hold_and_spin_motion,
                 cabinet::hold_and_spin_draw,
+                cabinet::winner_plate,
                 cabinet::door_reveal,
                 cabinet::door_draw,
                 cabinet::win_rollup,
@@ -1785,6 +1795,7 @@ fn main() -> AppExit {
                 cabinet::orb_overlay,
                 cabinet::light_deck,
                 cabinet::feature_screen,
+                cabinet::gamble_screen,
                 cabinet::start_prompts,
                 cabinet::clear_cells,
                 cabinet::update_meters,
