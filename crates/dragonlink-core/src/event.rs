@@ -26,6 +26,8 @@ pub enum CreditReason {
     FeatureAward,
     /// A gamble won (credits up) or lost (the stake taken back).
     Gamble,
+    /// The denomination changed: the same money in the new credit.
+    Denomination,
 }
 
 /// An orb held in place during Hold & Spin.

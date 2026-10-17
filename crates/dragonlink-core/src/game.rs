@@ -56,6 +56,14 @@ pub enum Command {
     Gamble { pick: GamblePick },
     /// Keep the last win and end the gamble.
     TakeWin,
+    /// Change the denomination, as the cabinet's GAMES MENU does: the credits
+    /// are counted again in the new unit, so the money they stand for is
+    /// unchanged. `from` and `to` are the old and the new credit's size in one
+    /// smaller unit (cents per credit). What does not make a whole new credit
+    /// is held over as [`GameState::residue`], in that smaller unit, and joins
+    /// the next change. Only while idle; a win waiting to be gambled is kept
+    /// and no longer offered.
+    ChangeDenomination { from: u32, to: u32 },
 }
 
 /// A gamble choice: a colour pays double, a suit four times.
@@ -118,6 +126,8 @@ pub enum GameError {
     NoSuchLineCount { lines: u16 },
     #[error("an amount does not fit in 64 bits")]
     Overflow,
+    #[error("a denomination must be worth at least one unit")]
+    ZeroDenomination,
     #[error("internal invariant broken: {0}")]
     Invariant(&'static str),
 }
@@ -197,6 +207,10 @@ pub struct GameState {
     pub gamble_stake: u64,
     #[serde(default)]
     pub gambles: u8,
+    /// Money left over by a change to a larger denomination, in the smaller
+    /// unit of [`Command::ChangeDenomination`]: less than one credit.
+    #[serde(default)]
+    pub residue: u64,
 }
 
 /// A game: a math model and the state of play under it.
@@ -268,6 +282,7 @@ impl Game {
                 last_grid: None,
                 gamble_stake: 0,
                 gambles: 0,
+                residue: 0,
             },
         })
     }
@@ -367,6 +382,9 @@ impl Game {
                 next.gamble_stake = 0;
                 next.gambles = 0;
             }
+            Command::ChangeDenomination { from, to } => {
+                Self::change_denomination(&mut next, from, to, &mut events)?;
+            }
         }
         // A completed game's win may be gambled.
         if let Some(Event::SpinCompleted { total_award, .. }) = events
@@ -433,6 +451,36 @@ impl Game {
         if !won || next.gambles >= GAMBLE_LIMIT {
             next.gamble_stake = if won { to } else { 0 };
         }
+        Ok(())
+    }
+
+    fn change_denomination(
+        next: &mut GameState,
+        from: u32,
+        to: u32,
+        events: &mut Vec<Event>,
+    ) -> Result<(), GameError> {
+        if next.phase != Phase::Idle {
+            return Err(GameError::FeatureInProgress);
+        }
+        if from == 0 || to == 0 {
+            return Err(GameError::ZeroDenomination);
+        }
+        let money = next
+            .credits
+            .checked_mul(u64::from(from))
+            .and_then(|m| m.checked_add(next.residue))
+            .ok_or(GameError::Overflow)?;
+        let credits = money / u64::from(to);
+        events.push(Event::CreditsChanged {
+            from: next.credits,
+            to: credits,
+            reason: CreditReason::Denomination,
+        });
+        next.credits = credits;
+        next.residue = money % u64::from(to);
+        next.gamble_stake = 0;
+        next.gambles = 0;
         Ok(())
     }
 
@@ -1105,6 +1153,50 @@ mod tests {
             game.apply(Command::Spin, &mut rng),
             Err(GameError::Rng(RngError::ScriptExhausted { position: 3 }))
         ));
+        assert_eq!(game, before);
+    }
+
+    #[test]
+    fn a_denomination_change_keeps_the_money_and_holds_the_remainder() {
+        // 537 credits at 1 cent = $5.37.
+        let mut game = Game::new(synthetic_dev_fixture(), 537).unwrap();
+        let mut rng = DevRng::new(1);
+        let events = game
+            .apply(Command::ChangeDenomination { from: 1, to: 100 }, &mut rng)
+            .unwrap();
+        assert_eq!(
+            events,
+            vec![Event::CreditsChanged {
+                from: 537,
+                to: 5,
+                reason: CreditReason::Denomination
+            }]
+        );
+        // $5 in credits of $1 and 37 cents held over.
+        assert_eq!((game.credits(), game.state().residue), (5, 37));
+        // Back to 2 cents: the 37 cents join in, 1 cent is left.
+        game.apply(Command::ChangeDenomination { from: 100, to: 2 }, &mut rng)
+            .unwrap();
+        assert_eq!((game.credits(), game.state().residue), (268, 1));
+    }
+
+    #[test]
+    fn a_denomination_change_ends_the_gamble_offer_and_is_refused_mid_feature() {
+        let mut game = Game::new(synthetic_dev_fixture(), 1000).unwrap();
+        let mut rng = DevRng::new(1);
+        let mut state = game.state().clone();
+        state.gamble_stake = 40;
+        game = Game::resume(game.model().clone(), state).unwrap();
+        assert!(game.can_gamble());
+        game.apply(Command::ChangeDenomination { from: 1, to: 10 }, &mut rng)
+            .unwrap();
+        assert!(!game.can_gamble());
+        assert_eq!(game.credits(), 100);
+        let before = game.clone();
+        assert_eq!(
+            game.apply(Command::ChangeDenomination { from: 10, to: 0 }, &mut rng),
+            Err(GameError::ZeroDenomination)
+        );
         assert_eq!(game, before);
     }
 
