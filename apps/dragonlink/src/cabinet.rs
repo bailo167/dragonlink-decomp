@@ -56,18 +56,35 @@ const SCREEN_BOTTOM: f32 = REEL_BOTTOM + 248.0;
 /// The button deck under the screen's bezel.
 const DECK_TOP: f32 = SCREEN_BOTTOM + 14.0;
 
-/// Denominations on the deck's top row, in cents.
-pub const DECK_DENOMS: [u64; 5] = [1, 2, 5, 10, 100];
-/// Line counts on the deck's bottom row.
-pub const DECK_LINES: [u16; 5] = [1, 5, 10, 25, 50];
+/// The denominations the GAMES MENU offers, in cents, in its order (cabinet
+/// footage of Golden Century's casino presentation: 1c 2c 5c 10c $1 $2,
+/// docs/reverse-engineering/GOLDEN_CENTURY_CABINET_DECK.md).
+pub const MENU_DENOMS: [u64; 6] = [1, 2, 5, 10, 100, 200];
+/// The bet multipliers of the deck's top row, after GAMBLE (cabinet footage:
+/// BET x 1, x 2, x 3, x 5, x 10).
+pub const DECK_BETS: [u32; 5] = [1, 2, 3, 5, 10];
 
-/// The most lines a denomination allows (Australian Golden Century: 50 at
-/// 1c and 2c, 25 at 5c and 10c, 5 at $1).
-pub fn max_lines(cents: u64) -> u16 {
+/// The lines a denomination plays. In the casino presentation lines are not
+/// chosen: 50 at 1c and 2c, 25 at 10c, 5 at $1 (footage); 25 at 5c and 5 at
+/// $2 follow the club machines' maximums.
+pub fn lines_for(cents: u64) -> u16 {
     match cents {
         0..=2 => 50,
         3..=10 => 25,
         _ => 5,
+    }
+}
+
+/// The clip a bet key sounds (footage: x1 G3, x2 C4, x5 G4, x10 C5, the
+/// first two the game's own beeps, the others the app's shared bank; x3's E4
+/// is the bank's beep between them, not heard on footage).
+pub fn bet_beep(multiplier: u32) -> &'static str {
+    match multiplier {
+        1 => "betbeep1_reduced",
+        2 => "betbeep3_reduced",
+        3 => "bank_betbeep3",
+        5 => "bank_betbeep4",
+        _ => "bank_betbeep5",
     }
 }
 
@@ -433,6 +450,7 @@ pub fn spawn(commands: &mut Commands, model: &MathModel, art: &ArtPack, fonts: &
 
             spawn_deck(c, art, &fonts.sans, &fonts.symbols);
             spawn_gamble_screen(c, art, fonts);
+            spawn_games_menu(c, art, fonts);
 
             // The shared presentation systems still expect these; unused here.
             c.spawn((
@@ -715,6 +733,17 @@ fn spawn_meter_band(
         CabMeter::Denom,
         label("1¢", font, 78.0, gold, 1828.0, METER_Y - 2.0, 166.0),
     ));
+    // The tab and the box under it are one touch target: the GAMES MENU.
+    c.spawn((
+        rect(1745.0, METER_Y - 92.0, 166.0, 156.0),
+        BackgroundColor(Color::NONE),
+        GlobalZIndex(1),
+    ))
+    .observe(
+        |_press: On<PointerPress>, mut input: ResMut<CabinetInput>| {
+            input.menu = true;
+        },
+    );
     c.spawn((
         CabMeter::MinBet,
         label(
@@ -754,11 +783,13 @@ pub fn start_prompts(
     }
 }
 
-/// The button deck below the screen, as on the cabinet: a brushed-silver
-/// panel with a blue light strip, two rows of six square backlit keys in
-/// chrome bezels (GAMBLE over RESPIN, then the denominations over the line
-/// counts) and the blue teardrop play button. While gambling the keys take
-/// the gamble's choices.
+/// The button deck below the screen, as on the Australian Dragon Link
+/// cabinets: a brushed-silver panel with a blue light strip, two rows of six
+/// square keys whose legends are displays, and the teardrop PLAY button.
+/// GAMBLE over TAKE WIN at the left; the bet multipliers along the top row,
+/// each setting its bet and playing; PLAY keys along the bottom row. The
+/// legends change with the game: GOOD / LUCK while the reels spin, CHOOSE on
+/// the GAMES MENU, the gamble's choices while gambling.
 fn spawn_deck(
     c: &mut ChildSpawnerCommands,
     art: &ArtPack,
@@ -828,53 +859,82 @@ fn spawn_deck(
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Role {
     Gamble,
-    Respin,
-    Denom(usize),
-    Lines(u16),
     TakeWin,
+    /// A bet multiplier: sets the bet and plays.
+    Bet(u32),
+    /// Plays the bet already set.
+    Play,
     Pick(GamblePick),
+    /// One letter of a message spelled across the keys.
+    Letter(char),
     Off,
 }
 
-/// A deck button's role: the base game's, or the gamble's while gambling.
-pub fn role(button: CabButton, gambling: bool) -> Role {
-    match (button, gambling) {
-        (CabButton::Spin, false) => Role::Respin,
-        (CabButton::Spin, true) => Role::TakeWin,
-        (CabButton::Slot { row: 0, col: 0 }, false) => Role::Gamble,
-        (CabButton::Slot { row: 1, col: 0 }, false) => Role::Respin,
-        (CabButton::Slot { row: 0, col }, false) => Role::Denom(col as usize - 1),
-        (CabButton::Slot { row: _, col }, false) => Role::Lines(DECK_LINES[col as usize - 1]),
-        (CabButton::Slot { row: 0, col: 0 }, true) => Role::TakeWin,
-        (CabButton::Slot { row, col }, true) => match (row, col) {
+/// What the deck is showing: the game, a spin, the gamble or the GAMES MENU.
+#[derive(Resource, Clone, Copy, PartialEq, Eq, Debug, Default)]
+pub enum DeckMode {
+    #[default]
+    Base,
+    Spinning,
+    Gamble,
+    Menu,
+}
+
+/// A deck button's role in a mode.
+///
+/// Footage: GAMBLE top left and TAKE WIN under it; the bet keys light their
+/// multiplier and credits; while the reels spin the keys spell GOOD over
+/// LUCK; on the GAMES MENU they spell CHOOSE. In the gamble the top row's
+/// right-hand key took BLACK (owner's recording); the other choices are
+/// placed by the colours the keys showed (RED and the red suits at the left,
+/// the black ones at the right) and are not individually confirmed.
+pub fn role(button: CabButton, mode: DeckMode) -> Role {
+    const GOOD: [char; 4] = ['G', 'O', 'O', 'D'];
+    const LUCK: [char; 4] = ['L', 'U', 'C', 'K'];
+    const CHOOSE: [char; 6] = ['C', 'H', 'O', 'O', 'S', 'E'];
+    match (mode, button) {
+        (DeckMode::Base | DeckMode::Spinning, CabButton::Spin) => Role::Play,
+        (DeckMode::Gamble, CabButton::Spin) => Role::TakeWin,
+        (DeckMode::Menu, CabButton::Spin) => Role::Off,
+        (DeckMode::Base, CabButton::Slot { row: 0, col: 0 }) => Role::Gamble,
+        (DeckMode::Base | DeckMode::Gamble, CabButton::Slot { row: 1, col: 0 }) => Role::TakeWin,
+        (DeckMode::Base, CabButton::Slot { row: 0, col }) => Role::Bet(DECK_BETS[col as usize - 1]),
+        (DeckMode::Base, CabButton::Slot { .. }) => Role::Play,
+        (
+            DeckMode::Spinning,
+            CabButton::Slot {
+                row,
+                col: col @ 1..=4,
+            },
+        ) => Role::Letter(if row == 0 { GOOD } else { LUCK }[col as usize - 1]),
+        (DeckMode::Spinning, CabButton::Slot { .. }) => Role::Off,
+        (DeckMode::Menu, CabButton::Slot { row: 0, col }) => Role::Letter(CHOOSE[col as usize]),
+        (DeckMode::Menu, CabButton::Slot { .. }) => Role::Off,
+        (DeckMode::Gamble, CabButton::Slot { row, col }) => match (row, col) {
             (0, 1) => Role::Pick(GamblePick::Red),
             (0, 2) => Role::Pick(GamblePick::Hearts),
-            (0, 3) => Role::Pick(GamblePick::Diamonds),
-            (1, 1) => Role::Pick(GamblePick::Black),
-            (1, 2) => Role::Pick(GamblePick::Clubs),
-            (1, 3) => Role::Pick(GamblePick::Spades),
+            (1, 1) => Role::Pick(GamblePick::Diamonds),
+            (0, 4) => Role::Pick(GamblePick::Clubs),
+            (0, 5) => Role::Pick(GamblePick::Black),
+            (1, 5) => Role::Pick(GamblePick::Spades),
             _ => Role::Off,
         },
     }
 }
 
-/// A button's caption for its role.
-fn role_text(role: Role) -> String {
+/// A button's legend for its role, at `lines` lines and the current
+/// multiplier `bet`.
+fn role_text(role: Role, lines: u16, bet: u32) -> String {
     match role {
         Role::Gamble => "GAMBLE".into(),
-        Role::Respin => "RESPIN".into(),
-        Role::Denom(i) => {
-            let cents = DECK_DENOMS[i];
-            if cents >= 100 {
-                format!("${}", cents / 100)
-            } else {
-                format!("{cents}¢")
-            }
-        }
-        Role::Lines(1) => "1 LINE".into(),
-        Role::Lines(n) => format!("{n} LINES"),
-        Role::TakeWin => "TAKE WIN".into(),
+        Role::TakeWin => "TAKE\nWIN".into(),
+        Role::Bet(m) => format!("BET x {m}\n{}", u64::from(m) * u64::from(lines)),
+        Role::Play => format!(
+            "PLAY\n{lines} LINES\n{} CREDITS",
+            u64::from(bet) * u64::from(lines)
+        ),
         Role::Pick(p) => pick_text(p).into(),
+        Role::Letter(c) => c.to_string(),
         Role::Off => String::new(),
     }
 }
@@ -903,12 +963,11 @@ fn pick_text(p: GamblePick) -> &'static str {
 fn press(role: Role, input: &mut CabinetInput) {
     match role {
         Role::Gamble => input.gamble = true,
-        Role::Respin => input.spin = true,
-        Role::Denom(i) => input.denom = Some(i),
-        Role::Lines(n) => input.lines = Some(n),
+        Role::Play => input.spin = true,
+        Role::Bet(m) => input.bet = Some(m),
         Role::TakeWin => input.take_win = true,
         Role::Pick(p) => input.pick = Some(p),
-        Role::Off => {}
+        Role::Letter(_) | Role::Off => {}
     }
 }
 
@@ -966,7 +1025,7 @@ fn deck_button(
     .with_children(|b| {
         b.spawn((
             DeckLabel(button),
-            Text::new(role_text(role(button, false))),
+            Text::new(""),
             TextFont {
                 font: bevy::text::FontSource::Handle(font.clone()),
                 font_size: FontSize::Px(20.0),
@@ -981,28 +1040,30 @@ fn deck_button(
         ));
     })
     .observe(
-        move |_press: On<PointerPress>,
-              mut input: ResMut<CabinetInput>,
-              gamble: Res<GambleShow>| { press(role(button, gamble.active), &mut input) },
+        move |_press: On<PointerPress>, mut input: ResMut<CabinetInput>, mode: Res<DeckMode>| {
+            press(role(button, *mode), &mut input);
+        },
     );
 }
 
-/// Light the deck and set its captions, as the cabinet lights it: keys glow
-/// blue, the chosen denomination and line count white, lines above the
-/// denomination's maximum dark, GAMBLE gold while a win can be gambled;
-/// while gambling the red choices glow red, the black ones blue and TAKE WIN
-/// gold. The play button glows while it can be pressed.
+/// Light the deck and set its legends, as the cabinet lights it: the bet keys
+/// red with the bet in play white, the PLAY keys blue, GAMBLE purple and TAKE
+/// WIN gold, glowing while a win can be gambled; the spelled letters on dark
+/// keys; while gambling the red choices red and the black ones blue. The play
+/// button glows while it can be pressed.
 #[allow(clippy::too_many_arguments, clippy::type_complexity)]
 pub fn light_deck(
     fidelity: Res<Fidelity>,
     time: Res<Time>,
     art: Res<ArtPack>,
     sim: Res<Sim>,
-    denom: Res<Denom>,
     presentation: Res<Presentation>,
     show: Res<FeatureShow>,
     gamble: Res<GambleShow>,
     rollup: Res<Rollup>,
+    menu: Res<GamesMenu>,
+    reels: Res<Reels>,
+    mut mode: ResMut<DeckMode>,
     mut caps: Query<(&DeckCap, &mut ImageNode)>,
     mut labels: Query<(
         &DeckLabel,
@@ -1017,34 +1078,51 @@ pub fn light_deck(
     }
     let gambling = gamble.active;
     let waiting = show.awaiting.is_some();
-    let cents = denom.cents();
     let idle = sim.game.is_idle() && presentation.queue.is_empty();
     let can_gamble =
         idle && sim.game.can_gamble() && !rollup.active() && !waiting && !show.no_gamble();
+    let want = if menu.showing() {
+        DeckMode::Menu
+    } else if gambling {
+        DeckMode::Gamble
+    } else if reels.any_moving() {
+        DeckMode::Spinning
+    } else {
+        DeckMode::Base
+    };
+    if *mode != want {
+        *mode = want;
+    }
+    let mode = want;
     let lines = sim.game.lines();
+    let bet = sim.game.credits_per_line();
     let glow = 0.84 + 0.16 * (time.elapsed_secs() * 3.5).sin().abs();
     let face = |cap: CabButton| -> (&'static str, f32) {
-        match (cap, role(cap, gambling)) {
+        match (cap, role(cap, mode)) {
+            (CabButton::Spin, Role::Off) => ("spin_dim", 1.0),
             (CabButton::Spin, _) if gambling || idle || waiting => ("spin_lit", glow),
             (CabButton::Spin, _) => ("spin_dim", 1.0),
-            // The top row glows red, the bottom row blue (cabinet footage).
-            (_, Role::Denom(i)) if DECK_DENOMS[i] == cents => ("key_white", 1.0),
-            (_, Role::Denom(_)) => ("key_red", 1.0),
-            (_, Role::Lines(n)) if n > max_lines(cents) => ("key_dark", 1.0),
-            (_, Role::Lines(n)) if n == lines => ("key_white", 1.0),
-            (_, Role::Lines(_)) => ("key_blue", 1.0),
-            (_, Role::Gamble) if can_gamble => ("key_gold", glow),
-            (_, Role::Gamble) => ("key_red", 0.55),
-            (_, Role::Respin) => ("key_blue", 1.0),
-            (_, Role::TakeWin) => ("key_gold", glow),
+            (_, Role::Bet(m)) if m == bet => ("key_white", 1.0),
+            (_, Role::Bet(_)) => ("key_red", 1.0),
+            (_, Role::Play) => ("key_blue", 1.0),
+            (_, Role::Gamble) if can_gamble => ("key_purple", glow),
+            (_, Role::Gamble) => ("key_purple", 0.5),
+            (_, Role::TakeWin) if can_gamble || gambling => ("key_gold", glow),
+            (_, Role::TakeWin) => ("key_gold", 0.5),
             (_, Role::Pick(p)) if is_red(p) => ("key_red", 1.0),
             (_, Role::Pick(_)) => ("key_blue", 1.0),
-            (_, Role::Off) => ("key_dark", 1.0),
+            (_, Role::Letter(_) | Role::Off) => ("key_dark", 1.0),
         }
     };
     for (cap, mut image) in &mut caps {
         let (key, k) = face(cap.0);
-        if let Some(h) = art.ui.get(key)
+        // A pack built before the purple key draws GAMBLE blue.
+        let h = art.ui.get(key).or_else(|| {
+            (key == "key_purple")
+                .then(|| art.ui.get("key_blue"))
+                .flatten()
+        });
+        if let Some(h) = h
             && image.image != *h
         {
             image.image = h.clone();
@@ -1055,18 +1133,21 @@ pub fn light_deck(
         }
     }
     for (label, fonts, mut text, mut font, mut color) in &mut labels {
-        let r = role(label.0, gambling);
+        let r = role(label.0, mode);
         let (word, size) = match (label.0, r) {
+            (CabButton::Spin, Role::Off) => (String::new(), 40.0),
             (CabButton::Spin, _) if gambling => ("TAKE\nWIN".to_string(), 30.0),
+            // Footage: the key reads START FEATURE while a feature waits.
             (CabButton::Spin, _) if matches!(show.awaiting, Some(Await::Start(_))) => {
                 ("START\nFEATURE".to_string(), 26.0)
             }
-            (CabButton::Spin, _) => ("SPIN".to_string(), 40.0),
+            (CabButton::Spin, _) => ("PLAY".to_string(), 40.0),
             (_, Role::Pick(p)) if !matches!(p, GamblePick::Red | GamblePick::Black) => {
                 (pick_text(p).to_string(), 38.0)
             }
-            (_, Role::Denom(_)) => (role_text(r), 28.0),
-            _ => (role_text(r), 19.0),
+            (_, Role::Letter(_)) => (role_text(r, lines, bet), 44.0),
+            (_, Role::Play) => (role_text(r, lines, bet), 15.0),
+            _ => (role_text(r, lines, bet), 19.0),
         };
         if text.0 != word {
             text.0 = word;
@@ -1080,10 +1161,12 @@ pub fn light_deck(
         if font.font != source {
             font.font = source;
         }
-        // Dark lettering on the white and gold caps, white on the others.
-        let ink = match face(label.0).0 {
-            "key_white" | "key_gold" => Color::srgb(0.06, 0.08, 0.2),
-            "key_dark" => Color::srgb(0.45, 0.5, 0.62),
+        // Dark lettering on the white and gold caps, white on the others;
+        // spelled letters glow blue on a dark key (footage).
+        let ink = match (r, face(label.0).0) {
+            (Role::Letter(_), _) => Color::srgb(0.35, 0.65, 1.0),
+            (_, "key_white" | "key_gold") => Color::srgb(0.06, 0.08, 0.2),
+            (_, "key_dark") => Color::srgb(0.45, 0.5, 0.62),
             _ => Color::WHITE,
         };
         if color.0 != ink {
@@ -1153,12 +1236,15 @@ pub fn update_meters(
     rollup: Res<Rollup>,
     show: Res<FeatureShow>,
     gamble: Res<GambleShow>,
+    menu: Res<GamesMenu>,
     mut meters: Query<(&CabMeter, &mut Text)>,
 ) {
     if !fidelity.0 {
         return;
     }
     let cents = denom.cents();
+    // Cents a change to a larger denomination left over: money on CREDIT.
+    let residue = sim.game.state().residue;
     // Credits count up with the win meter.
     let pending = rollup.to.saturating_sub(rollup.shown());
     // During a win, a feature or the gamble the meters alternate between
@@ -1191,29 +1277,47 @@ pub fn update_meters(
                 } else {
                     0
                 };
-                amount(
-                    presentation.shown_credits.saturating_sub(pending.max(held)),
-                    cents,
-                )
+                let credits = presentation.shown_credits.saturating_sub(pending.max(held));
+                if in_credits || residue == 0 {
+                    amount(credits, cents)
+                } else {
+                    money(credits.saturating_mul(cents).saturating_add(residue), 1)
+                }
             }
-            CabMeter::Bet => amount(sim.game.total_bet(), cents),
+            // After a denomination change BET still shows the last game's bet
+            // until the next game (footage).
+            CabMeter::Bet => match menu.last_bet_cents {
+                Some(c) if !in_credits => money(c, 1),
+                _ => amount(sim.game.total_bet(), cents),
+            },
             CabMeter::Win if gamble.active => amount(gamble.stake, cents),
             CabMeter::Win => match (gamble.result, show.grand_win()) {
                 (Some(w), _) => amount(w, cents),
                 (None, Some(g)) => amount(g, cents),
                 (None, None) => amount(rollup.shown(), cents),
             },
-            CabMeter::Denom => {
-                if cents >= 100 {
-                    format!("${}", cents / 100)
-                } else {
-                    format!("{cents}¢")
-                }
-            }
+            CabMeter::Denom => denom_text(cents),
             CabMeter::MinBet => format!("MIN BET {}", sim.game.lines()),
-            CabMeter::Multiplier => show
-                .caption(time.elapsed_secs())
-                .unwrap_or_else(|| format!("Bet Multiplier {}", sim.game.credits_per_line())),
+            CabMeter::Multiplier => show.caption(time.elapsed_secs()).unwrap_or_else(|| {
+                let t = time.elapsed_secs();
+                let at_rest = sim.game.is_idle()
+                    && presentation.queue.is_empty()
+                    && !rollup.active()
+                    && !gamble.active;
+                let multiplier = format!("Bet Multiplier {}", sim.game.credits_per_line());
+                if !at_rest {
+                    multiplier
+                } else if sim.game.can_gamble() && !show.no_gamble() {
+                    // Club footage: the prompt while a win can be gambled.
+                    "PLAY ON, GAMBLE or TAKE WIN".to_string()
+                } else if ((t / 2.0) as u32).is_multiple_of(2) {
+                    // Idle: the multiplier and "Game Over - Play Now", two
+                    // seconds each (footage).
+                    multiplier
+                } else {
+                    "Game Over - Play Now".to_string()
+                }
+            }),
         };
         if text.0 != value {
             text.0 = value;
@@ -1238,8 +1342,12 @@ pub enum CabButton {
 #[derive(Resource, Default)]
 pub struct CabinetInput {
     pub spin: bool,
+    /// A bet key: its multiplier (sets the bet and plays).
+    pub bet: Option<u32>,
+    /// The GAMES MENU tab was touched.
+    pub menu: bool,
+    /// A denomination touched on the GAMES MENU: its index in [`MENU_DENOMS`].
     pub denom: Option<usize>,
-    pub lines: Option<u16>,
     pub gamble: bool,
     pub take_win: bool,
     pub pick: Option<GamblePick>,
@@ -1360,6 +1468,17 @@ impl Reels {
             .enumerate()
             .filter(|(_, s)| s.stopped_now)
             .map(|(i, _)| i)
+    }
+
+    /// Put a resting reel's window back to `labels` (top row first), as a
+    /// denomination's last window returns: the next spin starts from it.
+    pub fn show_window(&mut self, reel: usize, labels: Vec<String>) {
+        if let Some(s) = self.states.get_mut(reel)
+            && s.motion == Motion::Idle
+        {
+            s.landing_at = s.pos.round() as i64;
+            s.landing = labels;
+        }
     }
 
     /// The strip index and the symbol (or landed cell label) a strip slot
@@ -4712,6 +4831,324 @@ pub fn door_draw(
         };
         if *vis != want {
             *vis = want;
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Games menu
+// ---------------------------------------------------------------------------
+//
+// From cabinet footage of Golden Century's casino presentation: touching the
+// GAMES MENU tab replaces the game screen with the game's title splash and a
+// gold-framed panel, "CHOOSE YOUR DENOMINATION" alternating every 2 s with
+// "TOUCH SCREEN TO MAKE SELECTION", over one row of touch buttons 1c 2c 5c
+// 10c $1 $2 (the cents orange, the dollars yellow). BET, WIN and the tabs go;
+// CREDIT stays. One touch chooses: the panel goes at once, the splash stays
+// about 0.3 s, then the game returns at the new denomination with the bet
+// multiplier back to 1, its lines, and the reels as that denomination left
+// them. No confirmation is asked (the club machines ask ARE YOU SURE?). Only
+// this game is offered. The cabinet's splash shows the emperor before the
+// Great Wall with the title logo; the mobile build has neither, so the game's
+// own Great Wall backdrop carries a drawn title here.
+
+/// Seconds the splash stays after a denomination is chosen.
+const MENU_CLOSE: f32 = 0.3;
+/// Seconds each of the chooser's two headers shows.
+const MENU_HEADER: f32 = 2.0;
+
+/// The GAMES MENU.
+#[derive(Resource, Default)]
+pub struct GamesMenu {
+    pub open: bool,
+    /// Seconds the splash still shows after a choice.
+    closing: f32,
+    /// Seconds since it opened.
+    since: f32,
+    /// A denomination change still to show on the reels: old and new cents.
+    pub changed: Option<(u64, u64)>,
+    /// The window each denomination last showed, by cents.
+    windows: std::collections::HashMap<u64, Vec<String>>,
+    /// The last game's bet in cents: after a change the BET meter still shows
+    /// it until the next game (footage).
+    pub last_bet_cents: Option<u64>,
+}
+
+impl GamesMenu {
+    /// Open the chooser.
+    pub fn open_now(&mut self) {
+        self.open = true;
+        self.closing = 0.0;
+        self.since = 0.0;
+    }
+
+    /// A denomination was touched: the panel goes, the splash stays a moment.
+    pub fn close(&mut self) {
+        self.open = false;
+        self.closing = MENU_CLOSE;
+    }
+
+    /// Whether the chooser or its closing splash covers the game.
+    pub fn showing(&self) -> bool {
+        self.open || self.closing > 0.0
+    }
+}
+
+/// The chooser's parts.
+#[derive(Component)]
+pub struct ChooserRoot;
+#[derive(Component)]
+pub struct ChooserPanel;
+#[derive(Component)]
+pub struct ChooserHeader;
+/// Covers BET, WIN and the tabs on the meter band while the chooser shows.
+#[derive(Component)]
+pub struct ChooserCover;
+
+/// A denomination as the chooser and the badge write it.
+pub fn denom_text(cents: u64) -> String {
+    if cents >= 100 {
+        format!("${}", cents / 100)
+    } else {
+        format!("{cents}¢")
+    }
+}
+
+/// Build the GAMES MENU (hidden until touched).
+fn spawn_games_menu(c: &mut ChildSpawnerCommands, art: &ArtPack, fonts: &CabFonts) {
+    let top = JACKPOT_BAR_TOP + JACKPOT_BAR_W * 104.0 / 1225.0 + 4.0;
+    let h = BAND_TOP - top;
+    c.spawn((
+        ChooserRoot,
+        Node {
+            position_type: PositionType::Absolute,
+            left: Val::Px(0.0),
+            top: Val::Px(top),
+            width: Val::Px(CANVAS_W),
+            height: Val::Px(h),
+            overflow: Overflow::clip(),
+            ..default()
+        },
+        GlobalZIndex(12),
+        Visibility::Hidden,
+    ))
+    .with_children(|m| {
+        m.spawn((
+            Node {
+                position_type: PositionType::Absolute,
+                left: Val::Px(0.0),
+                top: Val::Px(0.0),
+                width: Val::Percent(100.0),
+                height: Val::Percent(100.0),
+                ..default()
+            },
+            ImageNode {
+                image: art.ui.get("background").cloned().unwrap_or_default(),
+                image_mode: NodeImageMode::Stretch,
+                ..default()
+            },
+        ));
+        // The title (drawn: the cabinet's logo is not in the mobile build).
+        m.spawn((
+            Text::new("GOLDEN CENTURY"),
+            TextFont {
+                font: bevy::text::FontSource::Handle(fonts.meter.clone()),
+                font_size: FontSize::Px(150.0),
+                ..default()
+            },
+            TextColor(Color::srgb(1.0, 0.82, 0.25)),
+            TextLayout::justify(Justify::Center),
+            TextShadow {
+                offset: Vec2::new(4.0, 6.0),
+                color: Color::srgba(0.35, 0.05, 0.0, 0.9),
+            },
+            Node {
+                position_type: PositionType::Absolute,
+                left: Val::Px(0.0),
+                top: Val::Px(h * 0.16),
+                width: Val::Percent(100.0),
+                ..default()
+            },
+        ));
+        // The panel: header over the row of denominations.
+        let (pw, ph) = (1360.0, 250.0);
+        m.spawn((
+            ChooserPanel,
+            Node {
+                position_type: PositionType::Absolute,
+                left: Val::Px((CANVAS_W - pw) / 2.0),
+                top: Val::Px(h * 0.6),
+                width: Val::Px(pw),
+                height: Val::Px(ph),
+                border: UiRect::all(Val::Px(5.0)),
+                border_radius: BorderRadius::all(Val::Px(16.0)),
+                flex_direction: FlexDirection::Column,
+                justify_content: JustifyContent::SpaceEvenly,
+                align_items: AlignItems::Center,
+                ..default()
+            },
+            BackgroundColor(Color::srgba(0.05, 0.02, 0.02, 0.86)),
+            BorderColor::all(Color::srgb(0.9, 0.68, 0.22)),
+        ))
+        .with_children(|p| {
+            p.spawn((
+                ChooserHeader,
+                Text::new("CHOOSE YOUR DENOMINATION"),
+                TextFont {
+                    font: bevy::text::FontSource::Handle(fonts.sans.clone()),
+                    font_size: FontSize::Px(40.0),
+                    ..default()
+                },
+                TextColor(Color::srgb(1.0, 0.9, 0.55)),
+            ));
+            p.spawn(Node {
+                flex_direction: FlexDirection::Row,
+                column_gap: Val::Px(26.0),
+                ..default()
+            })
+            .with_children(|row| {
+                for (i, cents) in MENU_DENOMS.into_iter().enumerate() {
+                    let face = if cents >= 100 {
+                        Color::srgb(1.0, 0.8, 0.22)
+                    } else {
+                        Color::srgb(0.96, 0.5, 0.1)
+                    };
+                    row.spawn((
+                        Node {
+                            width: Val::Px(186.0),
+                            height: Val::Px(112.0),
+                            border: UiRect::all(Val::Px(3.0)),
+                            border_radius: BorderRadius::all(Val::Px(16.0)),
+                            justify_content: JustifyContent::Center,
+                            align_items: AlignItems::Center,
+                            ..default()
+                        },
+                        BackgroundColor(face),
+                        BorderColor::all(Color::srgb(0.55, 0.3, 0.05)),
+                    ))
+                    .with_children(|b| {
+                        b.spawn((
+                            Text::new(denom_text(cents)),
+                            TextFont {
+                                font: bevy::text::FontSource::Handle(fonts.meter.clone()),
+                                font_size: FontSize::Px(68.0),
+                                ..default()
+                            },
+                            TextColor(Color::srgb(0.9, 0.95, 1.0)),
+                            TextShadow {
+                                offset: Vec2::new(2.0, 3.0),
+                                color: Color::srgba(0.25, 0.08, 0.0, 0.85),
+                            },
+                        ));
+                    })
+                    .observe(
+                        move |_press: On<PointerPress>,
+                              mut input: ResMut<CabinetInput>,
+                              menu: Res<GamesMenu>| {
+                            if menu.open {
+                                input.denom = Some(i);
+                            }
+                        },
+                    );
+                }
+            });
+        });
+    });
+    // BET, WIN and the tabs give way; CREDIT stays.
+    c.spawn((
+        ChooserCover,
+        Node {
+            position_type: PositionType::Absolute,
+            left: Val::Px(780.0),
+            top: Val::Px(BAND_TOP),
+            width: Val::Px(CANVAS_W - 780.0),
+            height: Val::Px(SCREEN_BOTTOM - BAND_TOP),
+            ..default()
+        },
+        BackgroundColor(Color::srgb(0.015, 0.01, 0.03)),
+        GlobalZIndex(12),
+        Visibility::Hidden,
+    ));
+}
+
+/// Run the GAMES MENU: show or hide it, alternate its header, end the
+/// closing splash, and put back the reels a denomination last showed.
+#[allow(clippy::too_many_arguments, clippy::type_complexity)]
+pub fn games_menu(
+    fidelity: Res<Fidelity>,
+    time: Res<Time>,
+    smoke: Res<Smoke>,
+    mut menu: ResMut<GamesMenu>,
+    mut reels: ResMut<Reels>,
+    mut cells: Query<(&CellLabel, &mut Text), Without<ChooserHeader>>,
+    mut header: Query<&mut Text, With<ChooserHeader>>,
+    mut covers: Query<&mut Visibility, Or<(With<ChooserRoot>, With<ChooserCover>)>>,
+    mut panel: Query<
+        &mut Visibility,
+        (
+            With<ChooserPanel>,
+            Without<ChooserRoot>,
+            Without<ChooserCover>,
+        ),
+    >,
+) {
+    if !fidelity.0 {
+        return;
+    }
+    let dt = smoke.dt(&time).min(0.05);
+    if menu.open {
+        menu.since += dt;
+    }
+    menu.closing = (menu.closing - dt).max(0.0);
+    let vis = |on: bool| {
+        if on {
+            Visibility::Inherited
+        } else {
+            Visibility::Hidden
+        }
+    };
+    let showing = menu.showing();
+    for mut v in &mut covers {
+        if *v != vis(showing) {
+            *v = vis(showing);
+        }
+    }
+    for mut v in &mut panel {
+        if *v != vis(menu.open) {
+            *v = vis(menu.open);
+        }
+    }
+    let line = if ((menu.since / MENU_HEADER) as u32).is_multiple_of(2) {
+        "CHOOSE YOUR DENOMINATION"
+    } else {
+        "TOUCH SCREEN TO MAKE SELECTION"
+    };
+    for mut t in &mut header {
+        if t.0 != line {
+            t.0 = line.to_string();
+        }
+    }
+    // Each denomination comes back with the reels it left (footage).
+    if let Some((old, new)) = menu.changed.take() {
+        let mut window = vec![String::new(); cells.iter().count()];
+        let rows = 3usize;
+        for (label, text) in &cells {
+            if let Some(slot) = window.get_mut(label.reel as usize * rows + label.row as usize) {
+                *slot = text.0.clone();
+            }
+        }
+        menu.windows.insert(old, window);
+        if let Some(saved) = menu.windows.get(&new).cloned() {
+            for (label, mut text) in &mut cells {
+                if let Some(s) = saved.get(label.reel as usize * rows + label.row as usize)
+                    && text.0 != *s
+                {
+                    text.0.clone_from(s);
+                }
+            }
+            for reel in 0..saved.len() / rows {
+                reels.show_window(reel, saved[reel * rows..(reel + 1) * rows].to_vec());
+            }
         }
     }
 }

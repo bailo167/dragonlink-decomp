@@ -233,17 +233,18 @@ struct MenuItem {
     index: usize,
 }
 
-/// The denomination, purely for display: the simulation works in credits, and
-/// this says how much money one credit stands for. Changing it changes only
-/// the dollar figures shown, never play. These are simulation dollars and
-/// stand for no real money.
+/// The denomination: how much money one credit stands for. The simulation
+/// works in credits; in the cabinet build a change recounts them so the money
+/// is unchanged (`Command::ChangeDenomination`), elsewhere it changes only the
+/// dollar figures shown. These are simulation dollars and stand for no real
+/// money.
 #[derive(Resource, Default)]
 struct Denom {
     index: usize,
 }
 
 /// Cents per credit for each denomination, cheapest first.
-const DENOM_CENTS: [u64; 5] = [1, 2, 5, 10, 100];
+const DENOM_CENTS: [u64; 6] = cabinet::MENU_DENOMS;
 
 impl Denom {
     fn cents(&self) -> u64 {
@@ -252,7 +253,7 @@ impl Denom {
 
     fn label(&self) -> String {
         match self.cents() {
-            100 => "$1".to_string(),
+            c if c >= 100 => format!("${}", c / 100),
             c => format!("{c}c"),
         }
     }
@@ -916,38 +917,65 @@ fn input(
     feature: Res<cabinet::FeatureShow>,
     mut gamble: ResMut<cabinet::GambleShow>,
     reels: Res<cabinet::Reels>,
+    fidelity: Res<cabinet::Fidelity>,
+    mut menu: ResMut<cabinet::GamesMenu>,
+    sounds: Res<cabinet::Sounds>,
+    mut commands: Commands,
 ) {
-    // Denomination (display only) cycles with D, while idle. Idle means the
-    // reels have come to rest on screen too: the last one runs on and
-    // settles after the game has stopped it, and a spin started then would
-    // throw it straight back into motion mid-settle.
+    // Idle means the reels have come to rest on screen too: the last one runs
+    // on and settles after the game has stopped it, and a spin started then
+    // would throw it straight back into motion mid-settle.
     let at_rest = sim.game.is_idle()
         && presentation.queue.is_empty()
         && !gamble.active
         && reels.rested_for() >= cabinet::SPIN_AFTER_REST;
-    if keys.just_pressed(KeyCode::KeyD) && at_rest {
-        denom.index = (denom.index + 1) % DENOM_CENTS.len();
+    // The cabinet's GAMES MENU opens on a touch at rest.
+    if fidelity.0 && cabinet_input.menu && at_rest && !menu.showing() {
+        menu.open_now();
     }
-    if let Some(i) = cabinet_input.denom
-        && at_rest
-        && let Some(pos) = DENOM_CENTS
-            .iter()
-            .position(|c| *c == cabinet::DECK_DENOMS[i])
-    {
-        denom.index = pos;
+    // A denomination: touched on the GAMES MENU, or the next one with D.
+    let chosen = if menu.open {
+        cabinet_input.denom
+    } else {
+        (keys.just_pressed(KeyCode::KeyD) && at_rest && !menu.showing())
+            .then(|| (denom.index + 1) % DENOM_CENTS.len())
+    };
+    if let Some(index) = chosen {
+        if menu.open {
+            menu.close();
+        }
+        let (from, to) = (denom.cents(), DENOM_CENTS[index % DENOM_CENTS.len()]);
+        if fidelity.0 && from != to && sim.game.is_idle() {
+            // The same money in the new credit; the multiplier back to 1 and
+            // the denomination's lines (footage).
+            let last_bet =
+                (sim.game.state().spins > 0).then(|| sim.game.total_bet().saturating_mul(from));
+            let Sim { game, rng } = &mut *sim;
+            let changed = u32::try_from(from)
+                .ok()
+                .zip(u32::try_from(to).ok())
+                .map(|(from, to)| game.apply(Command::ChangeDenomination { from, to }, rng));
+            if let Some(Ok(_)) = changed {
+                let _ = game.apply(
+                    Command::SetStake {
+                        index: 0,
+                        lines: cabinet::lines_for(to),
+                    },
+                    rng,
+                );
+                presentation.shown_credits = game.credits();
+                denom.index = index % DENOM_CENTS.len();
+                menu.changed = Some((from, to));
+                menu.last_bet_cents = last_bet;
+            }
+        } else if !fidelity.0 {
+            denom.index = index % DENOM_CENTS.len();
+        }
     }
-    // A denomination allows a number of lines; more than that are dropped.
-    let max_lines = cabinet::max_lines(denom.cents());
-    let lines_request = cabinet_input.lines.filter(|n| *n <= max_lines);
-    let lines_clamp = (at_rest && sim.game.lines() > max_lines).then(|| {
-        sim.game
-            .model()
-            .line_counts()
-            .into_iter()
-            .filter(|n| *n <= max_lines)
-            .max()
-            .unwrap_or(1)
-    });
+    // In the casino presentation the denomination sets the lines.
+    let lines_fix = (fidelity.0 && at_rest)
+        .then(|| cabinet::lines_for(denom.cents()))
+        .filter(|n| *n != sim.game.lines() && sim.game.model().line_counts().contains(n));
     // In a browser, leaving the event loop would only freeze the page.
     if cfg!(not(target_arch = "wasm32")) && keys.just_pressed(KeyCode::Escape) {
         exit.write(AppExit::Success);
@@ -962,10 +990,21 @@ fn input(
     // Features play by themselves (see `drive_features`); the player spins and
     // sets the stake.
     let auto = auto && !gamble.holds_autospin(sim.game.can_gamble());
+    // A bet key sets its multiplier and plays in one press (footage).
+    let bet_press = cabinet_input.bet.filter(|_| fidelity.0).and_then(|m| {
+        sim.game
+            .model()
+            .bet
+            .credits_per_line_options
+            .iter()
+            .position(|o| *o == m)
+            .map(|index| (m, index))
+    });
     let go = (auto
         || keys.just_pressed(KeyCode::Space)
         || keys.just_pressed(KeyCode::Enter)
-        || cabinet_input.spin)
+        || cabinet_input.spin
+        || bet_press.is_some())
         && !cabinet_input.skip_spin
         && sim.game.is_idle()
         // A feature still on screen (its count, its banner) finishes first.
@@ -973,10 +1012,22 @@ fn input(
         && reels.rested_for() >= cabinet::SPIN_AFTER_REST
         && feature.awaiting.is_none()
         && !feature.blocks()
-        && !gamble.active;
+        && !gamble.active
+        && !menu.showing();
     if go {
-        // A new game: the gamble's result leaves the WIN meter.
+        // A new game: the gamble's result leaves the WIN meter, BET its
+        // own bet.
         gamble.result = None;
+        menu.last_bet_cents = None;
+        if let Some((m, index)) = bet_press {
+            sounds.play(&mut commands, cabinet::bet_beep(m));
+            if index != sim.game.state().bet_index {
+                let Sim { game, rng } = &mut *sim;
+                if let Ok(events) = game.apply(Command::SetBet { index }, rng) {
+                    presentation.queue.extend(schedule_with(events, &timing));
+                }
+            }
+        }
     }
     // In the cabinet build an unattended run pauses between games, so each
     // result and win can be seen (and captured) at rest.
@@ -992,7 +1043,7 @@ fn input(
         .unwrap_or(0);
     let command = if go {
         Some(Command::Spin)
-    } else if let Some(lines) = lines_clamp.or(lines_request) {
+    } else if let Some(lines) = lines_fix {
         Some(Command::SetLines { lines })
     } else if keys.just_pressed(KeyCode::ArrowUp) && bet_index + 1 < bets {
         Some(Command::SetBet {
@@ -1002,6 +1053,9 @@ fn input(
         Some(Command::SetBet {
             index: bet_index - 1,
         })
+    } else if fidelity.0 {
+        // The cabinet's lines follow the denomination.
+        None
     } else if keys.just_pressed(KeyCode::ArrowRight) && here + 1 < line_counts.len() {
         Some(Command::SetLines {
             lines: line_counts[here + 1],
@@ -1941,6 +1995,8 @@ fn main() -> AppExit {
     .insert_resource(cabinet::Rollup::default())
     .insert_resource(cabinet::FeatureShow::default())
     .insert_resource(cabinet::GambleShow::default())
+    .insert_resource(cabinet::GamesMenu::default())
+    .insert_resource(cabinet::DeckMode::default())
     .insert_resource(cabinet::WildStacks::default())
     .insert_resource(cabinet::Music::default())
     .insert_resource(if fidelity {
@@ -2015,6 +2071,7 @@ fn main() -> AppExit {
                 render_symbols,
                 cabinet::orb_overlay,
                 cabinet::symbol_fx,
+                cabinet::games_menu,
                 cabinet::light_deck,
                 cabinet::feature_screen,
                 cabinet::gamble_screen,
