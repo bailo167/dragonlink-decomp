@@ -54,6 +54,9 @@ pub enum Command {
     /// Gamble the last win on the colour or suit of a card. Only while idle,
     /// with a win to gamble and the gamble limit not reached.
     Gamble { pick: GamblePick },
+    /// Gamble half the win (rounded down) and keep the rest: the half kept
+    /// leaves the gamble. Otherwise as [`Command::Gamble`].
+    HalfGamble { pick: GamblePick },
     /// Keep the last win and end the gamble.
     TakeWin,
     /// Change the denomination, as the cabinet's GAMES MENU does: the credits
@@ -101,8 +104,9 @@ impl GamblePick {
     }
 }
 
-/// Gambles allowed in a row on one win. Synthetic: our own limit, not a
-/// recovered cabinet rule.
+/// Gambles allowed in a row on one win: five, the most the Australian and
+/// New Zealand Gaming Machine National Standard allows. Dragon Link's own
+/// figure is not shown in any source found.
 pub const GAMBLE_LIMIT: u8 = 5;
 
 /// Why a command was refused. The state is unchanged.
@@ -372,7 +376,8 @@ impl Game {
             }
             Command::Spin => self.spin(&mut next, rng, &mut events)?,
             Command::Advance => self.advance(&mut next, rng, &mut events)?,
-            Command::Gamble { pick } => Self::gamble(&mut next, pick, rng, &mut events)?,
+            Command::Gamble { pick } => Self::gamble(&mut next, pick, false, rng, &mut events)?,
+            Command::HalfGamble { pick } => Self::gamble(&mut next, pick, true, rng, &mut events)?,
             Command::TakeWin => {
                 if next.gamble_stake > 0 {
                     events.push(Event::WinTaken {
@@ -407,17 +412,23 @@ impl Game {
     fn gamble(
         next: &mut GameState,
         pick: GamblePick,
+        half: bool,
         rng: &mut dyn OutcomeRng,
         events: &mut Vec<Event>,
     ) -> Result<(), GameError> {
         if next.phase != Phase::Idle {
             return Err(GameError::FeatureInProgress);
         }
-        if next.gamble_stake == 0 || next.gambles >= GAMBLE_LIMIT {
+        // Half of a one-credit win is nothing to gamble.
+        let stake = if half {
+            next.gamble_stake / 2
+        } else {
+            next.gamble_stake
+        };
+        if stake == 0 || next.gambles >= GAMBLE_LIMIT {
             return Err(GameError::NothingToGamble);
         }
         let card = rng.below(52)? as u8;
-        let stake = next.gamble_stake;
         let won = pick.wins(card);
         let to = if won {
             stake
@@ -1637,6 +1648,45 @@ mod tests {
         assert_eq!(game.credits(), 990);
         assert_eq!(game.state().gamble_stake, 0);
         assert!(!game.can_gamble());
+    }
+
+    #[test]
+    fn a_half_gamble_risks_half_the_win_and_keeps_the_rest() {
+        let mut game = Game::new(synthetic_dev_fixture(), 1000).unwrap();
+        // A win of 11 credits, already paid: 5 are gambled, 6 kept.
+        game.state.gamble_stake = 11;
+        // Two of diamonds: black loses the 5 at stake.
+        let mut rng = ScriptedRng::new(vec![d(52, 14)]);
+        let ev = game
+            .apply(
+                Command::HalfGamble {
+                    pick: GamblePick::Black,
+                },
+                &mut rng,
+            )
+            .unwrap();
+        assert!(ev.contains(&Event::GambleResolved {
+            pick: GamblePick::Black,
+            card: 14,
+            won: false,
+            stake: 5,
+            award: 0,
+        }));
+        assert_eq!((game.credits(), game.state().gamble_stake), (995, 0));
+        // A one-credit win cannot be halved.
+        game.state.gamble_stake = 1;
+        let before = game.clone();
+        let mut rng = ScriptedRng::new(vec![d(52, 0)]);
+        assert_eq!(
+            game.apply(
+                Command::HalfGamble {
+                    pick: GamblePick::Red
+                },
+                &mut rng
+            ),
+            Err(GameError::NothingToGamble)
+        );
+        assert_eq!(game, before);
     }
 
     #[test]

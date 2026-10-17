@@ -887,7 +887,10 @@ pub enum DeckMode {
 /// LUCK; on the GAMES MENU they spell CHOOSE. In the gamble the top row's
 /// right-hand key took BLACK (owner's recording); the other choices are
 /// placed by the colours the keys showed (RED and the red suits at the left,
-/// the black ones at the right) and are not individually confirmed.
+/// the black ones at the right) and are not individually confirmed. GAMBLE
+/// stays lit in the gamble and switches it between the full and the half
+/// gamble (the screen's "Full Gamble Selected"; the national standard allows
+/// a half gamble with the rest kept).
 pub fn role(button: CabButton, mode: DeckMode) -> Role {
     const GOOD: [char; 4] = ['G', 'O', 'O', 'D'];
     const LUCK: [char; 4] = ['L', 'U', 'C', 'K'];
@@ -896,7 +899,7 @@ pub fn role(button: CabButton, mode: DeckMode) -> Role {
         (DeckMode::Base | DeckMode::Spinning, CabButton::Spin) => Role::Play,
         (DeckMode::Gamble, CabButton::Spin) => Role::TakeWin,
         (DeckMode::Menu, CabButton::Spin) => Role::Off,
-        (DeckMode::Base, CabButton::Slot { row: 0, col: 0 }) => Role::Gamble,
+        (DeckMode::Base | DeckMode::Gamble, CabButton::Slot { row: 0, col: 0 }) => Role::Gamble,
         (DeckMode::Base | DeckMode::Gamble, CabButton::Slot { row: 1, col: 0 }) => Role::TakeWin,
         (DeckMode::Base, CabButton::Slot { row: 0, col }) => Role::Bet(DECK_BETS[col as usize - 1]),
         (DeckMode::Base, CabButton::Slot { .. }) => Role::Play,
@@ -937,6 +940,11 @@ fn role_text(role: Role, lines: u16, bet: u32) -> String {
         Role::Letter(c) => c.to_string(),
         Role::Off => String::new(),
     }
+}
+
+/// Whether a gamble choice is a colour (red or black) rather than a suit.
+fn is_colour(p: GamblePick) -> bool {
+    matches!(p, GamblePick::Red | GamblePick::Black)
 }
 
 /// Whether a gamble choice is a red one (red, hearts, diamonds).
@@ -1063,6 +1071,7 @@ pub fn light_deck(
     rollup: Res<Rollup>,
     menu: Res<GamesMenu>,
     reels: Res<Reels>,
+    denom: Res<Denom>,
     mut mode: ResMut<DeckMode>,
     mut caps: Query<(&DeckCap, &mut ImageNode)>,
     mut labels: Query<(
@@ -1079,8 +1088,10 @@ pub fn light_deck(
     let gambling = gamble.active;
     let waiting = show.awaiting.is_some();
     let idle = sim.game.is_idle() && presentation.queue.is_empty();
-    let can_gamble =
-        idle && sim.game.can_gamble() && !rollup.active() && !waiting && !show.no_gamble();
+    let cents = denom.cents();
+    let can_gamble = idle && gamble_open(&sim.game, cents, &show) && !rollup.active() && !waiting;
+    // A suit's four times the stake may pass the gamble win limit.
+    let suits_open = within_gamble_limit(gamble.stake, 4, cents);
     let want = if menu.showing() {
         DeckMode::Menu
     } else if gambling {
@@ -1105,10 +1116,13 @@ pub fn light_deck(
             (_, Role::Bet(m)) if m == bet => ("key_white", 1.0),
             (_, Role::Bet(_)) => ("key_red", 1.0),
             (_, Role::Play) => ("key_blue", 1.0),
-            (_, Role::Gamble) if can_gamble => ("key_purple", glow),
+            (_, Role::Gamble) if can_gamble || (gambling && gamble.stake >= 2) => {
+                ("key_purple", glow)
+            }
             (_, Role::Gamble) => ("key_purple", 0.5),
             (_, Role::TakeWin) if can_gamble || gambling => ("key_gold", glow),
             (_, Role::TakeWin) => ("key_gold", 0.5),
+            (_, Role::Pick(p)) if !is_colour(p) && !suits_open => ("key_dark", 1.0),
             (_, Role::Pick(p)) if is_red(p) => ("key_red", 1.0),
             (_, Role::Pick(_)) => ("key_blue", 1.0),
             (_, Role::Letter(_) | Role::Off) => ("key_dark", 1.0),
@@ -1307,7 +1321,7 @@ pub fn update_meters(
                 let multiplier = format!("Bet Multiplier {}", sim.game.credits_per_line());
                 if !at_rest {
                     multiplier
-                } else if sim.game.can_gamble() && !show.no_gamble() {
+                } else if gamble_open(&sim.game, cents, &show) {
                     // Club footage: the prompt while a win can be gambled.
                     "PLAY ON, GAMBLE or TAKE WIN".to_string()
                 } else if ((t / 2.0) as u32).is_multiple_of(2) {
@@ -2597,6 +2611,8 @@ pub struct FeatureShow {
     /// A full grid's Grand jackpot, while it is shown and after.
     pub grand: Option<u64>,
     grand_done: bool,
+    /// This game won a progressive jackpot (the Major or the Grand).
+    progressive: bool,
     /// Seconds "FREE SPINS COMPLETED" has shown, until the collection.
     completed_wait: Option<f32>,
     /// The WINNER total being paid onto WIN.
@@ -2655,6 +2671,7 @@ impl FeatureShow {
                 self.fg_cut = None;
                 self.grand = None;
                 self.grand_done = false;
+                self.progressive = false;
                 self.win_lines.clear();
                 self.scatter_paid = false;
                 self.stage = Stage::Base;
@@ -2664,7 +2681,10 @@ impl FeatureShow {
                 self.winner = None;
                 self.intro = None;
             }
-            Event::JackpotAwarded { tier, award } => self.jackpots.push((*tier, *award)),
+            Event::JackpotAwarded { tier, award } => {
+                self.progressive |= matches!(tier, JackpotTier::Major | JackpotTier::Grand);
+                self.jackpots.push((*tier, *award));
+            }
             Event::ScatterWin { award, .. } if !matches!(self.stage, Stage::FreeGames { .. }) => {
                 self.scatter_award = *award;
                 // The flags already wave when a trigger's win is shown.
@@ -3412,9 +3432,10 @@ impl FeatureShow {
         self.collect.as_ref().map(|c| c.t)
     }
 
-    /// The feature's win may not be gambled (a Grand was won).
+    /// The game's win may not be gambled: it won a progressive jackpot (the
+    /// national standard allows no gamble after one).
     pub fn no_gamble(&self) -> bool {
-        self.grand.is_some()
+        self.grand.is_some() || self.progressive
     }
 }
 
@@ -5185,6 +5206,8 @@ pub struct GambleShow {
     history: Vec<u8>,
     /// What is at stake now (credits).
     pub stake: u64,
+    /// Half the stake is gambled, the rest kept ("Half Gamble Selected").
+    pub half: bool,
     /// The win the gamble ended on, shown on the WIN meter until the next
     /// game.
     pub result: Option<u64>,
@@ -5202,6 +5225,27 @@ impl GambleShow {
     }
 }
 
+/// The most a gamble may win, in cents: machines show "Gamble not offered if
+/// gamble win will exceed $10000.00" and "Gamble win limit is $10000.00".
+pub const GAMBLE_WIN_LIMIT_CENTS: u64 = 1_000_000;
+
+/// Whether a gamble that multiplies `stake` credits by `times` stays within
+/// the gamble win limit at `cents` per credit.
+pub fn within_gamble_limit(stake: u64, times: u64, cents: u64) -> bool {
+    stake
+        .saturating_mul(times)
+        .saturating_mul(cents)
+        .le(&GAMBLE_WIN_LIMIT_CENTS)
+}
+
+/// Whether the last win may be gambled now: the game allows it, no
+/// progressive jackpot was won, and doubling it stays within the limit.
+pub fn gamble_open(game: &Game, cents: u64, show: &FeatureShow) -> bool {
+    game.can_gamble()
+        && !show.no_gamble()
+        && within_gamble_limit(game.state().gamble_stake, 2, cents)
+}
+
 /// Enter, play and leave the gamble.
 #[allow(clippy::too_many_arguments)]
 pub fn gamble_control(
@@ -5215,10 +5259,12 @@ pub fn gamble_control(
     mut presentation: ResMut<Presentation>,
     show: Res<FeatureShow>,
     rollup: Res<Rollup>,
+    denom: Res<Denom>,
 ) {
     if !fidelity.0 {
         return;
     }
+    let cents = denom.cents();
     let dt = smoke.dt(&time).min(0.05);
     // Testing (`DRAGONLINK_AUTOGAMBLE`, an unattended run only): gamble each
     // win, picking the listed choices in turn ("rbs" = red, black, spades),
@@ -5281,13 +5327,18 @@ pub fn gamble_control(
             && show.awaiting.is_none()
             && !show.blocks()
             && !rollup.active();
-        if input.gamble && at_rest && sim.game.can_gamble() && !show.no_gamble() {
+        if input.gamble && at_rest && gamble_open(&sim.game, cents, &show) {
             gamble.active = true;
             gamble.card = None;
+            gamble.half = false;
             gamble.stake = sim.game.state().gamble_stake;
             input.skip_spin = true;
         }
         return;
+    }
+    // GAMBLE again chooses between the full and the half gamble.
+    if input.gamble && gamble.card.is_none() && gamble.stake >= 2 {
+        gamble.half = !gamble.half;
     }
     // Every press while gambling belongs to the gamble.
     let take = input.take_win
@@ -5304,17 +5355,30 @@ pub fn gamble_control(
             gamble.result = Some(0);
         } else if won && t >= GAMBLE_SHOW_WIN {
             gamble.card = None;
-            if !sim.game.can_gamble() {
-                // The limit: the win is kept.
+            if !sim.game.can_gamble() || !within_gamble_limit(gamble.stake, 2, cents) {
+                // A limit (gambles in a row, or the gamble win limit): the
+                // win is kept.
                 gamble.active = false;
                 gamble.result = Some(gamble.stake);
             }
         }
         return;
     }
+    // A suit is not offered when four times the stake passes the limit.
+    let pick = input
+        .pick
+        .take()
+        .filter(|p| is_colour(*p) || within_gamble_limit(gamble.stake, 4, cents));
     let Sim { game, rng } = &mut *sim;
-    if let Some(pick) = input.pick.take() {
-        if let Ok(events) = game.apply(Command::Gamble { pick }, rng) {
+    if let Some(pick) = pick {
+        let command = if gamble.half {
+            Command::HalfGamble { pick }
+        } else {
+            Command::Gamble { pick }
+        };
+        if let Ok(events) = game.apply(command, rng) {
+            // Each turn starts on the full gamble.
+            gamble.half = false;
             for e in &events {
                 match e {
                     Event::GambleResolved {
@@ -5347,6 +5411,8 @@ pub fn gamble_control(
 pub struct GambleRoot;
 #[derive(Component, Clone, Copy, PartialEq, Eq)]
 pub enum GambleText {
+    /// "Full Gamble Selected" or "Half Gamble Selected".
+    Selected,
     /// "Red/Black Gamble / Gamble Amount / n / $x".
     Amount,
     /// "Red/Black Gamble / to win ..." alternating with the suit gamble.
@@ -5451,21 +5517,21 @@ pub fn spawn_gamble_screen(c: &mut ChildSpawnerCommands, art: &ArtPack, fonts: &
             BackgroundColor(Color::srgb(0.92, 0.7, 0.25)),
         ));
         let (lx, cx, rx) = (w * 0.5 - 490.0, w * 0.5, w * 0.5 + 490.0);
-        let pill = |g: &mut ChildSpawnerCommands, x: f32, y: f32, pw: f32, s: &str| {
-            g.spawn((
-                at(x, y, pw, 50.0),
-                ImageNode {
-                    image: ui("pill"),
-                    image_mode: NodeImageMode::Stretch,
-                    ..default()
-                },
-            ))
-            .with_children(|p| {
-                p.spawn(gamble_text(s, italic, 25.0));
-            });
-        };
         // Left: the tab, the amount, RED and the red suits.
-        pill(g, lx, 175.0, 400.0, "Full Gamble Selected");
+        g.spawn((
+            at(lx, 175.0, 400.0, 50.0),
+            ImageNode {
+                image: ui("pill"),
+                image_mode: NodeImageMode::Stretch,
+                ..default()
+            },
+        ))
+        .with_children(|p| {
+            p.spawn((
+                GambleText::Selected,
+                gamble_text("Full Gamble Selected", italic, 25.0),
+            ));
+        });
         g.spawn((at(lx, 290.0, 460.0, 170.0),)).with_children(|t| {
             t.spawn((GambleText::Amount, gamble_text("", italic, 30.0)));
         });
@@ -5666,10 +5732,13 @@ pub fn gamble_screen(
     let suit_turn = ((time.elapsed_secs() / 2.0) as u32) % 2 == 1;
     let (kind, staked) = match (shown, gamble.last) {
         (Some(_), Some((pick, stake))) => (gamble_kind(Some(pick)), stake),
+        (_, last) if gamble.half => (gamble_kind(last.map(|l| l.0)), gamble.stake / 2),
         (_, last) => (gamble_kind(last.map(|l| l.0)), gamble.stake),
     };
     for (which, mut t) in &mut texts {
         let s = match which {
+            GambleText::Selected if gamble.half => "Half Gamble Selected".to_string(),
+            GambleText::Selected => "Full Gamble Selected".to_string(),
             GambleText::Amount => format!("{kind}\nGamble Amount\n{}", amount(staked)),
             GambleText::ToWin if shown.is_some() => {
                 let mult = gamble.last.map_or(2, |(p, _)| p.multiplier());
