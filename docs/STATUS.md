@@ -3,7 +3,7 @@
 The current state of the project, what was last done, and what is next. Updated with every
 meaningful increment. Item-level state is in `progress/progress.toml`; this page is the narrative.
 
-**Last updated: 2026-10-14.**
+**Last updated: 2026-10-17.**
 
 ## Project interpretation (owner reset, 2026-10-14)
 
@@ -326,6 +326,40 @@ The app now follows it:
   a WIN banner by fire comets, then a coin shower and the payout music, found in the app's shared
   sound bank (it also plays under the cabinet's big counts).
 
+### Button deck, GAMES MENU and gamble rebuilt from cabinet footage (2026-10-17)
+
+Public cabinet footage of Golden Century, the owner's own recording of a Dragon Link cabinet,
+the mobile build's scene files and the national standard were read again by eight readers, and
+every finding re-checked by an independent verifier (262 confirmed, 61 corrected, 1 refuted;
+[reverse-engineering/GOLDEN_CENTURY_CABINET_DECK.md](reverse-engineering/GOLDEN_CENTURY_CABINET_DECK.md)).
+Two Australian presentations exist. The **club** one (credits per line, lines keys that play,
+a chooser asking ARE YOU SURE?) is the owner's recorded cabinet and the only Golden Century deck
+legible on footage. The **casino** one ("Bet Multiplier", fixed lines) rests mostly on a long
+session that a reflection places at a US casino; no Australian casino deck is legible. The app
+now holds the presentation as data, club by default (`DRAGONLINK_PRESENTATION=casino` for the
+other):
+
+- **Deck (club).** GAMBLE over TAKE WIN; credits keys along the top that only select, lines keys
+  along the bottom that set the lines and play, the selected keys pale, keys not offered blank;
+  BET stays stale until the next game. The teardrop reads PLAY / REPEAT BET at rest, START FEATURE
+  (blinking) while a feature waits, SPIN in Hold & Spin, a lattice in the gamble. GOOD / LUCK
+  wipes in as the reels start; CHOOSE on the menu.
+- **One clock.** The keys flash at 1 Hz while a win is offered and in the gamble, and the meters
+  switch to credits every other second then only (the standard forbids it during a play).
+- **GAMES MENU.** The title splash with CHOOSE YOUR DENOMINATION / TOUCH SCREEN TO MAKE
+  SELECTION every 2 s; club 1c-$1 with "<denomination> GAME / ARE YOU SURE?", casino 1c-$2 at
+  once; each denomination's last reels return. A change keeps the money: the core recounts the
+  credits and holds the cents left over (`ChangeDenomination`).
+- **Gamble.** Golden Century's own key layout (suits on the top row, BLACK bottom right, a lattice
+  on unused keys); cards shown 1.0 s; Suit and Red/Black boxes alternating every 2 s from entry;
+  no gamble after a Major or Grand or past the $10,000 gamble win limit, suits off when four times
+  the stake would pass it; Gamble Completed messages; GAMBLE completes a running count. A half
+  gamble on the top-left key is kept as a labelled hypothesis.
+
+Not seen on footage and so not claimed: RED's and TAKE WIN's keys in the gamble, the credits row
+at 5c and 10c, an Australian casino deck, club deck sounds, and the cabinet's own splash art (not
+in the mobile build; the backdrop carries a drawn title).
+
 ## Known limits of what exists
 
 - Every rule in the simulation is a generic slot-game rule, written down so it can be checked. None
@@ -379,13 +413,13 @@ flow with no debug or manual steps:
 
 ## Next — the Golden Century cabinet rebuild (P0)
 
-Steps 1 to 3 below are largely done (art, sound, base screen, features); the remaining work: place
+Steps 1 to 3 below are largely done (art, sound, base screen, features), and the button deck,
+GAMES MENU and gamble were rebuilt from cabinet footage on 2026-10-17. The remaining work: place
 the unplaced sounds where recordings show them, check every screen side by side with the
-recordings, rebuild the button deck and the GAMES MENU denomination screen from the cabinet
-footage (research under way: denominations are chosen on a touch-screen "CHOOSE YOUR DENOMINATION"
-panel, and a bet-multiplier button both sets the multiplier and starts the game), attract/idle,
-and bring the exporter into the repository's importer. A spin winning both features now plays
-Hold & Spin first, then the free games (owner).
+recordings, attract/idle (the top screen's denomination cycle on the chooser), the gamble limits
+as market data rather than constants, and bring the exporter into the repository's importer.
+Owner to confirm: the club presentation as the default (the owner's photo is casino style, the
+owner's recording club).
 
 1. **Runtime asset pack.** Finish the exporter (ETC1 RGB + the second ETC1 block as **alpha**, so
    symbols are cut out; raw RGBA; Ogg audio; fonts) and build the authentic textures/audio into a

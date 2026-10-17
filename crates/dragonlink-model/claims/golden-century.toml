@@ -298,6 +298,85 @@ accessed = "2026-10-13"
 scope = "cabinet-us, a high-limit approval"
 note = "Verified as printed. What the range spans (denominations, variations, with or without the linked level) is not defined in the list. It is not an Australian figure and says nothing about the Australian builds."
 
+# --- Cabinet controls: deck, GAMES MENU, gamble ---------------------------------
+
+[[claim]]
+id = "deck.club-layout"
+statement = "Australian club Dragon Link cabinets have a deck of two rows of six keys whose legends are small displays, plus a large teardrop key at the right: GAMBLE top left over TAKE WIN bottom left, credits-per-line keys along the top, lines keys along the bottom, the current choice in each row drawn pale."
+value = "2 x 6 displayed-legend keys + teardrop; GAMBLE / TAKE WIN in column 1"
+confidence = "verified"
+source = "gameplay_recording"
+citation = "Public recordings, YouTube ids and times: vNWXRftZOE4 0:55.0; _XHUzg4qDXI 0:05.80; nOgrwFAA0Rw 3:15; owner's recording (private) 00:09.67 (docs/reverse-engineering/GOLDEN_CENTURY_CABINET_DECK.md)"
+accessed = "2026-10-17"
+scope = "cabinet-au, club presentation"
+note = "Layout verified on Golden Century Dragon Link machines and the owner's Happy & Prosperous machine; read by one agent and re-checked by an independent verifier. No Australian casino deck is legible on footage."
+
+[[claim]]
+id = "deck.club-keys-behaviour"
+statement = "On the club deck a lines key sets the line count and starts a game in one press at the current credits per line; a credits-per-line key only selects; the teardrop repeats the last bet."
+value = "lines key: select and play; credits key: select only"
+confidence = "strong_evidence"
+source = "gameplay_recording"
+citation = "Public recordings: y8c8lEdPW8Y 0:12.97 and 0:15.23-0:15.47; 1bAevGz0K2k 0:16.4-0:17.53; vNWXRftZOE4 0:55.9-0:57.2; kV-c6EmEHqU 15:51.4-15:53.0 (docs/reverse-engineering/GOLDEN_CENTURY_CABINET_DECK.md)"
+accessed = "2026-10-17"
+scope = "cabinet-au, club presentation"
+note = "Inferred from the screen changing within three frames of a press; in most events the deck itself is out of frame."
+
+[[claim]]
+id = "menu.denomination-chooser"
+statement = "Touching GAMES MENU opens Golden Century's own denomination chooser, whose header alternates CHOOSE YOUR DENOMINATION and TOUCH SCREEN TO MAKE SELECTION every 2 s; no other Dragon Link title is offered. Queensland club machines offer 1c 2c 5c 10c $1 and ask '<denomination> GAME / ARE YOU SURE?' with YES and NO."
+value = "Queensland clubs: 1c, 2c, 5c, 10c, $1, with confirmation"
+confidence = "verified"
+source = "gameplay_recording"
+citation = "Public recordings: 1bAevGz0K2k 0:05.5-0:15.0; y8c8lEdPW8Y 0:10.9-0:11.7; vNWXRftZOE4 0:55.0; etaH-vbYBKY 3:27.1 (docs/reverse-engineering/GOLDEN_CENTURY_CABINET_DECK.md)"
+accessed = "2026-10-17"
+scope = "cabinet-au, club presentation"
+note = "Other clubs add $2. A casino machine at The Star offers 5c 10c 25c 50c $1 $2 and took one change with no confirmation (strong evidence, one event)."
+
+[[claim]]
+id = "gamble.rules-and-screen"
+statement = "After a win the player may gamble it on the colour (pays twice) or the suit (pays four times) of one card; the screen shows Full Gamble Selected, the gamble amount and the amount to win alternating between Suit and Red/Black every 2 s, a history of the last five cards, and RED / BLACK and suit buttons that take the choice by touch. A win shows for 1.0 s before the next round opens by itself."
+value = "colour x2, suit x4; result shown 1.0 s"
+confidence = "verified"
+source = "gameplay_recording"
+citation = "Public recordings: _XHUzg4qDXI 0:07.60, 1:11.23-1:16.73; iHDxUc1dlKs 0:08.7-0:13.43; owner's recording (private) 00:11.43-00:14.80 (docs/reverse-engineering/GOLDEN_CENTURY_CABINET_DECK.md)"
+accessed = "2026-10-17"
+scope = "cabinet-au"
+note = "The 1.0 s result time is strong evidence (one event at real speed). US builds offer no gamble."
+
+[[claim]]
+id = "gamble.limits"
+statement = "The gamble is not offered when its win would exceed $10,000; when a suit's four times would pass it, the suits go blank and only Red/Black is offered."
+value = "$10,000 gamble win limit"
+confidence = "strong_evidence"
+source = "gameplay_recording"
+citation = "On-screen notices: 1bAevGz0K2k 0:13.4; y8c8lEdPW8Y 0:47.00; suit cut-off iHDxUc1dlKs 0:13.433-0:15.77 (docs/reverse-engineering/GOLDEN_CENTURY_CABINET_DECK.md)"
+accessed = "2026-10-17"
+scope = "cabinet-au"
+note = "The notices are verified as text; the suit cut-off is one event. The national standard allows at most five gambles in a row and none after a progressive win; Dragon Link's own count limit is not shown."
+
+[[claim]]
+id = "gamble.deck-keys"
+statement = "In the gamble Golden Century's club deck shows HEART, DIAMOND, CLUB and SPADE on top keys 2, 3, 5 and 6, BLACK on bottom key 6, a card-back lattice on keys it does not use, top left blank purple, and a lattice on the teardrop."
+value = "top: -, HEART, DIAMOND, lattice, CLUB, SPADE; bottom: ?, ?, lattice, lattice, lattice, BLACK"
+confidence = "verified"
+source = "gameplay_recording"
+citation = "Public recording _XHUzg4qDXI 0:06.80-0:08.57 and 1:12.00-1:14.50 (docs/reverse-engineering/GOLDEN_CENTURY_CABINET_DECK.md)"
+accessed = "2026-10-17"
+scope = "cabinet-au, club presentation"
+note = "Bottom keys 1 and 2 are not legible; TAKE WIN and RED there are hypotheses."
+
+[[claim]]
+id = "meters.unit-switching"
+statement = "Club machines switch CREDIT, BET and WIN between dollars and credits every 1.00 s while a win is offered and through the gamble, on the same clock as the deck's 1 Hz flash, and show dollars at rest; the casino-style machines show dollars throughout."
+value = "1.00 s switch, club only"
+confidence = "verified"
+source = "gameplay_recording"
+citation = "Owner's recording (private) 00:09.43-00:14.43; _XHUzg4qDXI 1:11.433-1:14.433; wEmf3ep-euA (casino style, dollars throughout) (docs/reverse-engineering/GOLDEN_CENTURY_CABINET_DECK.md)"
+accessed = "2026-10-17"
+scope = "cabinet-au, club presentation"
+note = "The national standard forbids alternating meters during a play or the win count-up."
+
 # --- Mobile reference ---------------------------------------------------------
 
 [[claim]]

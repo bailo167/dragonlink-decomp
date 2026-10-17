@@ -25,6 +25,7 @@ and the content it downloads for Golden Century ([MOBILE_PACKAGE.md](MOBILE_PACK
 | Published return figures; what regulation requires | [PUBLISHED_RETURNS.md](PUBLISHED_RETURNS.md) | a US range for two titles; Lightning Link in Australia by denomination; constraints with clause numbers |
 | The mobile game's mathematics engine | [MOBILE_MATH_ARCHITECTURE.md](MOBILE_MATH_ARCHITECTURE.md) | how the mobile app computes a round, from static analysis handed over by the owner; algorithms known, every number unread |
 | Golden Century: one Australian session, transcribed | [GOLDEN_CENTURY_SESSION.md](GOLDEN_CENTURY_SESSION.md) | 583 games read twice; paylines 1 to 5, sixteen pay entries, and the $1 game shown to differ from the cent games. No strip assembled |
+| Golden Century: the cabinet's button deck, GAMES MENU and gamble | [GOLDEN_CENTURY_CABINET_DECK.md](GOLDEN_CENTURY_CABINET_DECK.md) | four deck variants; the Australian club deck, chooser and gamble read and verified; no Australian casino deck legible |
 | What public footage shows | [FOOTAGE.md](FOOTAGE.md) | all four titles scanned: US pay tables and rules transcribed for three; Australian lines, fixed prizes, free games and jackpot behaviour read from play; no Australian rules screen, and no Golden Century pay table, found |
 | The litigation record | [LITIGATION.md](LITIGATION.md) | free public record read; structure, admissions, the Australian launch year |
 | Platform software | [PLATFORM_SOFTWARE.md](PLATFORM_SOFTWARE.md) | lineage and Gen7 layout public; Gen8 and later internals not |

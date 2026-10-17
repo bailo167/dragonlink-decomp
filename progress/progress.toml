@@ -450,14 +450,14 @@ note = "Idle, free-games and Hold & Spin phases and the gamble, with transaction
 id = "credits"
 name = "Credits / play-credit model"
 status = "partial"
-note = "A play-credit meter with chained credit events; denominations and cash handling are not modelled."
+note = "A play-credit meter with chained credit events. A denomination change recounts the credits so the money is unchanged, holding what does not make a whole credit (ChangeDenomination, tested). Cash handling (notes, tickets, collect) is not modelled."
 
 [[category.item]]
 id = "bet-selection"
 name = "Bet selection"
 status = "implemented"
 evidence = "crates/dragonlink-core/src/game.rs (SetBet/SetLines/SetStake tests); crates/dragonlink-model/src/fixtures.rs"
-note = "Credits per line and player-selected line counts (SetBet, SetLines, SetStake). The synthetic Golden Century config offers 5, 25 and 50 lines and six credits-per-line options; the exact ladder per denomination is unknown."
+note = "Credits per line and line counts (SetBet, SetLines, SetStake). The cabinet build holds the presentation as data: club (default) with credits keys that select and lines keys that set the lines and play, per-denomination ladders from footage; casino with fixed lines and bet keys that play (docs/reverse-engineering/GOLDEN_CENTURY_CABINET_DECK.md). The credits row at 5c and 10c is not legible on footage."
 
 [[category.item]]
 id = "spin-lifecycle"
@@ -541,14 +541,14 @@ id = "ui"
 name = "UI"
 status = "implemented"
 evidence = "apps/dragonlink/src/cabinet.rs (spawn_meter_band, spawn_deck, gamble screen); apps/dragonlink/src/main.rs (menu_setup)"
-note = "A cabinet frame chosen by the owner: jackpot bar, CREDIT/BET/WIN meters, a 2x6 button deck with SPIN, denominations, lines, GAMBLE and RESPIN, a gamble screen; a four-title launcher."
+note = "The cabinet screen with the jackpot bar, CREDIT/BET/WIN meters, N LINES boxes, the GAMES MENU denomination chooser and the gamble screen; the Australian club deck as filmed (GAMBLE over TAKE WIN, credits and lines keys, the teardrop's PLAY/REPEAT BET/START FEATURE/SPIN, GOOD LUCK and CHOOSE legends, the 1 Hz flash), or the casino style; a four-title launcher. Not compared side by side throughout (docs/reverse-engineering/GOLDEN_CENTURY_CABINET_DECK.md)."
 
 [[category.item]]
 id = "input"
 name = "Input"
 status = "implemented"
 evidence = "apps/dragonlink/src/cabinet.rs (deck buttons); apps/dragonlink/src/main.rs (input)"
-note = "Deck buttons by pointer and the keyboard: spin, stake, lines, denomination, gamble, take win; a spin is refused until the reels are still. No autoplay or settings menu yet."
+note = "Deck keys and touch-screen tabs by pointer, and the keyboard: credits and lines keys (club) or bet keys (casino), PLAY, the GAMES MENU with its confirmation, gamble choices on keys and screen, half gamble, take win; a spin is refused until the reels are still. No autoplay or settings menu yet."
 
 [[category.item]]
 id = "save-settings"
@@ -575,7 +575,7 @@ note = "ACT specifications across generations, Victorian builds, US personality 
 id = "layout"
 name = "Reel layout and lines"
 status = "partial"
-note = "Australia (Queensland clubs): five by three; lines chosen by the player up to 50 at 1c and 2c, 25 at 5c and 10c, 5 at $1; the shapes of lines 1 to 5 established from win messages. Lines 6 to 50 not found."
+note = "Five by three. Club machines: lines chosen on the deck, 1/5/10/30/50 at 1c and 2c, 1/5/10/20/25 at 10c, 1 to 5 at $1. Casino style: lines fixed (50 at The Star; 50/50/25/5 by denomination on a US machine). The shapes of lines 1 to 5 established from win messages; lines 6 to 50 not found."
 
 [[category.item]]
 id = "symbols"
@@ -593,7 +593,7 @@ note = "Sixteen pay-table entries read from win messages in one transcribed Aust
 id = "bets"
 name = "Denominations and bet options"
 status = "partial"
-note = "Denominations, the credit conversion, and the bets of one session read from footage (credits per line by denomination). The full ladder per denomination is not shown in any recording."
+note = "Two presentations read from footage: Australian club machines (1c-$1 on a chooser asking ARE YOU SURE?, credits keys that select and lines keys that play, ladders per denomination) and a casino style (Bet Multiplier, fixed lines, bet keys that play) seen at The Star and, mostly, on a US machine. The credits row at 5c and 10c and any Australian casino deck are not legible (docs/reverse-engineering/GOLDEN_CENTURY_CABINET_DECK.md)."
 
 [[category.item]]
 id = "reel-strips"

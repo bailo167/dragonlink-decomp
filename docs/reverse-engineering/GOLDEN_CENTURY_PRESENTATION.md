@@ -89,7 +89,8 @@ results wait for the reels to be still; a spin is refused until then.
 | Music | Not among the game's own clips: one of three tracks in the app's shared sound bank. The same tracks play under the cabinet's coin-shower counts; across one cabinet session they ran in turn | VERIFIED (app); STRONG (cabinet, rotation) |
 
 **The app** follows the free games, Hold & Spin and payout sequences above at the measured times,
-with the owner's two changes. It keeps the cabinet's own meters, button deck and gamble (owner).
+with the owner's two changes. It keeps the cabinet's own meters, button deck and gamble (owner),
+rebuilt from cabinet footage in [GOLDEN_CENTURY_CABINET_DECK.md](GOLDEN_CENTURY_CABINET_DECK.md).
 
 ## The other clips
 
@@ -103,7 +104,7 @@ show is used here.
 | SND_Wild_1..5 | One of them as a shown win through an emperor (stacked or single) begins to animate; the variant changes from win to win (one 3-high stack sounded Wild_3, Wild_4 and Wild_4 on different spins; a single sounded Wild_3), so it is not the stack's height. On the cabinet the next game cuts it | VERIFIED (12 plays) |
 | SND_Medium_1..5, SND_Credit1/3 | Each family decodes to one identical sound. The cabinet ticks every value coin it collects with Medium (1x-10x the bet) and MINI/MINOR coins, a 20x coin and the GRAND plaque with Credit; the app ticks coins under 5x with SND_Small_5 | VERIFIED |
 | SND_GrandStrike | Also about four times during the cabinet's Grand count; what times it is unknown | STRONG |
-| betbeep1/3_reduced | The cabinet's x1 and x2 bet buttons (G3 and C4 beeps, as the bet changes on screen); x5 and x10 use beeps from the app's shared bank | VERIFIED |
+| betbeep1/3_reduced | A first game at each denomination of a casino session sounded x1 G3 and x2 C4, x5 and x10 the shared bank's betbeep4 (G4) and betbeep5 (C5); each multiplier occurred at one denomination only, so whether the note follows the key or the denomination is open. The app's casino profile plays them on a new bet; x3 gets the bank's E4 (betbeep3), not heard; club decks are silent (unmeasured) | notes VERIFIED; key PARTIAL; x3 HYPOTHESIS ([GOLDEN_CENTURY_CABINET_DECK.md](GOLDEN_CENTURY_CABINET_DECK.md)) |
 | GenericButton | The help screen's page buttons (scene file) | VERIFIED (scene; unheard) |
 | SND_Strike, BonusRollupTerm | Never heard in the game's flow | STRONG |
 | Others | anticipation1..5, SND_Pic1..4, SND_LargePrize, SND_GrandBell, SND_JackpotFanfare, SND_DrumRoll_*, SND_WindUp, BonusRollup, SND_Major, SND_Credit2/4/5/Small, the ST_ and reel/whirring clips: no placement shown by footage | UNKNOWN |
