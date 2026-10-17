@@ -659,7 +659,10 @@ pub fn golden_century_synthetic() -> MathModel {
         scatter_pays,
         bet: BetModel {
             credits_per_line_options: vec![1, 2, 3, 4, 5, 10],
-            line_options: vec![1, 5, 10, 25, 50],
+            // Every line count on the Australian club decks' ladders: 1/5/10/
+            // 30/50 at 1c and 2c, 1/5/10/20/25 at 10c, 1-5 at $1 (cabinet
+            // footage, docs/reverse-engineering/GOLDEN_CENTURY_CABINET_DECK.md).
+            line_options: vec![1, 2, 3, 4, 5, 10, 20, 25, 30, 50],
         },
         hold_and_spin: Some(HoldAndSpinModel {
             orb: SymbolId(ORB),

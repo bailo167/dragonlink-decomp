@@ -577,6 +577,7 @@ fn cell_color(kind: Option<SymbolKind>, key: &str) -> Color {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn setup(
     mut commands: Commands,
     sim: Res<Sim>,
@@ -585,6 +586,7 @@ fn setup(
     fidelity: Res<cabinet::Fidelity>,
     mut fonts: ResMut<Assets<Font>>,
     mut sounds: ResMut<cabinet::Sounds>,
+    profile: Res<cabinet::Profile>,
 ) {
     // The initial state's OnEnter runs before Startup systems, so the pack is
     // read here, on first use.
@@ -595,7 +597,7 @@ fn setup(
         if let Ok(dir) = std::env::var("DRAGONLINK_ART") {
             *sounds = cabinet::Sounds::load(&asset_server, &dir);
         }
-        cabinet::spawn(&mut commands, model, &art, &cab_fonts);
+        cabinet::spawn(&mut commands, model, &art, &cab_fonts, *profile);
         return;
     }
     let art = &*art;
@@ -921,7 +923,9 @@ fn input(
     mut menu: ResMut<cabinet::GamesMenu>,
     sounds: Res<cabinet::Sounds>,
     mut commands: Commands,
+    profile: Res<cabinet::Profile>,
 ) {
+    let profile = *profile;
     // Idle means the reels have come to rest on screen too: the last one runs
     // on and settles after the game has stopped it, and a spin started then
     // would throw it straight back into motion mid-settle.
@@ -934,20 +938,30 @@ fn input(
         menu.open_now();
     }
     // A denomination: touched on the GAMES MENU, or the next one with D.
+    let offered = if fidelity.0 {
+        profile.denoms()
+    } else {
+        &DENOM_CENTS[..]
+    };
     let chosen = if menu.open {
         cabinet_input.denom
     } else {
-        (keys.just_pressed(KeyCode::KeyD) && at_rest && !menu.showing())
-            .then(|| (denom.index + 1) % DENOM_CENTS.len())
+        (keys.just_pressed(KeyCode::KeyD) && at_rest && !menu.showing()).then(|| {
+            let here = offered.iter().position(|c| *c == denom.cents());
+            offered[here.map_or(0, |i| (i + 1) % offered.len())]
+        })
     };
-    if let Some(index) = chosen {
+    if let Some(to) = chosen
+        && let Some(index) = DENOM_CENTS.iter().position(|c| *c == to)
+    {
         if menu.open {
             menu.close();
         }
-        let (from, to) = (denom.cents(), DENOM_CENTS[index % DENOM_CENTS.len()]);
+        let from = denom.cents();
         if fidelity.0 && from != to && sim.game.is_idle() {
-            // The same money in the new credit; the multiplier back to 1 and
-            // the denomination's lines (footage).
+            // The same money in the new credit; one credit per line (the
+            // multiplier at 1) and the denomination's starting lines
+            // (footage).
             let last_bet =
                 (sim.game.state().spins > 0).then(|| sim.game.total_bet().saturating_mul(from));
             let Sim { game, rng } = &mut *sim;
@@ -959,22 +973,33 @@ fn input(
                 let _ = game.apply(
                     Command::SetStake {
                         index: 0,
-                        lines: cabinet::lines_for(to),
+                        lines: profile.lines_on_change(to),
                     },
                     rng,
                 );
                 presentation.shown_credits = game.credits();
-                denom.index = index % DENOM_CENTS.len();
+                denom.index = index;
                 menu.changed = Some((from, to));
                 menu.last_bet_cents = last_bet;
             }
         } else if !fidelity.0 {
-            denom.index = index % DENOM_CENTS.len();
+            denom.index = index;
         }
     }
-    // In the casino presentation the denomination sets the lines.
+    // The lines a denomination allows: fixed in the casino style, the
+    // denomination's ladder on the club machines.
     let lines_fix = (fidelity.0 && at_rest)
-        .then(|| cabinet::lines_for(denom.cents()))
+        .then(|| match profile {
+            cabinet::Profile::Casino => cabinet::lines_for(denom.cents()),
+            cabinet::Profile::Club => {
+                let ladder = cabinet::line_keys(denom.cents());
+                if ladder.contains(&sim.game.lines()) {
+                    sim.game.lines()
+                } else {
+                    ladder[0]
+                }
+            }
+        })
         .filter(|n| *n != sim.game.lines() && sim.game.model().line_counts().contains(n));
     // In a browser, leaving the event loop would only freeze the page.
     if cfg!(not(target_arch = "wasm32")) && keys.just_pressed(KeyCode::Escape) {
@@ -990,21 +1015,23 @@ fn input(
     // Features play by themselves (see `drive_features`); the player spins and
     // sets the stake.
     let auto = auto && !gamble.holds_autospin(sim.game.can_gamble());
-    // A bet key sets its multiplier and plays in one press (footage).
-    let bet_press = cabinet_input.bet.filter(|_| fidelity.0).and_then(|m| {
-        sim.game
-            .model()
-            .bet
-            .credits_per_line_options
-            .iter()
-            .position(|o| *o == m)
-            .map(|index| (m, index))
-    });
+    let options = sim.game.model().bet.credits_per_line_options.clone();
+    let bet_index_of = |credits: u32| options.iter().position(|o| *o == credits);
+    // Casino: a bet key sets its multiplier and plays in one press. Club: a
+    // lines key sets the lines and plays (footage).
+    let bet_press = cabinet_input
+        .bet
+        .filter(|_| fidelity.0)
+        .and_then(|m| bet_index_of(m).map(|index| (m, index)));
+    let lines_press = cabinet_input
+        .lines
+        .filter(|n| fidelity.0 && sim.game.model().line_counts().contains(n));
     let go = (auto
         || keys.just_pressed(KeyCode::Space)
         || keys.just_pressed(KeyCode::Enter)
         || cabinet_input.spin
-        || bet_press.is_some())
+        || bet_press.is_some()
+        || lines_press.is_some())
         && !cabinet_input.skip_spin
         && sim.game.is_idle()
         // A feature still on screen (its count, its banner) finishes first.
@@ -1015,20 +1042,36 @@ fn input(
         && !gamble.active
         && !menu.showing();
     if go {
-        // A new game: the gamble's result leaves the WIN meter, BET its
-        // own bet.
+        // A new game: the gamble's result and its end message go, BET shows
+        // its own bet.
         gamble.result = None;
-        menu.last_bet_cents = None;
+        gamble.ended = None;
+        let first_here = menu.last_bet_cents.take().is_some();
+        let Sim { game, rng } = &mut *sim;
         if let Some((m, index)) = bet_press {
-            sounds.play(&mut commands, cabinet::bet_beep(m));
-            if index != sim.game.state().bet_index {
-                let Sim { game, rng } = &mut *sim;
-                if let Ok(events) = game.apply(Command::SetBet { index }, rng) {
-                    presentation.queue.extend(schedule_with(events, &timing));
-                }
+            // The beep marks a new bet (repeat games carry none).
+            if index != game.state().bet_index || first_here {
+                sounds.play(&mut commands, cabinet::bet_beep(m));
+            }
+            if index != game.state().bet_index
+                && let Ok(events) = game.apply(Command::SetBet { index }, rng)
+            {
+                presentation.queue.extend(schedule_with(events, &timing));
             }
         }
+        if let Some(lines) = lines_press
+            && lines != game.lines()
+            && let Ok(events) = game.apply(Command::SetLines { lines }, rng)
+        {
+            presentation.queue.extend(schedule_with(events, &timing));
+        }
     }
+    // Club: a credits-per-line key only selects.
+    let credits_press = cabinet_input
+        .credits
+        .filter(|_| fidelity.0 && at_rest && !menu.showing())
+        .and_then(bet_index_of)
+        .filter(|i| *i != sim.game.state().bet_index);
     // In the cabinet build an unattended run pauses between games, so each
     // result and win can be seen (and captured) at rest.
     if go && auto && timing.lead_in > SPIN_LEAD_IN {
@@ -1041,8 +1084,15 @@ fn input(
         .iter()
         .position(|n| *n == sim.game.lines())
         .unwrap_or(0);
+    // BET does not follow a selection: it keeps the last game's bet until the
+    // next game (footage).
+    if credits_press.is_some() && sim.game.state().spins > 0 && menu.last_bet_cents.is_none() {
+        menu.last_bet_cents = Some(sim.game.total_bet().saturating_mul(denom.cents()));
+    }
     let command = if go {
         Some(Command::Spin)
+    } else if let Some(index) = credits_press {
+        Some(Command::SetBet { index })
     } else if let Some(lines) = lines_fix {
         Some(Command::SetLines { lines })
     } else if keys.just_pressed(KeyCode::ArrowUp) && bet_index + 1 < bets {
@@ -1996,7 +2046,8 @@ fn main() -> AppExit {
     .insert_resource(cabinet::FeatureShow::default())
     .insert_resource(cabinet::GambleShow::default())
     .insert_resource(cabinet::GamesMenu::default())
-    .insert_resource(cabinet::DeckMode::default())
+    .insert_resource(cabinet::DeckState::default())
+    .insert_resource(cabinet::Profile::from_env())
     .insert_resource(cabinet::WildStacks::default())
     .insert_resource(cabinet::Music::default())
     .insert_resource(if fidelity {
