@@ -2029,6 +2029,13 @@ fn main() -> AppExit {
     app.add_plugins(plugins);
     #[cfg(target_arch = "wasm32")]
     app.add_systems(Startup, announce_placeholder_mode);
+    // Testing (`DRAGONLINK_MUTE`): every sound plays at zero volume, so runs
+    // can be watched and recorded without being heard.
+    if std::env::var_os("DRAGONLINK_MUTE").is_some() {
+        app.insert_resource(bevy::audio::GlobalVolume::new(bevy::audio::Volume::Linear(
+            0.0,
+        )));
+    }
     app.insert_resource(ClearColor(if fidelity {
         Color::BLACK
     } else {
@@ -2044,7 +2051,7 @@ fn main() -> AppExit {
     .insert_resource(cabinet::Sounds::default())
     .insert_resource(cabinet::Rollup::default())
     .insert_resource(cabinet::FeatureShow::default())
-    .insert_resource(cabinet::GambleShow::default())
+    .insert_resource(cabinet::GambleShow::with_history(cli.seed))
     .insert_resource(cabinet::GamesMenu::default())
     .insert_resource(cabinet::DeckState::default())
     .insert_resource(cabinet::Profile::from_env())

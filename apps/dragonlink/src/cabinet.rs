@@ -5668,6 +5668,28 @@ pub struct GambleShow {
 }
 
 impl GambleShow {
+    /// A gamble with a full history from the start: the cabinet always shows
+    /// five past cards (from play before this session), then the real ones.
+    /// The starting cards are drawn for display only, from `seed` by a
+    /// splitmix generator of their own; they decide nothing and never touch
+    /// the game's outcome source.
+    pub fn with_history(seed: u64) -> GambleShow {
+        let mut x = seed ^ 0x6a09_e667_f3bc_c909;
+        let history = (0..HISTORY)
+            .map(|_| {
+                x = x.wrapping_add(0x9e37_79b9_7f4a_7c15);
+                let mut z = x;
+                z = (z ^ (z >> 30)).wrapping_mul(0xbf58_476d_1ce4_e5b9);
+                z = (z ^ (z >> 27)).wrapping_mul(0x94d0_49bb_1331_11eb);
+                ((z ^ (z >> 31)) % 52) as u8
+            })
+            .collect();
+        GambleShow {
+            history,
+            ..default()
+        }
+    }
+
     /// Testing: the gamble autoplay holds the unattended spin while a win can
     /// be gambled.
     pub fn holds_autospin(&self, can_gamble: bool) -> bool {
@@ -7324,6 +7346,7 @@ pub fn payout_effects(
     gamble: Res<GambleShow>,
     mut flares: Query<(&mut ImageNode, &mut Visibility), With<WinFlare>>,
     mut sinks: Query<&mut AudioSink>,
+    global: Res<bevy::audio::GlobalVolume>,
 ) {
     if !fidelity.0 {
         return;
@@ -7352,6 +7375,9 @@ pub fn payout_effects(
         && let Ok(mut sink) = sinks.get_mut(id)
     {
         let k = ((t - COLLECT_FIRST) / RUMBLE_FADE).clamp(0.0, 1.0);
-        sink.set_volume(bevy::audio::Volume::Linear(1.0 - k));
+        // Scaled by the global volume, which a muted test run sets to 0.
+        sink.set_volume(bevy::audio::Volume::Linear(
+            (1.0 - k) * global.volume.to_linear(),
+        ));
     }
 }
