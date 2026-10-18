@@ -1280,9 +1280,7 @@ impl Game {
 
 /// A MAJOR coin is among `cells`.
 fn major_shown(cells: &[Option<OrbValue>]) -> bool {
-    cells
-        .iter()
-        .any(|c| *c == Some(OrbValue::Jackpot(JackpotTier::Major)))
+    cells.contains(&Some(OrbValue::Jackpot(JackpotTier::Major)))
 }
 
 fn locked_orbs(cells: &[Option<OrbValue>], rows: usize) -> Vec<LockedOrb> {
