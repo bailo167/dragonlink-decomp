@@ -360,6 +360,28 @@ Not seen on footage and so not claimed: RED's and TAKE WIN's keys in the gamble,
 at 5c and 10c, an Australian casino deck, club deck sounds, and the cabinet's own splash art (not
 in the mobile build; the backdrop carries a drawn title).
 
+### The owner's play test: reels, band, coins and the gamble (2026-10-18)
+
+The owner played the build and reported: the reels clipping down as each landed, the feature
+prompt half off the dark band, GAMES MENU and GAME RULES clipping, coins looking off, a silent and
+off-looking gamble, and an empty gamble history. Five analysts diagnosed these against the footage
+and the code, each re-checked by a verifier, and the fixes follow their verified numbers:
+
+- **Reels.** The landing copied from the mobile app dipped a whole symbol and jumped back. The
+  cabinet (60 fps footage) runs through its stop to about 0.65, is at 0.40 the next frame and
+  slides home in 8 frames, at 20 symbols a second, reels 0.45 s apart, crisp. The app now does that
+  (measured on a muted capture), and symbols outside the window no longer vanish as a reel stops.
+- **Band.** The status line and the feature prompts sit on the backdrop above the band, which
+  starts higher; the tabs are capsules whose gloss stays inside the rim; the GAMES MENU's splash
+  runs over the band, leaving a CREDIT panel.
+- **Coins.** Black tiles under every coin; plates at the measured size and no longer stretched
+  while spinning; digits and "$" as measured.
+- **Gamble.** Laid out from the footage, the base game's backdrop undimmed, upright captions,
+  the card turning 0.35 s after a choice, the chosen button filling yellow, redrawn art; sounds
+  from a labelled cue table (one weakly evidenced, the rest substitutes, none on a loss or take
+  win); five history cards from the start.
+- **Testing.** `DRAGONLINK_MUTE=1` silences every run.
+
 ## Known limits of what exists
 
 - Every rule in the simulation is a generic slot-game rule, written down so it can be checked. None

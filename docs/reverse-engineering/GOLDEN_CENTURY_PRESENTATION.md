@@ -37,8 +37,17 @@ Labels: **VERIFIED** (measured directly, reproducible from the recording), **STR
 | Result | Nothing changes until 4 frames after the last reel is still; the result shows then; the next spin is taken a frame later | VERIFIED |
 | Coins landing | A reel landing coins while six can still be reached plays SND_JPDoonkN (N counting such reels), else the clink | VERIFIED |
 
-**The app:** same speed, cadence and landing shape, every reel within a frame of the real timing;
-results wait for the reels to be still; a spin is refused until then.
+**The cabinet differs** (60 fps cabinet footage, wEmf3ep-euA 12 landings and 8 spins; BMavaGxuOD0):
+the reels spin at 20 symbols a second, reel 1 comes to rest about 0.95 s after the reels start,
+each further reel 0.45 s later; a reel runs through its stop to about 0.62-0.66 of a symbol for one
+refresh, is at 0.40 the next frame and slides home in a straight line in 8 frames at 30 fps. It
+never shows a frame a whole symbol past, and it draws moving symbols crisp (doubled images in some
+recordings are the camera's exposure). STRONG (two cabinets).
+
+**The app** follows the cabinet here (the owner plays cabinets; the app's whole-symbol dip read as a
+jolt): 20 symbols a second, reels 0.45 s apart, deepest 0.65 then 0.40, an 8-frame slide, no smear;
+measured on a muted 60 fps capture of the app. Results wait for the reels to be still; a spin is
+refused until then.
 
 ## Wins
 

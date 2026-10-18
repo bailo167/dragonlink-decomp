@@ -636,7 +636,7 @@ id = "animation-timing"
 name = "Animation and sequence timing"
 status = "implemented"
 evidence = "docs/reverse-engineering/GOLDEN_CENTURY_PRESENTATION.md; apps/dragonlink/src/cabinet.rs (TIMING, respins, feature sequences)"
-note = "Reel cadence and landing, results, free games, Hold & Spin and its payout follow timings measured frame by frame on the official app; the app's reels land within a frame of them in a timed run."
+note = "Reels spin and land as 60 fps cabinet footage shows (20 symbols a second, reels 0.45 s apart, through the stop to 0.65, back to 0.40, an 8-frame slide), measured on a muted capture of the app; results, free games, Hold & Spin and its payout follow timings measured frame by frame on the official app."
 
 [[category.item]]
 id = "attract"

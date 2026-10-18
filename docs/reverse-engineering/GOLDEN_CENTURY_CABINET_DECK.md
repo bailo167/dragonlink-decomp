@@ -256,7 +256,7 @@ gamble (`yGonwq_1nzE` 0:47.4-0:49.6, `BMavaGxuOD0` 1:42.1, STRONG).
 | After a win | WIN shows for 1.0 s, then the next round opens by itself on the new amount; the "Gamble Win" header stays | STRONG (`iHDxUc1dlKs` 0:12.433-0:13.433); VERIFIED (header kept) |
 | Loss | WIN goes to 0; the card shows about 1 s; the game returns to the base screen by itself with "Gamble Completed - Gamble Feature Lost" alternating with the bet line; the deck returns to its idle legends and the teardrop to PLAY | STRONG (`_XHUzg4qDXI` 0:07.90-0:08.567; `LwC3hVqFRMg` 18:32.73-18:34.0) |
 | Take win | A deck key in the left half, not the touch screen or the teardrop (bottom left is the likely key). The screen goes straight back to the game screen it left; CREDIT takes the win in one step a frame later with "Gamble Completed", then the previous status ("Free Spins Completed") | STRONG (`_XHUzg4qDXI` 1:19.00-1:19.40) |
-| Sound | One C4 tone (bank betbeep2 = game betbeep3_reduced) 0.2 s after one gamble opened; not repeated on another | HYPOTHESIS (`iHDxUc1dlKs` 0:08.84) |
+| Sound | One C4 tone (bank betbeep2 = game betbeep3_reduced) 0.12 s after one gamble opened; not at the $1 machine's on-camera opening; nothing above the noise on the on-camera take win. No other gamble sound is identifiable (see [golden-century-sound-cues.md](golden-century-sound-cues.md)) | HYPOTHESIS (weak) (`iHDxUc1dlKs` 0:08.79); take win PARTIAL (`_XHUzg4qDXI` 1:19.00-1:19.30) |
 
 ## The mobile build
 
@@ -285,9 +285,13 @@ Golden Century deck legible on footage; `DRAGONLINK_PRESENTATION=casino` selects
 | Gamble keys | Suits on top keys 2, 3, 5, 6; BLACK on bottom key 6; lattice on top key 4 and bottom keys 3-5; RED on bottom key 2 and TAKE WIN on bottom key 1; the screen's buttons by touch | as above; RED and TAKE WIN HYPOTHESIS |
 | Gamble rules | Colour x2, suit x4; up to five in a row; not after a Major or Grand; not when the win would pass $10,000; suits off past it, with the shorter prompt; cards shown 1.0 s | as above; five is the standard's maximum |
 | Half gamble | Top left switches "Full Gamble Selected" / "Half Gamble Selected"; half the win at stake, the rest kept | HYPOTHESIS (never shown) |
+| Gamble screen | Laid out from the footage by homography onto the canvas: the base game's backdrop undimmed, columns at x 519 / 1401, banners 510x55, RED/BLACK 502x80, suit capsules 198x100, card 303x361, WIN 415x125, upright captions over heavier amounts, the prompt in the status line; the card turns 0.35 s after a choice; the chosen button fills yellow; the art is our own drawing | STRONG (positions); the art matched by eye |
+| Gamble sounds | A cue table: the opening beep above; substitutes from the game's banks for the switch, the turn and a win; none on a loss or take win | substitute |
 | Chooser | Club: 1c 2c 5c 10c $1, ARE YOU SURE? with YES / NO, then 1 line and 1 credit per line. Casino: 1c-$2, no confirmation, the fixed lines and multiplier 1. Both: the money kept across the change (the core recounts the credits and holds the cents left over), each denomination's last reels | as above |
 | Splash | The game's own Great Wall backdrop with a drawn title: the cabinet's emperor portrait and logo are not in the mobile build | substitute |
 | Casino deck | BET x 1, 2, 3, 5, 10 along the top, setting the bet and playing, with the measured beeps on a new bet; PLAY keys along the bottom | no Australian casino deck is legible: a composite, HYPOTHESIS |
+| Meter band and rows | Mapped from six cabinet sources onto the canvas by homography on the reel frame: status line caps at y 897 (club) / 889 (casino) in Verdana Bold 23 with a dark edge (the club's bet line yellow, spaced); the message row with the feature prompts and line wins at y 923 / 917, right-aligned to x 1685, wholly above the band; the band from y 940 (club, a rounded panel x 200-1713 over a darker strip) or 933 (casino, as the owner's photo); meters centred at y 990 / 984; capsule tabs; COLLECT or GAMES MENU over the denomination box | STRONG |
+| Coins | Every coin on a black tile (landed and moving); MINI / MINOR / MAJOR plates 280x219 (the word 0.62 of the reel's width), the same moving and landed; digits 0.295 of a row tall and 4% wider; "$" 0.69 of a digit, a little low | STRONG (blur-invariant measures on cabinet footage and the app) |
 | Not done | Clock, RESERVE, "i", COLLECT and GAME RULES pages (none shown); the top screen's denomination cycle on the chooser; cabinet lighting; the gamble limits as market data | |
 
 ## Conflicts

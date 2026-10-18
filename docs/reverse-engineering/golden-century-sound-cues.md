@@ -27,4 +27,7 @@ The scene data names cues; it does not say when game logic fires them.
 | Hold & Spin: each value coin counted into the total | `SND_Medium_1..5` (identical) from 0.40 s into the clip | VERIFIED |
 | Hold & Spin: each MINI coin counted | `SND_Credit1` | PARTIAL |
 | Base win | `wintuneNN`, rising with the win; meter counts over the tune | STRONG EVIDENCE for the tune family; the exact choice rule is PARTIAL |
-| Gamble | no game clip found | UNKNOWN (likely platform sounds outside the game's files) |
+| Gamble: the screen opens | a C4 tone matching `betbeep3_reduced`, 0.12 s after the screen opens (iHDxUc1dlKs 0:08.79-0:08.91); equal tones occur in that clip with no press, and the $1 machine's on-camera opening (_XHUzg4qDXI 1:11.067) has none | HYPOTHESIS (weak) |
+| Gamble: choosing, the card's turn, a win, a loss, waiting | no clip identified: the cabinet audio is too faint under voice and venue noise; a 0.16 s tone falling 315 to 293 Hz at the NSW reveal (12.29-12.45) matches no clip in any bank; the mobile game has no gamble, so its banks hold no gamble or card cue | UNKNOWN |
+| Gamble: TAKE WIN and the return | nothing above the noise on the on-camera take win (_XHUzg4qDXI 1:19.00-1:19.30); CREDIT takes the win in one step | PARTIAL (weak) |
+| Gamble, in this app | the opening beep as above; SUBSTITUTES from the game's own banks for the full/half switch (`betbeep3_reduced`), the turn (`bank_betbeep3` at 0.32) and a win (`wintune01`, as the card turns); nothing on a loss, a take win or the return; no loop | substitute, labelled in `cabinet::gamble_cue` |
