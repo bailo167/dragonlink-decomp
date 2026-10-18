@@ -1776,12 +1776,21 @@ fn present(
                 }
                 // The machine letters an orb's prize as its reel lands; the
                 // engine reports the values after the last reel, so look ahead.
-                // Coins a free game's doors reveal show as the doors open.
+                // Only coins that landed as coins: a free game's doors show
+                // theirs as they open (the engine reports both after the
+                // reveal).
                 let landed = *reel;
+                let is_coin = |row: u8| {
+                    symbols.get(row as usize).is_some_and(|key| {
+                        model
+                            .symbols
+                            .iter()
+                            .any(|s| &s.key == key && s.kind == SymbolKind::Orb)
+                    })
+                };
                 let ahead: Vec<(u8, OrbValue)> = presentation
                     .queue
                     .iter()
-                    .take_while(|(_, e)| !matches!(e, Event::MysteryRevealed { .. }))
                     .filter_map(|(_, e)| match e {
                         Event::OrbValueShown { reel, row, value } if *reel == landed => {
                             Some((*row, *value))
@@ -1790,7 +1799,9 @@ fn present(
                     })
                     .collect();
                 for (row, value) in ahead {
-                    set_cell(landed, row, orb_text(value), orb_color);
+                    if is_coin(row) {
+                        set_cell(landed, row, orb_text(value), orb_color);
+                    }
                 }
             }
             Event::OrbValueShown { reel, row, value } => {

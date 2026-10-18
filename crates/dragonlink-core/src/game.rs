@@ -394,6 +394,25 @@ impl Game {
                 "saved feature does not fit the window",
             ));
         }
+        if let Phase::HoldAndSpin(hs) = &state.phase {
+            if model.hold_and_spin.is_none() {
+                return Err(GameError::Invariant(
+                    "saved Hold & Spin under a model without one",
+                ));
+            }
+            if hs.resume_free_games.is_some()
+                && (hs.then_free_games.is_some() || model.free_games.is_none())
+            {
+                return Err(GameError::Invariant(
+                    "saved Hold & Spin inside free games the model cannot play",
+                ));
+            }
+        }
+        if matches!(state.phase, Phase::FreeGames(_)) && model.free_games.is_none() {
+            return Err(GameError::Invariant(
+                "saved free games under a model without them",
+            ));
+        }
         Ok(Game { model, state })
     }
 

@@ -220,6 +220,7 @@ mod tests {
                 respins_left: 3,
                 locked_total: 7,
             },
+            Event::FreeGamesResumed { remaining: 2 },
             Event::SpinCompleted {
                 spin: 1,
                 total_award: 0,

@@ -69,7 +69,9 @@ pub struct SimReport {
     pub hit_frequency: Interval,
     /// Proportion of spins that paid on a line or scatter.
     pub base_hit_frequency: Interval,
-    /// Proportion of spins that started Hold & Spin.
+    /// Proportion of spins whose own window started Hold & Spin (one a free
+    /// game's coins start inside the free games is not counted: the exact
+    /// analysis's trigger probability is the base window's).
     pub feature_frequency: Interval,
     pub line_rtp: f64,
     pub scatter_rtp: f64,
@@ -108,7 +110,14 @@ pub fn simulate_game(
         }
         let mut base = 0u64;
         let mut total = 0u64;
+        let mut in_free_games = false;
+        let mut started = false;
         for event in game.play_spin(&mut rng)? {
+            match event {
+                Event::FreeGameStarted { .. } => in_free_games = true,
+                Event::HoldAndSpinStarted { .. } if !in_free_games => started = true,
+                _ => {}
+            }
             match event {
                 Event::LineWin { award, .. } => {
                     line += award as f64 / bet;
@@ -118,7 +127,6 @@ pub fn simulate_game(
                     scatter += award as f64 / bet;
                     base += award;
                 }
-                Event::HoldAndSpinStarted { .. } => features += 1,
                 Event::HoldAndSpinCompleted { total_award, .. } => {
                     feature += total_award as f64 / bet;
                 }
@@ -129,6 +137,7 @@ pub fn simulate_game(
                 _ => {}
             }
         }
+        features += u64::from(started);
         let x = total as f64 / bet;
         sum += x;
         sum_sq += x * x;
