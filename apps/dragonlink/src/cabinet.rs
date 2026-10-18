@@ -3500,6 +3500,17 @@ pub struct FeatureShow {
     /// The progressive jackpots this game won whose amounts the count has
     /// reached (their meters restart then).
     pub link_won: Vec<JackpotTier>,
+    /// The free game (number, of how many) a Hold & Spin started inside the
+    /// free games interrupted; the status line keeps showing it, and the
+    /// free games carry on from it (cabinet footage, y8c8lEdPW8Y).
+    fg_return: Option<(u32, u32)>,
+    /// The revealed coins' faces ("ORB\nx5", "ORB\nMini"), by position, so
+    /// the doors open onto coins with their prizes.
+    pub reveal_faces: Vec<(u8, u8, String)>,
+    /// What WIN showed when a Hold & Spin's count began: its total counts on
+    /// from there (cabinet footage: inside the free games WIN runs on from
+    /// the free games' total).
+    pay_base: u64,
     /// Seconds "FREE SPINS COMPLETED" has shown, until the collection.
     completed_wait: Option<f32>,
     /// The WINNER total being paid onto WIN.
@@ -3587,15 +3598,8 @@ impl FeatureShow {
                 // Free games won with Hold & Spin follow it: its board, total
                 // and banner clear first.
                 if matches!(self.stage, Stage::HoldSpinDone) {
+                    self.clear_hold_and_spin();
                     self.stage = Stage::Base;
-                    self.grid = false;
-                    self.collected = None;
-                    self.winner = None;
-                    self.flares_at = None;
-                    self.grand = None;
-                    self.jackpots.clear();
-                    self.counter = 0;
-                    self.scatter_paid = false;
                 }
                 // The bell and the flags' sound have played already (the
                 // trigger sequence, before the win was shown).
@@ -3604,6 +3608,21 @@ impl FeatureShow {
             }
             Event::MysteryRevealed { symbol, .. } => {
                 self.reveal = Some((0.0, symbol.clone(), Vec::new()));
+                // The presentation adds the coins' faces, if coins.
+                self.reveal_faces.clear();
+            }
+            Event::FreeGamesResumed { .. } => {
+                // Back to the free games after a Hold & Spin one of them
+                // started: its board clears, the next free game follows
+                // with no START FEATURE (cabinet footage).
+                self.clear_hold_and_spin();
+                self.game_won = false;
+                self.win_lines.clear();
+                self.wild = None;
+                self.wild_sounded = false;
+                if let Some((number, total)) = self.fg_return.take() {
+                    self.stage = Stage::FreeGames { number, total };
+                }
             }
             Event::LineWin {
                 line, count, award, ..
@@ -3637,12 +3656,28 @@ impl FeatureShow {
                 }
             }
             Event::FreeGamesCompleted { .. } => {
+                // A Hold & Spin on the last free game: its board clears for
+                // FEATURE COMPLETED (cabinet footage: it follows the tally).
+                if matches!(self.stage, Stage::HoldSpinDone) {
+                    self.clear_hold_and_spin();
+                    self.fg_return = None;
+                }
                 // Real game: "FEATURE COMPLETED" with SND_Fea_End, the music
                 // cut at the same moment.
                 self.cues.push("SND_Fea_End");
                 self.stage = Stage::FreeGamesDone;
             }
             Event::HoldAndSpinStarted { respins, .. } => {
+                // Inside the free games: the free game it interrupts is
+                // remembered, and that game's lines are done.
+                if let Stage::FreeGames { number, total } = self.stage {
+                    self.fg_return = Some((number, total));
+                    self.win_lines.clear();
+                    self.game_won = false;
+                }
+                // An earlier Hold & Spin's progressive meters restarted at
+                // its count; this one's restart at its own.
+                self.link_won.clear();
                 self.jackpots.clear();
                 self.stage = Stage::HoldSpin {
                     respins_left: *respins,
@@ -3706,6 +3741,28 @@ impl FeatureShow {
             || self.collect.is_some()
     }
 
+    /// Clear a finished Hold & Spin's board, total and banner (the free
+    /// games follow it, or carry on after it). The refusal of the gamble
+    /// after a progressive stays.
+    fn clear_hold_and_spin(&mut self) {
+        self.grid = false;
+        self.collected = None;
+        self.winner = None;
+        self.flares_at = None;
+        self.grand = None;
+        self.jackpots.clear();
+        self.counter = 0;
+        self.scatter_paid = false;
+        self.paid = 0;
+        self.pay_base = 0;
+    }
+
+    /// A Hold & Spin started inside the free games is under way.
+    #[cfg(test)]
+    pub fn inside_free_games(&self) -> bool {
+        self.fg_return.is_some()
+    }
+
     /// A feature's end is being shown: its completion message, the count of
     /// its coins or the payment of its total.
     pub fn counting(&self) -> bool {
@@ -3733,6 +3790,11 @@ impl FeatureShow {
                 "Free Game {number} of {}",
                 self.counter_total(total)
             )),
+            // A Hold & Spin inside the free games keeps the free game on the
+            // status line (cabinet footage: "Free Game 3 of 6" over its board).
+            (_, Stage::HoldSpin { .. } | Stage::HoldSpinDone) if self.fg_return.is_some() => self
+                .fg_return
+                .map(|(number, total)| format!("Free Game {number} of {total}")),
             _ => None,
         }
     }
@@ -4302,9 +4364,13 @@ impl FeatureShow {
 
     /// What WIN shows while the feature's total is counted onto it.
     pub fn grand_win(&self) -> Option<u64> {
-        let p = self.pay.as_ref()?;
-        let k = (p.t / p.seconds).clamp(0.0, 1.0);
-        Some(self.paid + (p.amount as f32 * k) as u64)
+        if let Some(p) = self.pay.as_ref() {
+            let k = (p.t / p.seconds).clamp(0.0, 1.0);
+            return Some(self.pay_base + self.paid + (p.amount as f32 * k) as u64);
+        }
+        // Once paid, WIN holds the sum until the game moves on.
+        (self.stage == Stage::HoldSpinDone && self.collected.is_some())
+            .then_some(self.pay_base + self.paid)
     }
 
     /// What the WIN banner over the reels shows: the coins added so far,
@@ -5020,6 +5086,7 @@ pub fn hold_and_spin_motion(
     sim: Res<Sim>,
     mut show: ResMut<FeatureShow>,
     sounds: Res<Sounds>,
+    rollup: Res<Rollup>,
     mut commands: Commands,
     mut labels: Query<(&CellLabel, &mut Text)>,
 ) {
@@ -5241,6 +5308,7 @@ pub fn hold_and_spin_motion(
         show.grand = grand;
         show.winner = None;
         show.paid = 0;
+        show.pay_base = rollup.to;
         show.flares_at = None;
         show.collect = Some(Collect { coins, ..default() });
     }
@@ -5704,6 +5772,8 @@ pub fn spawn_door_fx(cell: &mut ChildSpawnerCommands, art: &ArtPack, reel: u8, r
         .map_or((cw, ch), |s| symbol_size("doors", *s));
     cell.spawn((
         DoorFx { reel, row },
+        // Over the coin's prize and plate (ZIndex 1) while the doors open.
+        ZIndex(2),
         Node {
             position_type: PositionType::Absolute,
             left: Val::Px((cw - w) / 2.0),
@@ -5775,7 +5845,13 @@ pub fn door_reveal(
         sounds.play(&mut commands, "SND_EndMask");
         for (l, mut text) in &mut labels {
             if cells.contains(&(l.reel, l.row)) {
-                text.0 = symbol.clone();
+                // A coin opens with its own prize; anything else is the
+                // one symbol all the doors reveal.
+                text.0 = show
+                    .reveal_faces
+                    .iter()
+                    .find(|(reel, row, _)| (*reel, *row) == (l.reel, l.row))
+                    .map_or_else(|| symbol.clone(), |(_, _, face)| face.clone());
             }
         }
     }
@@ -7480,9 +7556,19 @@ pub fn wild_talls(
     time: Res<Time>,
     art: Res<ArtPack>,
     stacks: Res<WildStacks>,
+    show: Res<FeatureShow>,
     mut talls: Query<(&WildTall, &mut Node, &mut ImageNode, &mut Visibility)>,
 ) {
     if !fidelity.0 {
+        return;
+    }
+    // Not over a Hold & Spin board.
+    if show.hold_and_spin() {
+        for (_, _, _, mut vis) in &mut talls {
+            if *vis != Visibility::Hidden {
+                *vis = Visibility::Hidden;
+            }
+        }
         return;
     }
     // Each tile of the animation fills one reel cell.

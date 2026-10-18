@@ -412,6 +412,30 @@ The owner's next play test asked for the jackpots to behave as on the machines:
 - "FREE SPINS COMPLETED" at the end of Hold & Spin stays: it is what the official app and the
   cabinet footage show (VERIFIED).
 
+### Doors, Hold & Spin inside the free games, the jackpot bar and coin plates (2026-10-18)
+
+From the owner's play test of the prepared runs:
+
+- **Doors.** They now open onto the emperor (wild) and the coin too, as the game's help screen
+  lists (VERIFIED), each about one reveal in eight (synthetic). Revealed coins each draw a prize
+  (as the mobile build does) and open with it.
+- **Hold & Spin inside the free games.** Six or more coins in a free game start Hold & Spin, which
+  holds the free games and hands them back when it ends, its win in their total; on the last free
+  game FEATURE COMPLETED follows. Presented as the owner's cabinet session shows it (STRONG,
+  `free-games.hold-and-spin-inside`): the usual intro, "Free Game N of 6" kept on the status
+  line, FREE SPINS COMPLETED and its count, WIN counting on from the free games' total, the next
+  free game with no START FEATURE. In simulation about one free-games round in five has one.
+- **Jackpot bar.** Each value centred in its box (they sat up to 58 bar pixels left; the Mini's
+  $250.00 at $1 ran over its box), set smaller only if too wide.
+- **Coin plates.** A coin landing on a Hold & Spin respin now carries its MINI / MINOR / MAJOR
+  plate as it arrives; it used to appear only once the respin had settled.
+- **Testing.** `DRAGONLINK_SCENARIO=doors` (coins open Hold & Spin by the third free game, the
+  emperor in another, no progressive, so the gamble is offered), and `DRAGONLINK_CAPTURE` (with
+  `_EVERY` and `_FROM`) saves an unattended run's frames from the renderer for checking by eye.
+- **Evidence.** The wild lands on reels 2 to 5, never reel 1 (the owner's session transcription;
+  the claims said reels 2 to 4). The synthetic base strips still carry it on reels 2 to 4 only,
+  and the free reels carry no coins though the session shows some: both noted for the next pass.
+
 ## Known limits of what exists
 
 - Every rule in the simulation is a generic slot-game rule, written down so it can be checked. None

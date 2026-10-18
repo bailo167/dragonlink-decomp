@@ -145,7 +145,7 @@ source = "gameplay_recording"
 citation = "Public recordings, YouTube ids and times: 1bAevGz0K2k 0:16 to 0:21, 5:20 to 5:36; y8c8lEdPW8Y 14:36 to 18:41 (docs/reverse-engineering/FOOTAGE.md)"
 accessed = "2026-10-13"
 scope = "cabinet-au"
-note = "Read from footage in one pass by one reader; not yet re-read independently. No rules page was found, so the set may be incomplete, and the roles of wild and scatter are read from behaviour and on-screen prompts. No ace was seen. The wild was seen on reels 2, 3 and 4 and never on reel 1."
+note = "Read from footage in one pass by one reader; not yet re-read independently. No rules page was found, so the set may be incomplete, and the roles of wild and scatter are read from behaviour and on-screen prompts. No ace was seen. The wild was first seen on reels 2, 3 and 4 only; the project's transcription of y8c8lEdPW8Y (543 base games read) shows it on reels 2 to 5 (reel 5 in 51 games) and never on reel 1, as the game's help screen says (reels 2 to 5, docs/reverse-engineering/GOLDEN_CENTURY_PAYTABLE.md)."
 
 [[claim]]
 id = "paytable"
@@ -236,6 +236,17 @@ citation = "Aristocrat's Australian title page for this title (aristocrat.com/an
 accessed = "2026-10-13"
 scope = "cabinet-au, original release 2016 to 2024"
 note = "Marketing text of the Australian page. Australian footage shows red-door mystery symbols landing in blocks and opening onto one symbol (1bAevGz0K2k 5:33). Aristocrat's Asia and US pages say the same of the regional products."
+
+[[claim]]
+id = "free-games.hold-and-spin-inside"
+statement = "Six or more prize symbols in a free game start Hold & Spin inside the free games: the free game stays on the status line, Hold & Spin plays to 'Free Spins Completed' and its tally, its win joins the free games' WIN meter, and the next free game follows (or FEATURE COMPLETED, after the last)."
+value = "free games pause; Hold & Spin plays with its intro and music; status 'Free Game N of 6' kept; win added to the free games' total; the free games carry on"
+confidence = "strong_evidence"
+source = "gameplay_recording"
+citation = "Public recording y8c8lEdPW8Y, two cases: Free Game 3 of 6 at 965.8 s, its Hold & Spin tally at 1020.6 s with the status still 'Free Game 3 of 6', Free Game 4 of 6 at 1031.0 s (CREDIT 508.10 throughout, WIN 10.00 to 300.00); Free Game 4 of 6 at 2988.2 s, 'Free Spins Completed' at 3047.2 s, then Free Game 5 of 6 (the project's transcription sheet); Panda Magic tg4nMylHxhI (claims/panda-magic.toml); OL6Pu1AI-cQ for the intro and music (probably a US casino machine)"
+accessed = "2026-10-18"
+scope = "cabinet-au, Queensland club, one session on one machine"
+note = "Read once by one reader. Whether the six prize symbols came from opened doors or landed on the free reels is not visible after the reveal; prize symbols also land on the free reels (19 of the session's 23 free-game stills show some). The music when the free games resume is not measured."
 
 [[claim]]
 id = "free-games.award"

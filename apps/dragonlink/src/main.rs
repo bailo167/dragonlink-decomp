@@ -782,9 +782,10 @@ struct Smoke {
     /// unattended run keeps the machine's real pace for recording).
     real_time: bool,
     /// Testing (`DRAGONLINK_CAPTURE=<folder>`): every `n`th frame of an
-    /// unattended run saved there (`DRAGONLINK_CAPTURE_EVERY`, default 6),
-    /// from the renderer, so other windows cannot spoil it.
-    capture: Option<(String, u32)>,
+    /// unattended run saved there (`DRAGONLINK_CAPTURE_EVERY`, default 6)
+    /// from frame `DRAGONLINK_CAPTURE_FROM` (default 0), from the renderer,
+    /// so other windows cannot spoil it.
+    capture: Option<(String, u32, u32)>,
 }
 
 impl Smoke {
@@ -1647,7 +1648,9 @@ fn present(
                 presentation.queue.front(),
                 Some((
                     _,
-                    Event::FeatureTriggered { .. } | Event::FreeGamesStarted { .. }
+                    Event::FeatureTriggered { .. }
+                        | Event::FreeGamesStarted { .. }
+                        | Event::FreeGamesResumed { .. }
                 ))
             )
         {
@@ -1762,10 +1765,12 @@ fn present(
                 }
                 // The machine letters an orb's prize as its reel lands; the
                 // engine reports the values after the last reel, so look ahead.
+                // Coins a free game's doors reveal show as the doors open.
                 let landed = *reel;
                 let ahead: Vec<(u8, OrbValue)> = presentation
                     .queue
                     .iter()
+                    .take_while(|(_, e)| !matches!(e, Event::MysteryRevealed { .. }))
                     .filter_map(|(_, e)| match e {
                         Event::OrbValueShown { reel, row, value } if *reel == landed => {
                             Some((*row, *value))
@@ -1827,7 +1832,42 @@ fn present(
                 presentation.status = format!("FREE GAME {number}  ({remaining} to come)");
             }
             Event::MysteryRevealed { symbol, count } => {
+                // The coins the doors open onto, each with its prize (the
+                // engine reports them straight after the reveal).
+                let faces: Vec<(u8, u8, String)> = presentation
+                    .queue
+                    .iter()
+                    .map_while(|(_, e)| match e {
+                        Event::OrbValueShown { reel, row, value } => {
+                            Some((*reel, *row, orb_text(*value)))
+                        }
+                        _ => None,
+                    })
+                    .collect();
+                if fidelity.0 {
+                    feature.reveal_faces = faces;
+                } else {
+                    // The placeholder opens the doors at once.
+                    for (label, mut text) in &mut labels {
+                        if text.0 == "doors" {
+                            text.0 = faces
+                                .iter()
+                                .find(|(reel, row, _)| (*reel, *row) == (label.reel, label.row))
+                                .map_or_else(|| symbol.clone(), |(_, _, face)| face.clone());
+                        }
+                    }
+                }
                 presentation.status = format!("Mystery reveals {symbol} x{count}");
+            }
+            Event::FreeGamesResumed { remaining } => {
+                // The free games carry on after the Hold & Spin one of them
+                // started: its dimmed positions light again.
+                for (_, mut text) in &mut labels {
+                    if let Some(rest) = text.0.strip_prefix("DIM:") {
+                        text.0 = rest.to_string();
+                    }
+                }
+                presentation.status = format!("FREE GAMES resume  ({remaining} to come)");
             }
             Event::FreeGamesRetriggered { added, remaining } => {
                 presentation.banner = "RETRIGGER".to_string();
@@ -1968,7 +2008,8 @@ fn smoke(
     // A capture of the run, frame by frame (testing only; the pictures go
     // to a folder outside the repository, see docs/LEGAL.md).
     #[cfg(not(target_arch = "wasm32"))]
-    if let Some((dir, every)) = &smoke.capture
+    if let Some((dir, every, from)) = &smoke.capture
+        && smoke.frame >= *from
         && smoke.frame.is_multiple_of(*every)
     {
         let path = format!("{dir}/f{:05}.png", smoke.frame);
@@ -2479,7 +2520,11 @@ fn main() -> AppExit {
                     .and_then(|n| n.parse().ok())
                     .filter(|n: &u32| *n > 0)
                     .unwrap_or(6);
-                (dir, every)
+                let from = std::env::var("DRAGONLINK_CAPTURE_FROM")
+                    .ok()
+                    .and_then(|n| n.parse().ok())
+                    .unwrap_or(0);
+                (dir, every, from)
             }),
     })
     .add_systems(Startup, spawn_camera)
@@ -2817,6 +2862,51 @@ mod tests {
         assert_eq!(link.shown(JackpotTier::Major), Some(won));
         link.tick(&mut game, 0.0, &|_| true);
         assert_eq!(link.shown(JackpotTier::Major), Some(50_000));
+    }
+
+    /// A Hold & Spin a free game starts keeps that free game on the status
+    /// line and hands back to the free games (cabinet footage, y8c8lEdPW8Y).
+    #[test]
+    fn a_hold_and_spin_inside_the_free_games_returns_to_them() {
+        let mut show = cabinet::FeatureShow::default();
+        show.on_event(&Event::FreeGameStarted {
+            number: 3,
+            remaining: 3,
+        });
+        show.on_event(&Event::HoldAndSpinStarted {
+            respins: 3,
+            locked: Vec::new(),
+        });
+        assert!(show.inside_free_games() && show.hold_and_spin());
+        assert_eq!(show.caption(0.0).as_deref(), Some("Free Game 3 of 6"));
+        show.on_event(&Event::HoldAndSpinCompleted {
+            total_award: 100,
+            full_grid: false,
+        });
+        assert_eq!(show.caption(0.0).as_deref(), Some("Free Game 3 of 6"));
+        show.on_event(&Event::FreeGamesResumed { remaining: 3 });
+        assert!(!show.inside_free_games() && !show.hold_and_spin());
+        assert_eq!(show.caption(0.0).as_deref(), Some("Free Game 3 of 6"));
+        assert_eq!(show.grand_win(), None);
+        // On the last free game, FEATURE COMPLETED follows its tally.
+        let mut show = cabinet::FeatureShow::default();
+        show.on_event(&Event::FreeGameStarted {
+            number: 6,
+            remaining: 0,
+        });
+        show.on_event(&Event::HoldAndSpinStarted {
+            respins: 3,
+            locked: Vec::new(),
+        });
+        show.on_event(&Event::HoldAndSpinCompleted {
+            total_award: 100,
+            full_grid: false,
+        });
+        show.on_event(&Event::FreeGamesCompleted {
+            games_played: 6,
+            total_award: 150,
+        });
+        assert!(!show.inside_free_games() && !show.hold_and_spin());
     }
 
     #[test]
