@@ -4614,7 +4614,7 @@ fn open(label: &str) -> bool {
 
 /// A symbol for an open position, from a stable hash (`Roles::respin`:
 /// the title's symbols, the coin last).
-fn respin_symbol<'a>(roles: &'a Roles, reel: u8, row: u8, n: i64) -> &'a str {
+fn respin_symbol(roles: &Roles, reel: u8, row: u8, n: i64) -> &str {
     let symbols = &roles.respin;
     if symbols.len() < 2 {
         return roles.coin.as_str();
@@ -4668,7 +4668,7 @@ impl RespinAnim {
 
 /// The symbol at strip index `n` of a respinning position that comes to
 /// rest at `end` (a coin there if one lands; never a coin otherwise).
-fn respin_key<'a>(roles: &'a Roles, reel: u8, row: u8, n: i64, end: i64, coin: bool) -> &'a str {
+fn respin_key(roles: &Roles, reel: u8, row: u8, n: i64, end: i64, coin: bool) -> &str {
     let key = respin_symbol(roles, reel, row, n);
     let is_coin = key == roles.coin;
     if n == end {
