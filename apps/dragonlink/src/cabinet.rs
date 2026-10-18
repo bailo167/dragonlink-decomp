@@ -394,23 +394,21 @@ pub fn spawn(
                 Visibility::Hidden,
             ));
             // The black tile each coin sits on (cabinet footage and the app:
-            // a coin's cell is black, not the blue reel face), inside the
-            // gold separators; under the symbols, so overhangs draw over it.
-            let (cw, ch) = cell_size();
+            // a coin's cell is black, not the blue reel face), from separator
+            // to separator; under the symbols, so overhangs draw over it.
+            let (_, ch) = cell_size();
             for reel in 0..model.grid.reels {
+                let (left, width) = coin_tile_span(reel);
                 for row in 0..model.grid.rows {
-                    let (x, y) = cell_center(reel, row);
+                    let (_, y) = cell_center(reel, row);
                     c.spawn((
                         CoinTile { reel, row },
-                        Node {
-                            position_type: PositionType::Absolute,
-                            left: Val::Px(x - cw / 2.0 + 1.0),
-                            top: Val::Px(y - ch / 2.0),
-                            width: Val::Px(cw - 8.0),
-                            height: Val::Px(ch),
-                            ..default()
-                        },
-                        BackgroundColor(Color::BLACK),
+                        coin_tile(
+                            left,
+                            y - ch / 2.0,
+                            width,
+                            (row > 0, row + 1 < model.grid.rows),
+                        ),
                         Visibility::Hidden,
                     ));
                 }
@@ -1138,11 +1136,13 @@ fn spawn_deck(
             ..default()
         },
     ));
-    let (kw, kh, gx, gy) = (124.0, 64.0, 18.0, 10.0);
+    // Square keys, as on the cabinet (its keys are about as tall as wide),
+    // in two rows, and the teardrop beside them spanning both.
+    let (kw, kh, gx, gy) = DECK_KEY;
     let cluster = 6.0 * kw + 5.0 * gx;
-    let (sw, sh) = (226.0, 174.0);
-    let left = (CANVAS_W - (cluster + 70.0 + sw)) / 2.0;
-    let top = DECK_TOP + 18.0;
+    let (sw, sh) = DECK_TEARDROP;
+    let left = (CANVAS_W - (cluster + 60.0 + sw)) / 2.0;
+    let top = DECK_TOP + 8.0;
     for row in 0..2u8 {
         for col in 0..6u8 {
             deck_button(
@@ -1162,12 +1162,61 @@ fn spawn_deck(
         font,
         symbols,
         CabButton::Spin,
-        left + cluster + 70.0,
-        DECK_TOP + 2.0,
+        left + cluster + 60.0,
+        top + kh + gy / 2.0 - sh / 2.0,
         sw,
         sh,
     );
 }
+
+/// A key's width and height and the gaps between keys, and the teardrop's
+/// size (cabinet footage: square keys about a third of a key apart, the
+/// teardrop about 1.75 keys wide and as tall as both rows).
+const DECK_KEY: (f32, f32, f32, f32) = (96.0, 80.0, 30.0, 10.0);
+const DECK_TEARDROP: (f32, f32) = (170.0, 170.0);
+
+/// A key's legend as the cabinet stacks it: lines of their own sizes (a lines
+/// key reads a small PLAY, its count large, LINES, then the credits it bets),
+/// sized to sit inside the key's bezel.
+fn legend(role: Role, lines: u16, bet: u32) -> Vec<(String, f32)> {
+    let plural = |n: u64, word: &str| {
+        if n == 1 {
+            format!("{n} {word}")
+        } else {
+            format!("{n} {word}S")
+        }
+    };
+    let play = |n: u16, per: u32| {
+        let credits = u64::from(n) * u64::from(per);
+        vec![
+            ("PLAY".to_string(), 10.0),
+            (n.to_string(), 26.0),
+            ((if n == 1 { "LINE" } else { "LINES" }).to_string(), 9.5),
+            (
+                plural(credits, "CREDIT"),
+                if credits >= 100 { 8.5 } else { 9.0 },
+            ),
+        ]
+    };
+    match role {
+        Role::Gamble => vec![("GAMBLE".into(), 16.0)],
+        Role::TakeWin => vec![("TAKE".into(), 17.0), ("WIN".into(), 17.0)],
+        Role::Bet(m) => vec![
+            (format!("BET x {m}"), 13.0),
+            ((u64::from(m) * u64::from(lines)).to_string(), 26.0),
+        ],
+        Role::Credits(n) => vec![(n.to_string(), 38.0)],
+        Role::Lines(n) => play(n, bet),
+        Role::Play => play(lines, bet),
+        Role::Pick(p) if is_colour(p) => vec![(pick_text(p).into(), 17.0)],
+        Role::Pick(p) => vec![(pick_text(p).into(), 36.0)],
+        Role::Letter(c) => vec![(c.to_string(), 38.0)],
+        Role::Blank | Role::Lattice | Role::Off => Vec::new(),
+    }
+}
+
+/// Lines a key's legend may have.
+const LEGEND_LINES: u8 = 4;
 
 /// How the cabinet presents the game, held as data: as on the Australian club
 /// machines (the owner's recorded cabinet, and the only Golden Century deck
@@ -1356,39 +1405,6 @@ pub fn role(button: CabButton, deck: &DeckState) -> Role {
     }
 }
 
-/// "1 LINE", "5 LINES"; "1 CREDIT", "50 CREDITS".
-fn plural(n: u64, word: &str) -> String {
-    if n == 1 {
-        format!("{n} {word}")
-    } else {
-        format!("{n} {word}S")
-    }
-}
-
-/// A button's legend for its role, at `lines` lines and `bet` credits per
-/// line now.
-fn role_text(role: Role, lines: u16, bet: u32) -> String {
-    match role {
-        Role::Gamble => "GAMBLE".into(),
-        Role::TakeWin => "TAKE\nWIN".into(),
-        Role::Bet(m) => format!("BET x {m}\n{}", u64::from(m) * u64::from(lines)),
-        Role::Credits(n) => n.to_string(),
-        Role::Lines(n) => format!(
-            "PLAY\n{}\n{}",
-            plural(u64::from(n), "LINE"),
-            plural(u64::from(n) * u64::from(bet), "CREDIT")
-        ),
-        Role::Play => format!(
-            "PLAY\n{}\n{}",
-            plural(u64::from(lines), "LINE"),
-            plural(u64::from(bet) * u64::from(lines), "CREDIT")
-        ),
-        Role::Pick(p) => pick_text(p).into(),
-        Role::Letter(c) => c.to_string(),
-        Role::Blank | Role::Lattice | Role::Off => String::new(),
-    }
-}
-
 /// Whether a gamble choice is a colour (red or black) rather than a suit.
 fn is_colour(p: GamblePick) -> bool {
     matches!(p, GamblePick::Red | GamblePick::Black)
@@ -1432,9 +1448,9 @@ fn press(role: Role, input: &mut CabinetInput) {
 #[derive(Component)]
 pub struct DeckCap(pub CabButton);
 
-/// A deck button's caption.
+/// A line of a deck button's legend.
 #[derive(Component)]
-pub struct DeckLabel(pub CabButton);
+pub struct DeckLabel(pub CabButton, pub u8);
 
 /// The two faces a deck caption can use: text, or the suit symbols.
 #[derive(Component)]
@@ -1454,11 +1470,11 @@ fn deck_button(
     w: f32,
     h: f32,
 ) {
-    // The play button's caption sits in the teardrop's wide upper part.
+    // The play button's legend sits in the teardrop's wide upper part.
     let pad = if button == CabButton::Spin {
-        UiRect::bottom(Val::Px(h * 0.18))
+        UiRect::bottom(Val::Px(h * 0.22))
     } else {
-        UiRect::all(Val::Px(4.0))
+        UiRect::all(Val::Px(6.0))
     };
     c.spawn((
         button,
@@ -1480,21 +1496,36 @@ fn deck_button(
         },
     ))
     .with_children(|b| {
-        b.spawn((
-            DeckLabel(button),
-            Text::new(""),
-            TextFont {
-                font: bevy::text::FontSource::Handle(font.clone()),
-                font_size: FontSize::Px(20.0),
-                ..default()
-            },
-            TextColor(Color::WHITE),
-            TextLayout::justify(Justify::Center),
-            DeckFonts {
-                text: font.clone(),
-                symbols: symbols.clone(),
-            },
-        ));
+        b.spawn(Node {
+            flex_direction: FlexDirection::Column,
+            justify_content: JustifyContent::Center,
+            align_items: AlignItems::Center,
+            ..default()
+        })
+        .with_children(|col| {
+            for line in 0..LEGEND_LINES {
+                col.spawn((
+                    DeckLabel(button, line),
+                    Text::new(""),
+                    TextFont {
+                        font: bevy::text::FontSource::Handle(font.clone()),
+                        font_size: FontSize::Px(12.0),
+                        ..default()
+                    },
+                    TextColor(Color::WHITE),
+                    TextLayout::new(Justify::Center, LineBreak::NoWrap),
+                    LineHeight::RelativeToFont(1.0),
+                    DeckFonts {
+                        text: font.clone(),
+                        symbols: symbols.clone(),
+                    },
+                    Node {
+                        display: Display::None,
+                        ..default()
+                    },
+                ));
+            }
+        });
     })
     .observe(
         move |_press: On<PointerPress>, mut input: ResMut<CabinetInput>, deck: Res<DeckState>| {
@@ -1534,6 +1565,7 @@ pub fn light_deck(
         &mut Text,
         &mut TextFont,
         &mut TextColor,
+        &mut Node,
     )>,
 ) {
     if !fidelity.0 {
@@ -1630,40 +1662,52 @@ pub fn light_deck(
             image.color = tint;
         }
     }
-    for (label, fonts, mut text, mut font, mut color) in &mut labels {
+    for (label, fonts, mut text, mut font, mut color, mut node) in &mut labels {
         let r = role(label.0, &d);
-        let (word, size) = match (label.0, r) {
-            (CabButton::Spin, Role::Off | Role::Lattice) => (String::new(), 40.0),
+        let lines_of = |v: &[(&str, f32)]| -> Vec<(String, f32)> {
+            v.iter().map(|(w, z)| ((*w).to_string(), *z)).collect()
+        };
+        let words: Vec<(String, f32)> = match (label.0, r) {
+            (CabButton::Spin, Role::Off | Role::Lattice) => Vec::new(),
             // Footage: START FEATURE while a feature waits, SPIN through Hold
-            // & Spin, PLAY and REPEAT BET in turn at rest (club).
-            (CabButton::Spin, _) if start_wait => ("START\nFEATURE".to_string(), 26.0),
-            (CabButton::Spin, _) if show.hold_and_spin() => ("SPIN".to_string(), 40.0),
+            // & Spin, PLAY and REPEAT BET in turn at rest (club); sized to sit
+            // inside the teardrop's face.
+            (CabButton::Spin, _) if start_wait => lines_of(&[("START", 17.0), ("FEATURE", 15.0)]),
+            (CabButton::Spin, _) if show.hold_and_spin() => lines_of(&[("SPIN", 25.0)]),
             (CabButton::Spin, _)
                 if d.profile == Profile::Club
                     && d.mode == DeckMode::Base
                     && idle
                     && (d.since as u32) % 2 == 1 =>
             {
-                ("REPEAT\nBET".to_string(), 28.0)
+                lines_of(&[("REPEAT", 16.0), ("BET", 16.0)])
             }
-            (CabButton::Spin, _) => ("PLAY".to_string(), 40.0),
+            (CabButton::Spin, _) => lines_of(&[("PLAY", 25.0)]),
             // The plain face of the flash carries no legend.
-            (cap, r) if flashing(cap, r) => (String::new(), 19.0),
+            (cap, r) if flashing(cap, r) => Vec::new(),
             // Top left is blank purple in the gamble.
-            (_, Role::Gamble) if d.mode == DeckMode::Gamble => (String::new(), 19.0),
-            (_, Role::Pick(p)) if !is_colour(p) && !suits_open => (String::new(), 38.0),
-            (_, Role::Pick(p)) if !is_colour(p) => (pick_text(p).to_string(), 38.0),
+            (_, Role::Gamble) if d.mode == DeckMode::Gamble => Vec::new(),
+            (_, Role::Pick(p)) if !is_colour(p) && !suits_open => Vec::new(),
             // The letters wipe in from the left, one every 0.1 s.
             (CabButton::Slot { col, .. }, Role::Letter(_))
                 if d.mode == DeckMode::Spinning && d.since < 0.1 * f32::from(col) =>
             {
-                (String::new(), 44.0)
+                Vec::new()
             }
-            (_, Role::Letter(_)) => (role_text(r, lines, bet), 44.0),
-            (_, Role::Credits(_)) => (role_text(r, lines, bet), 40.0),
-            (_, Role::Lines(_) | Role::Play) => (role_text(r, lines, bet), 15.0),
-            _ => (role_text(r, lines, bet), 19.0),
+            _ => legend(r, lines, bet),
         };
+        let (word, size) = words
+            .get(label.1 as usize)
+            .cloned()
+            .unwrap_or((String::new(), 12.0));
+        let display = if word.is_empty() {
+            Display::None
+        } else {
+            Display::Flex
+        };
+        if node.display != display {
+            node.display = display;
+        }
         if text.0 != word {
             text.0 = word;
         }
@@ -2159,17 +2203,11 @@ pub fn spawn_strips(c: &mut ChildSpawnerCommands, reels: u8) {
         ))
         .with_children(|col| {
             // The black tiles under passing coins, behind everything.
+            let (left, width) = coin_tile_span(reel);
             for index in 0..STRIP_SLOTS as u8 {
                 col.spawn((
                     StripTile { reel, index },
-                    Node {
-                        position_type: PositionType::Absolute,
-                        left: Val::Px(1.0),
-                        width: Val::Px(cw - 8.0),
-                        height: Val::Px(pitch()),
-                        ..default()
-                    },
-                    BackgroundColor(Color::BLACK),
+                    coin_tile(left - (x - column_width() / 2.0), 0.0, width, (true, true)),
                     Visibility::Hidden,
                 ));
             }
@@ -2455,7 +2493,7 @@ pub fn spin_reels(
         }
         if coin {
             let cy = p / 2.0 + (n as f32 - reels.states[reel].pos) * p;
-            node.top = Val::Px(cy - p / 2.0);
+            node.top = Val::Px(cy - p / 2.0 - COIN_TILE_FADE);
         }
     }
     for (g, mut image, mut node, mut vis) in &mut ghosts {
@@ -2837,6 +2875,58 @@ pub fn rollup_skip(
 // ---------------------------------------------------------------------------
 // Orb prizes
 // ---------------------------------------------------------------------------
+
+/// The gold separators' cores between the reels on the reel panel (canvas
+/// x, measured on the drawn panel): a coin's black tile runs between them,
+/// so no sliver of the blue reel face shows beside it.
+const SEPARATOR_CORES: [(f32, f32); 6] = [
+    (141.0, 149.0),
+    (469.0, 474.0),
+    (792.0, 797.0),
+    (1116.0, 1121.0),
+    (1441.0, 1445.0),
+    (1766.0, 1771.0),
+];
+/// How far a coin's tile reaches past its cell, above and below, fading out:
+/// the coin's flames run a little past the cell and sit on darkness, not on
+/// the blue face (on the cabinet they never show over blue).
+const COIN_TILE_FADE: f32 = 14.0;
+
+/// A reel's coin tile: its left edge and width on the canvas.
+fn coin_tile_span(reel: u8) -> (f32, f32) {
+    let i = (reel as usize).min(SEPARATOR_CORES.len() - 2);
+    let left = SEPARATOR_CORES[i].1;
+    let right = SEPARATOR_CORES[i + 1].0;
+    (left, right - left)
+}
+
+/// A coin's black tile at `left`, its cell's `top`, `width` wide: black
+/// over the cell, fading out just above and below it, except at the window's
+/// own top and bottom edges (`fade`: above, below), where the frame is.
+fn coin_tile(left: f32, top: f32, width: f32, fade: (bool, bool)) -> impl Bundle {
+    let up = if fade.0 { COIN_TILE_FADE } else { 0.0 };
+    let down = if fade.1 { COIN_TILE_FADE } else { 0.0 };
+    let h = pitch() + up + down;
+    let stop = |color: Color, at: f32| bevy::ui::ColorStop::new(color, Val::Px(at));
+    (
+        Node {
+            position_type: PositionType::Absolute,
+            left: Val::Px(left),
+            top: Val::Px(top - up),
+            width: Val::Px(width),
+            height: Val::Px(h),
+            ..default()
+        },
+        bevy::ui::BackgroundGradient(vec![bevy::ui::Gradient::Linear(
+            bevy::ui::LinearGradient::to_bottom(vec![
+                stop(if fade.0 { Color::NONE } else { Color::BLACK }, 0.0),
+                stop(Color::BLACK, up),
+                stop(Color::BLACK, h - down),
+                stop(if fade.1 { Color::NONE } else { Color::BLACK }, h),
+            ]),
+        )]),
+    )
+}
 
 /// The black tile under a landed coin.
 #[derive(Component)]
@@ -6404,9 +6494,10 @@ const GAMBLE_VALUE_Y: f32 = 501.5;
 const GAMBLE_WIN_CAPTION_Y: f32 = 363.0;
 const GAMBLE_WIN_VALUE_Y: f32 = 417.5;
 const GAMBLE_LINE: f32 = 35.0;
-/// Seconds from a choice to the card turning (footage: 0.36-0.40 s from the
-/// touch; a press here registers at once).
-pub const GAMBLE_FACE_DELAY: f32 = 0.35;
+/// Seconds from a choice to the card turning (footage: 0.10-0.17 s after the
+/// finger lifts, 0.36-0.40 s after it first touches; a click here registers
+/// as it is pressed, so the shorter delay; 0.35 s felt late).
+pub const GAMBLE_FACE_DELAY: f32 = 0.15;
 
 /// The gamble screen's captions: upright bold, pale blue-white, with a dark
 /// navy edge (cabinet footage).
