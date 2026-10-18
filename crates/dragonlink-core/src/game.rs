@@ -159,6 +159,10 @@ pub struct HoldAndSpinState {
     /// ends (the owner: Hold & Spin first, then the free games).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub then_free_games: Option<u8>,
+    /// The free games a free game's coins interrupted to start this Hold &
+    /// Spin; they carry on when it ends, its win joining their total.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub resume_free_games: Option<FreeGamesState>,
 }
 
 impl HoldAndSpinState {
@@ -848,6 +852,7 @@ impl Game {
                 total_bet,
                 base_award,
                 then_free_games: fg_trigger.map(|fg| fg.initial_games),
+                resume_free_games: None,
             });
         } else if let Some(fg) = fg_trigger {
             events.push(Event::FeatureTriggered {
@@ -951,6 +956,24 @@ impl Game {
             }
         }
 
+        // Coins: each one in the window carries its own prize (revealed
+        // coins draw one each, as the mobile build does). Enough of them
+        // start Hold & Spin once this game's pays are made.
+        let mut orbs: Vec<Option<OrbValue>> = vec![None; self.model.grid.cells()];
+        if let Some(hs) = &self.model.hold_and_spin {
+            let stake = Stake {
+                credits: state.total_bet,
+                unit: next.unit,
+            };
+            for (index, (reel, row, symbol)) in grid.iter().enumerate() {
+                if self.model.kind(symbol) == Some(SymbolKind::Orb) {
+                    let value = draw_orb_value(hs, stake, rng)?;
+                    orbs[index] = Some(value);
+                    events.push(Event::OrbValueShown { reel, row, value });
+                }
+            }
+        }
+
         // Pays. A free game takes no bet.
         let wins = evaluate_lines(
             &self.model,
@@ -1016,6 +1039,34 @@ impl Game {
             }
         }
         events.push(Event::FreeGameCompleted { number, award });
+
+        // Hold & Spin from the free game's coins; the free games wait for it.
+        let orb_count = orbs.iter().flatten().count();
+        if let Some(hs) = self
+            .model
+            .hold_and_spin
+            .as_ref()
+            .filter(|hs| orb_count >= hs.trigger_count as usize)
+        {
+            events.push(Event::FeatureTriggered {
+                feature: Feature::HoldAndSpin,
+                count: orb_count as u8,
+            });
+            events.push(Event::HoldAndSpinStarted {
+                respins: hs.initial_respins,
+                locked: locked_orbs(&orbs, rows),
+            });
+            next.phase = Phase::HoldAndSpin(HoldAndSpinState {
+                cells: orbs,
+                respins_left: hs.initial_respins,
+                respins_played: 0,
+                total_bet: state.total_bet,
+                base_award: 0,
+                then_free_games: None,
+                resume_free_games: Some(state),
+            });
+            return Ok(());
+        }
 
         if state.games_left == 0 {
             events.push(Event::FreeGamesCompleted {
@@ -1146,7 +1197,26 @@ impl Game {
                 });
                 next.credits = to;
             }
-            if let Some(games) = feature.then_free_games {
+            if let Some(mut free) = feature.resume_free_games.take() {
+                // Back to the free games this Hold & Spin interrupted.
+                free.total_award = add(free.total_award, total)?;
+                if free.games_left == 0 {
+                    events.push(Event::FreeGamesCompleted {
+                        games_played: free.games_played,
+                        total_award: free.total_award - free.base_award,
+                    });
+                    events.push(Event::SpinCompleted {
+                        spin: next.spins,
+                        total_award: free.total_award,
+                    });
+                    next.phase = Phase::Idle;
+                } else {
+                    events.push(Event::FreeGamesResumed {
+                        remaining: free.games_left,
+                    });
+                    next.phase = Phase::FreeGames(free);
+                }
+            } else if let Some(games) = feature.then_free_games {
                 // The free games the same spin won follow; the spin is
                 // complete when they are.
                 let total_bet = feature.total_bet;
@@ -1984,6 +2054,71 @@ mod tests {
         let resumed = Game::resume(tiny(), state).unwrap();
         assert_eq!(resumed, game);
         assert!(!resumed.is_idle());
+    }
+
+    /// Golden Century's doors reveal coins; six or more start Hold & Spin
+    /// inside the free games, which carry on after it with its win.
+    #[test]
+    fn a_hold_and_spin_inside_the_free_games_resumes_and_hands_back() {
+        use dragonlink_model::fixtures::golden_century_synthetic;
+        let model = golden_century_synthetic();
+        let mut game = Game::new(model.clone(), 1_000_000_000).unwrap();
+        let mut rng = DevRng::new(4);
+        for _ in 0..60_000 {
+            game.apply(Command::Spin, &mut rng).unwrap();
+            while !game.is_idle() {
+                let nested = match &game.state().phase {
+                    Phase::HoldAndSpin(hs) => hs.resume_free_games.clone(),
+                    _ => None,
+                };
+                let Some(free) = nested else {
+                    game.apply(Command::Advance, &mut rng).unwrap();
+                    continue;
+                };
+                // A save here resumes into the same game.
+                let saved = serde_json::to_string(game.state()).unwrap();
+                let state: GameState = serde_json::from_str(&saved).unwrap();
+                let mut copy = Game::resume(model.clone(), state).unwrap();
+                assert_eq!(copy, game);
+                let mut copy_rng = rng.clone();
+                let mut rest = Vec::new();
+                while !game.is_idle() {
+                    rest.extend(game.apply(Command::Advance, &mut rng).unwrap());
+                }
+                let mut copy_rest = Vec::new();
+                while !copy.is_idle() {
+                    copy_rest.extend(copy.apply(Command::Advance, &mut copy_rng).unwrap());
+                }
+                assert_eq!(rest, copy_rest);
+                // Hold & Spin ends, then the free games carry on (or end, if
+                // it came on their last game), its win in their total.
+                let end = rest
+                    .iter()
+                    .position(|e| matches!(e, Event::HoldAndSpinCompleted { .. }))
+                    .unwrap();
+                let Event::HoldAndSpinCompleted { total_award, .. } = rest[end] else {
+                    unreachable!()
+                };
+                let after: Vec<&Event> = rest[end + 1..]
+                    .iter()
+                    .filter(|e| !matches!(e, Event::CreditsChanged { .. }))
+                    .collect();
+                match free.games_left {
+                    0 => assert!(matches!(after[0], Event::FreeGamesCompleted { .. })),
+                    left => assert_eq!(after[0], &Event::FreeGamesResumed { remaining: left }),
+                }
+                let Some(Event::SpinCompleted {
+                    total_award: spin_total,
+                    ..
+                }) = rest.last()
+                else {
+                    panic!("the spin completes once the free games end")
+                };
+                assert!(*spin_total >= free.total_award + total_award);
+                return;
+            }
+        }
+        panic!("no Hold & Spin started inside the free games");
     }
 
     #[test]

@@ -55,8 +55,9 @@ const FEATURE_TEST_ORB: usize = 3;
 const FEATURE_TEST_SCATTER: usize = 6;
 
 /// Testing only (`DRAGONLINK_SCENARIO`, Golden Century): prepared runs whose
-/// first spin lands six coins and three flags, so Hold & Spin plays and the
-/// free games follow, the free games' reels carrying the mystery doors often.
+/// first spin lands three flags, and in most of them six coins too, so Hold &
+/// Spin plays and the free games follow; the free games' reels carry the
+/// mystery doors often.
 /// The outcome source is left alone: its first spin's reel stops are worked
 /// out from the seed and the synthetic strips are dressed at those stops.
 /// Changes to that run's synthetic model only, never a claim about the
@@ -71,6 +72,11 @@ enum Scenario {
     /// `minors`: four Minis and two Minors, no Major or Grand, so the win
     /// may be gambled, at [`MINORS_SEED`].
     Minors,
+    /// `doors`: three flags and no Hold & Spin first; in the free games the
+    /// doors open onto coins that start Hold & Spin, and in another game onto
+    /// the emperor; no Major or Grand, so the win may be gambled, at
+    /// [`DOORS_SEED`].
+    Doors,
 }
 
 /// The seeds the `jackpots` and `minors` runs play: found by
@@ -78,6 +84,7 @@ enum Scenario {
 /// `the_jackpot_scenarios_win_what_they_promise`.
 const JACKPOTS_SEED: u64 = 1;
 const MINORS_SEED: u64 = 17;
+const DOORS_SEED: u64 = 38;
 
 impl Scenario {
     fn from_env() -> Option<Scenario> {
@@ -85,6 +92,7 @@ impl Scenario {
             "both" => Some(Scenario::Both),
             "jackpots" => Some(Scenario::Jackpots),
             "minors" => Some(Scenario::Minors),
+            "doors" => Some(Scenario::Doors),
             _ => None,
         }
     }
@@ -95,13 +103,23 @@ impl Scenario {
             Scenario::Both => seed,
             Scenario::Jackpots => JACKPOTS_SEED,
             Scenario::Minors => MINORS_SEED,
+            Scenario::Doors => DOORS_SEED,
         }
     }
 
     /// This run's model, for the seed it plays. Its jackpots keep their
     /// full chance at every stake, so the run is the same whatever the bet.
     fn model(self, model: MathModel, seed: u64) -> MathModel {
-        let mut model = both_features_scenario(model, seed);
+        let mut model = dress_scenario(model, seed, self != Scenario::Doors);
+        let orb = model.symbols.iter().position(|s| s.key == "orb");
+        // The runs that promise their jackpots keep the doors off coins, so
+        // their free games start no Hold & Spin of their own.
+        if self != Scenario::Doors
+            && let Some(fg) = model.free_games.as_mut()
+        {
+            fg.reveal_values
+                .retain(|v| Some(usize::from(v.symbol.0)) != orb);
+        }
         let Some(hs) = model.hold_and_spin.as_mut() else {
             return model;
         };
@@ -109,7 +127,9 @@ impl Scenario {
             jackpot.full_chance_stake = None;
         }
         match self {
-            Scenario::Both => {}
+            // Coins on most respins, so the grid fills and the Grand is won.
+            Scenario::Both => hs.orb_land_chance = dragonlink_model::Ratio { num: 3, den: 4 },
+            Scenario::Doors => {}
             Scenario::Jackpots | Scenario::Minors => {
                 // Fewer coins per respin, and jackpots on more of them.
                 hs.orb_land_chance = dragonlink_model::Ratio { num: 1, den: 6 };
@@ -150,8 +170,10 @@ fn scenario(game: GameChoice, model: MathModel, seed: u64) -> (MathModel, u64) {
     }
 }
 
-/// The `both` run's model (see [`Scenario`]); the others start from it.
-fn both_features_scenario(mut model: MathModel, seed: u64) -> MathModel {
+/// A prepared run's dressing (see [`Scenario`]): the first spin's window with
+/// three flags, and six coins when `coins`, at the stops the seed draws; the
+/// doors on every third stop of the free games' reels.
+fn dress_scenario(mut model: MathModel, seed: u64, coins: bool) -> MathModel {
     let id = |key: &str| {
         model
             .symbols
@@ -163,13 +185,15 @@ fn both_features_scenario(mut model: MathModel, seed: u64) -> MathModel {
     let (Some(orb), Some(flag), Some(doors)) = (id("orb"), id("pennant"), id("doors")) else {
         return model;
     };
-    // The first spin's window, reel by reel, top row first: six coins and
-    // three flags; the other cells keep the strip's own symbols.
+    // The first spin's window, reel by reel, top row first: three flags and
+    // six coins (or none: the strip's own symbols stay, never a coin); the
+    // other cells keep the strip's own symbols.
+    let coin = coins.then_some(orb);
     let window: [[Option<dragonlink_model::SymbolId>; 3]; 5] = [
-        [Some(flag), Some(orb), Some(orb)],
-        [Some(orb), None, Some(orb)],
-        [Some(flag), Some(orb), None],
-        [Some(orb), None, None],
+        [Some(flag), coin, coin],
+        [coin, None, coin],
+        [Some(flag), coin, None],
+        [coin, None, None],
         [Some(flag), None, None],
     ];
     // The stops the seeded source will draw for the first spin: one draw
@@ -189,10 +213,6 @@ fn both_features_scenario(mut model: MathModel, seed: u64) -> MathModel {
                 strip[(stop as usize + row) % len] = *symbol;
             }
         }
-    }
-    // Coins on most respins, so the grid fills and the Grand is won.
-    if let Some(hs) = model.hold_and_spin.as_mut() {
-        hs.orb_land_chance = dragonlink_model::Ratio { num: 3, den: 4 };
     }
     // The doors on every third stop of the free games' reels.
     if let Some(fg) = model.free_games.as_mut() {
@@ -2600,10 +2620,7 @@ mod tests {
     /// can then be gambled (by the simulation; the app also refuses after a
     /// progressive win).
     fn first_spin(run: Scenario, seed: u64) -> (Vec<JackpotTier>, bool, bool) {
-        let model = run.model(golden_century_synthetic(), seed);
-        let mut game = Game::new(model, 100_000).unwrap();
-        let mut rng = DevRng::new(seed);
-        let events = game.play_spin(&mut rng).unwrap();
+        let (events, gamble) = first_spin_events(run, seed);
         let mut won: Vec<JackpotTier> = events
             .iter()
             .filter_map(|e| match e {
@@ -2624,7 +2641,75 @@ mod tests {
         });
         let fg = at(&|e| matches!(e, Event::FreeGamesStarted { .. }));
         let both = hs.is_some() && fg.is_some() && hs < fg;
-        (won, both, game.can_gamble())
+        (won, both, gamble)
+    }
+
+    /// A prepared run's first spin at `seed`, and whether its win can then
+    /// be gambled (by the simulation).
+    fn first_spin_events(run: Scenario, seed: u64) -> (Vec<Event>, bool) {
+        let model = run.model(golden_century_synthetic(), seed);
+        let mut game = Game::new(model, 100_000).unwrap();
+        let mut rng = DevRng::new(seed);
+        let events = game.play_spin(&mut rng).unwrap();
+        (events, game.can_gamble())
+    }
+
+    /// Whether the `doors` run's first spin does what it promises: free games
+    /// with no Hold & Spin first; by their third game, doors open onto coins
+    /// that start Hold & Spin, which ends short of a full grid; in another
+    /// game onto the emperor; no Major or Grand; the free games finish; the
+    /// win may be gambled.
+    fn doors_as_promised(seed: u64) -> bool {
+        let (events, gamble) = first_spin_events(Scenario::Doors, seed);
+        let at = |f: &dyn Fn(&Event) -> bool| events.iter().position(f);
+        let Some(fg) = at(&|e| matches!(e, Event::FreeGamesStarted { .. })) else {
+            return false;
+        };
+        let Some(hs) = at(&|e| matches!(e, Event::HoldAndSpinStarted { .. })) else {
+            return false;
+        };
+        let game_at_hs = events[..hs]
+            .iter()
+            .rev()
+            .find_map(|e| match e {
+                Event::FreeGameStarted { number, .. } => Some(*number),
+                _ => None,
+            })
+            .unwrap_or(0);
+        let coin_reveal = events[..hs]
+            .iter()
+            .any(|e| matches!(e, Event::MysteryRevealed { symbol, .. } if symbol == "orb"));
+        let emperor = events
+            .iter()
+            .any(|e| matches!(e, Event::MysteryRevealed { symbol, .. } if symbol == "emperor"));
+        let progressive = events.iter().any(|e| {
+            matches!(
+                e,
+                Event::JackpotAwarded {
+                    tier: JackpotTier::Major | JackpotTier::Grand,
+                    ..
+                }
+            )
+        });
+        let full = events.iter().any(|e| {
+            matches!(
+                e,
+                Event::HoldAndSpinCompleted {
+                    full_grid: true,
+                    ..
+                }
+            )
+        });
+        let finished =
+            at(&|e| matches!(e, Event::FreeGamesCompleted { .. })).is_some_and(|end| end > hs);
+        fg < hs
+            && (1..=3).contains(&game_at_hs)
+            && coin_reveal
+            && emperor
+            && !progressive
+            && !full
+            && finished
+            && gamble
     }
 
     fn tally(tier: JackpotTier, count: usize) -> Vec<JackpotTier> {
@@ -2659,6 +2744,11 @@ mod tests {
                 .collect();
             println!("{run:?}: {found:?}");
         }
+        let doors: Vec<u64> = (0..200_000u64)
+            .filter(|&seed| doors_as_promised(seed))
+            .take(5)
+            .collect();
+        println!("Doors: {doors:?}");
     }
 
     #[test]
@@ -2671,6 +2761,10 @@ mod tests {
             // it after the Major (a progressive win).
             assert!(gamble, "{run:?}: the win may be gambled");
         }
+        assert!(
+            doors_as_promised(Scenario::Doors.seed(0)),
+            "doors: coins open Hold & Spin in the free games, and the emperor"
+        );
     }
 
     #[test]

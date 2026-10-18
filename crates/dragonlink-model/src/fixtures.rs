@@ -658,7 +658,11 @@ pub fn golden_century_synthetic() -> MathModel {
             (JACK, 5),
         ]),
     ];
-    // What the mystery reveals to, weighted towards the lower symbols. Synthetic.
+    // What the doors reveal to: the game's help screen lists the emperor,
+    // the picture symbols, K to 9 and the coin. The weights are synthetic,
+    // towards the lower symbols, with the emperor (wild) and the coin about
+    // one reveal in eight each; revealed coins each draw a prize, and six or
+    // more start Hold & Spin.
     let reveal_values = [
         (28, NINE),
         (24, TEN),
@@ -669,6 +673,8 @@ pub fn golden_century_synthetic() -> MathModel {
         (5, VASE),
         (4, CHEST),
         (2, WOMEN),
+        (18, EMPEROR),
+        (18, ORB),
     ]
     .into_iter()
     .map(|(weight, symbol)| WeightedSymbol {

@@ -106,17 +106,51 @@ fn the_free_games_feature_triggers_plays_and_returns_cleanly() {
     let mut free_rounds = 0usize;
     let mut reveals = 0usize;
     let mut retriggers = 0usize;
+    let (mut wild_reveals, mut coin_reveals, mut nested) = (0usize, 0usize, 0usize);
     for _ in 0..60_000 {
         let events = game.play_spin(&mut rng).unwrap();
+        // A Hold & Spin a free game's coins start sits inside the free
+        // games: it ends before they do, and they carry on or end with it.
+        let fg_start = events
+            .iter()
+            .position(|e| matches!(e, Event::FreeGamesStarted { .. }));
+        for (i, e) in events.iter().enumerate() {
+            if let (Event::HoldAndSpinStarted { .. }, Some(start)) = (e, fg_start)
+                && i > start
+            {
+                nested += 1;
+                let end = events[i..]
+                    .iter()
+                    .position(|e| matches!(e, Event::HoldAndSpinCompleted { .. }))
+                    .map(|j| i + j)
+                    .expect("the Hold & Spin ends");
+                assert!(
+                    matches!(
+                        events.get(end + 1..end + 3),
+                        Some([Event::CreditsChanged { .. }, Event::FreeGamesResumed { .. }])
+                            | Some([
+                                Event::CreditsChanged { .. },
+                                Event::FreeGamesCompleted { .. }
+                            ])
+                            | Some([Event::FreeGamesResumed { .. }, _])
+                            | Some([Event::FreeGamesCompleted { .. }, _])
+                    ),
+                    "the free games carry on or end after it: {:?}",
+                    events.get(end..end + 3)
+                );
+            }
+        }
         for e in &events {
             match e {
                 Event::FreeGamesStarted { games } => {
                     assert_eq!(*games, 6, "six free games");
                     free_rounds += 1;
                 }
-                Event::MysteryRevealed { count, .. } => {
+                Event::MysteryRevealed { count, symbol } => {
                     assert!(*count >= 1);
                     reveals += 1;
+                    wild_reveals += usize::from(symbol == "emperor");
+                    coin_reveals += usize::from(symbol == "orb");
                 }
                 Event::FreeGamesRetriggered { added, .. } => {
                     assert_eq!(*added, 3, "three more free games");
@@ -129,10 +163,16 @@ fn the_free_games_feature_triggers_plays_and_returns_cleanly() {
         assert!(game.is_idle(), "did not return to the base game");
     }
     eprintln!(
-        "free games: {free_rounds} rounds, {reveals} reveals, {retriggers} retriggers in 60k spins"
+        "free games: {free_rounds} rounds, {reveals} reveals ({wild_reveals} wild, {coin_reveals} coins), \
+         {retriggers} retriggers, {nested} Hold & Spin inside in 60k spins"
     );
     assert!(free_rounds > 0, "free games never triggered");
     assert!(reveals > 0, "the reveal never happened");
+    // The doors reveal the wild and the coin (the game's help screen), and
+    // revealed coins start Hold & Spin (the manufacturer's page).
+    assert!(wild_reveals > 0, "the doors never revealed the wild");
+    assert!(coin_reveals > 0, "the doors never revealed coins");
+    assert!(nested > 0, "revealed coins never started Hold & Spin");
 }
 
 #[test]
@@ -387,7 +427,11 @@ fn both_features_from_one_spin_play_hold_and_spin_then_the_free_games() {
             .map(|(i, _)| i)
             .collect();
         assert_eq!(completed.len(), 1, "one completion a spin");
-        if let (Some(a), Some(b), Some(c), Some(d)) = (hs_start, hs_end, fg_start, fg_end) {
+        // The base window won both (a Hold & Spin inside the free games,
+        // started by their coins, comes after them instead).
+        if let (Some(a), Some(b), Some(c), Some(d)) = (hs_start, hs_end, fg_start, fg_end)
+            && a < c
+        {
             both += 1;
             assert!(a < b && b < c && c < d, "Hold & Spin, then the free games");
             assert!(completed[0] > d, "the spin completes after both");

@@ -123,6 +123,11 @@ pub enum Event {
         symbol: String,
         count: u8,
     },
+    /// The free games carry on after a Hold & Spin that one of them started.
+    FreeGamesResumed {
+        /// Free games left to play.
+        remaining: u32,
+    },
     FreeGamesRetriggered {
         /// Free games added.
         added: u8,
@@ -181,6 +186,7 @@ impl Event {
             Event::FreeGamesStarted { .. } => "free_games_started",
             Event::FreeGameStarted { .. } => "free_game_started",
             Event::MysteryRevealed { .. } => "mystery_revealed",
+            Event::FreeGamesResumed { .. } => "free_games_resumed",
             Event::FreeGamesRetriggered { .. } => "free_games_retriggered",
             Event::FreeGameCompleted { .. } => "free_game_completed",
             Event::FreeGamesCompleted { .. } => "free_games_completed",
