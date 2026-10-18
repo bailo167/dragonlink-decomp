@@ -247,6 +247,180 @@ impl Roles {
     }
 }
 
+/// This app's machine chooser, not a cabinet feature: every title with a
+/// local pack, opened from the yellow pill at the band's left. Choosing
+/// another title restarts the app as that machine, the money carried over.
+#[derive(Resource, Default)]
+pub struct MachineMenu {
+    pub open: bool,
+    /// (slug, name) of each title with a pack, in the launcher's order.
+    pub entries: Vec<(String, String)>,
+    /// The running title's slug.
+    pub current: String,
+    /// A title chosen, for `main` to switch to.
+    pub chosen: Option<String>,
+}
+
+/// The chooser's overlay.
+#[derive(Component)]
+pub struct MachineMenuRoot;
+
+/// Build the machine chooser, hidden until the pill is touched.
+pub fn spawn_machine_menu(commands: &mut Commands, fonts: &CabFonts, menu: &MachineMenu) {
+    let gold = Color::srgb(1.0, 0.86, 0.12);
+    commands
+        .spawn((
+            CanvasRoot,
+            MachineMenuRoot,
+            Node {
+                position_type: PositionType::Absolute,
+                width: Val::Px(CANVAS_W),
+                height: Val::Px(CANVAS_H),
+                ..default()
+            },
+            GlobalZIndex(60),
+            Visibility::Hidden,
+        ))
+        .with_children(|c| {
+            c.spawn((
+                Node {
+                    position_type: PositionType::Absolute,
+                    width: Val::Percent(100.0),
+                    height: Val::Percent(100.0),
+                    ..default()
+                },
+                BackgroundColor(Color::srgba(0.0, 0.0, 0.0, 0.62)),
+            ));
+            c.spawn((
+                Node {
+                    position_type: PositionType::Absolute,
+                    left: Val::Px(440.0),
+                    top: Val::Px(150.0),
+                    width: Val::Px(1040.0),
+                    border: UiRect::all(Val::Px(4.0)),
+                    border_radius: BorderRadius::all(Val::Px(30.0)),
+                    padding: UiRect::all(Val::Px(32.0)),
+                    flex_direction: FlexDirection::Column,
+                    align_items: AlignItems::Center,
+                    row_gap: Val::Px(28.0),
+                    ..default()
+                },
+                BackgroundColor(Color::srgb(0.05, 0.06, 0.16)),
+                BorderColor::all(gold),
+            ))
+            .with_children(|p| {
+                p.spawn((
+                    Text::new("CHOOSE YOUR MACHINE"),
+                    TextFont {
+                        font: bevy::text::FontSource::Handle(fonts.meter.clone()),
+                        font_size: FontSize::Px(52.0),
+                        ..default()
+                    },
+                    TextColor(gold),
+                ));
+                p.spawn(Node {
+                    width: Val::Px(960.0),
+                    flex_wrap: FlexWrap::Wrap,
+                    justify_content: JustifyContent::Center,
+                    column_gap: Val::Px(28.0),
+                    row_gap: Val::Px(24.0),
+                    ..default()
+                })
+                .with_children(|g| {
+                    for (slug, name) in &menu.entries {
+                        let here = *slug == menu.current;
+                        let slug = slug.clone();
+                        g.spawn((
+                            Node {
+                                width: Val::Px(440.0),
+                                height: Val::Px(92.0),
+                                border: UiRect::all(Val::Px(3.0)),
+                                border_radius: BorderRadius::all(Val::Px(46.0)),
+                                justify_content: JustifyContent::Center,
+                                align_items: AlignItems::Center,
+                                ..default()
+                            },
+                            BackgroundColor(if here {
+                                Color::srgb(0.55, 0.38, 0.04)
+                            } else {
+                                Color::srgb(0.1, 0.2, 0.55)
+                            }),
+                            BorderColor::all(if here {
+                                gold
+                            } else {
+                                Color::srgb(0.6, 0.7, 1.0)
+                            }),
+                        ))
+                        .with_children(|b| {
+                            b.spawn((
+                                Text::new(name.to_uppercase()),
+                                TextFont {
+                                    font: bevy::text::FontSource::Handle(fonts.meter.clone()),
+                                    font_size: FontSize::Px(34.0),
+                                    ..default()
+                                },
+                                TextColor(Color::WHITE),
+                            ));
+                        })
+                        .observe(
+                            move |_press: On<PointerPress>, mut menu: ResMut<MachineMenu>| {
+                                if menu.open {
+                                    menu.chosen = Some(slug.clone());
+                                }
+                            },
+                        );
+                    }
+                });
+                p.spawn((
+                    Node {
+                        width: Val::Px(260.0),
+                        height: Val::Px(70.0),
+                        border: UiRect::all(Val::Px(3.0)),
+                        border_radius: BorderRadius::all(Val::Px(35.0)),
+                        justify_content: JustifyContent::Center,
+                        align_items: AlignItems::Center,
+                        ..default()
+                    },
+                    BackgroundColor(Color::srgb(0.25, 0.25, 0.3)),
+                    BorderColor::all(Color::srgb(0.75, 0.75, 0.8)),
+                ))
+                .with_children(|b| {
+                    b.spawn((
+                        Text::new("BACK"),
+                        TextFont {
+                            font: bevy::text::FontSource::Handle(fonts.meter.clone()),
+                            font_size: FontSize::Px(32.0),
+                            ..default()
+                        },
+                        TextColor(Color::WHITE),
+                    ));
+                })
+                .observe(
+                    |_press: On<PointerPress>, mut menu: ResMut<MachineMenu>| {
+                        menu.open = false;
+                    },
+                );
+            });
+        });
+}
+
+/// Show or hide the machine chooser.
+pub fn machine_menu(
+    menu: Res<MachineMenu>,
+    mut roots: Query<&mut Visibility, With<MachineMenuRoot>>,
+) {
+    let want = if menu.open {
+        Visibility::Visible
+    } else {
+        Visibility::Hidden
+    };
+    for mut vis in &mut roots {
+        if *vis != want {
+            *vis = want;
+        }
+    }
+}
+
 /// A PNG's pixel size, read from its header.
 pub fn png_size(path: &Path) -> Option<(f32, f32)> {
     let mut f = std::fs::File::open(path).ok()?;
@@ -961,7 +1135,8 @@ fn spawn_meter_band(
     ));
 
     // The tall yellow pill at the far left, with its stacked bars (its
-    // function is not shown on footage).
+    // function is not shown on footage). In this app it opens the machine
+    // chooser (MachineMenu), this app's own feature.
     let (pill_top, pill_h) = if club { (937.0, 92.0) } else { (945.0, 90.0) };
     c.spawn((
         Node {
@@ -989,6 +1164,9 @@ fn spawn_meter_band(
                 BackgroundColor(Color::srgb(0.12, 0.14, 0.4)),
             ));
         }
+    })
+    .observe(|_press: On<PointerPress>, mut menu: ResMut<MachineMenu>| {
+        menu.open = !menu.open;
     });
     // The tabs. Club: GAMES MENU above the band at the far left, GAME RULES
     // on it; COLLECT over the denomination box. Casino: GAME RULES on the

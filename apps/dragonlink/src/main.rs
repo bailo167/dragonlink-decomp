@@ -431,6 +431,52 @@ fn title_case(name: &str) -> String {
         .join(" ")
 }
 
+/// Switch machines when the chooser picks another title: the app starts
+/// again as that title, with the same money (`--credits` at 1c), and this
+/// one closes. Only between games; a feature in progress keeps the machine.
+fn machine_switch(
+    smoke: Res<Smoke>,
+    sim: Res<Sim>,
+    denom: Res<Denom>,
+    presentation: Res<Presentation>,
+    mut menu: ResMut<cabinet::MachineMenu>,
+    mut exit: MessageWriter<AppExit>,
+) {
+    // Testing (`DRAGONLINK_SHOW=machines`): the chooser opens two seconds
+    // into an unattended run, so it can be captured.
+    if smoke.frames_left.is_some()
+        && smoke.frame == 120
+        && std::env::var("DRAGONLINK_SHOW").as_deref() == Ok("machines")
+    {
+        menu.open = true;
+    }
+    let Some(slug) = menu.chosen.take() else {
+        return;
+    };
+    menu.open = false;
+    if slug == menu.current || !sim.game.is_idle() || !presentation.queue.is_empty() {
+        return;
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        let money = sim
+            .game
+            .credits()
+            .saturating_mul(denom.cents())
+            .saturating_add(sim.game.state().residue);
+        if let Ok(exe) = std::env::current_exe() {
+            let spawned = std::process::Command::new(exe)
+                .args(["--game", slug.as_str(), "--credits", &money.to_string()])
+                .spawn();
+            if spawned.is_ok() {
+                exit.write(AppExit::Success);
+            }
+        }
+    }
+    #[cfg(target_arch = "wasm32")]
+    let _ = (&denom, &mut exit);
+}
+
 /// The pack the running title uses, if any.
 #[derive(Resource, Default, Clone)]
 struct PackDir(Option<String>);
@@ -1036,6 +1082,7 @@ fn setup(
     mut sounds: ResMut<cabinet::Sounds>,
     profile: Res<cabinet::Profile>,
     pack: Res<PackDir>,
+    machines: Res<cabinet::MachineMenu>,
 ) {
     // The initial state's OnEnter runs before Startup systems, so the pack is
     // read here, on first use.
@@ -1048,6 +1095,7 @@ fn setup(
             *sounds = cabinet::Sounds::load(&asset_server, dir);
         }
         cabinet::spawn(&mut commands, model, &art, &cab_fonts, *profile);
+        cabinet::spawn_machine_menu(&mut commands, &cab_fonts, &machines);
         return;
     }
     let art = &*art;
@@ -2589,6 +2637,16 @@ fn main() -> AppExit {
     };
     app.add_plugins(plugins);
     app.insert_resource(PackDir(art_dir.clone()));
+    // The machine chooser lists every title with a pack.
+    app.insert_resource(cabinet::MachineMenu {
+        entries: MENU_GAMES
+            .iter()
+            .filter(|g| pack_dir(**g).is_some())
+            .map(|g| (g.slug().to_string(), title_case(g.title())))
+            .collect(),
+        current: cli.game.slug().to_string(),
+        ..default()
+    });
     #[cfg(target_arch = "wasm32")]
     app.add_systems(Startup, announce_placeholder_mode);
     // Testing (`DRAGONLINK_MUTE`): every sound plays at zero volume, so runs
@@ -2677,6 +2735,7 @@ fn main() -> AppExit {
                 drive_features,
                 present,
                 link_creep,
+                machine_switch,
                 animate_reels,
                 hud,
                 banner,
@@ -2715,6 +2774,7 @@ fn main() -> AppExit {
                 cabinet::clear_cells,
                 cabinet::update_meters,
                 cabinet::fit_jackpots,
+                cabinet::machine_menu,
                 cabinet::fit,
             )
                 .chain(),
