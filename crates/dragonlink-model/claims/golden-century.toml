@@ -239,14 +239,14 @@ note = "Marketing text of the Australian page. Australian footage shows red-door
 
 [[claim]]
 id = "free-games.hold-and-spin-inside"
-statement = "Six or more prize symbols in a free game start Hold & Spin inside the free games: the free game stays on the status line, Hold & Spin plays to 'Free Spins Completed' and its tally, its win joins the free games' WIN meter, and the next free game follows (or FEATURE COMPLETED, after the last)."
-value = "free games pause; Hold & Spin plays with its intro and music; status 'Free Game N of 6' kept; win added to the free games' total; the free games carry on"
+statement = "Six or more prize symbols in a free game start Hold & Spin inside the free games: the free game stays on the status line, Hold & Spin plays to 'Free Spins Completed' and its tally, its win joins the free games' WIN meter, and the next free game follows."
+value = "free games pause; Hold & Spin plays with its intro; status 'Free Game N of 6' kept; win added to the free games' total; the free games carry on"
 confidence = "strong_evidence"
 source = "gameplay_recording"
 citation = "Public recording y8c8lEdPW8Y (Queensland club): six coins landed in Free Game 3 of 6 at 16:01, its Hold & Spin from 16:06 with the status still 'Free Game 3 of 6', WIN 10.00 to 200.00, Free Game 4 of 6 spinning at 17:00; at $1, five doors in Free Game 2 of 6 opened onto coins with their own prizes at 41:52 and, with two landed coins, started Hold & Spin, Free Game 3 of 6 at 42:43; Free Game 4 of 6 at 2988.2 s to 'Free Spins Completed' at 3047.2 s, then Free Game 5 of 6 (the project's transcription sheet and frame-by-frame notes, research/doors-2026-10-18/footage.md); Panda Magic tg4nMylHxhI (claims/panda-magic.toml); OL6Pu1AI-cQ for the intro, a Grand inside the free games and FEATURE COMPLETED after the last (probably a US casino machine)"
 accessed = "2026-10-18"
 scope = "cabinet-au, Queensland club, one session on one machine"
-note = "Read by one reader, frame by frame for the two club cases. Coins revealed by doors and coins landed on the free reels count together (41:52); coins also land on the free reels alone (19 of the session's 23 free-game stills show some; 16:01 started the feature with six). The music when the free games resume, and whether a press resumes them, are not seen (the deck is out of frame); the next free game spins within about a second."
+note = "The Hold & Spin music inside the free games (an audio match from about 124 s) and FEATURE COMPLETED after a Hold & Spin on the last free game are seen only on OL6Pu1AI-cQ, probably a US casino machine: HYPOTHESIS for the Australian club machine; the held copies of y8c8lEdPW8Y carry no usable audio. Read by one reader, frame by frame for the two club cases. Coins revealed by doors and coins landed on the free reels count together (41:52); coins also land on the free reels alone (19 of the session's 23 free-game stills show some; 16:01 started the feature with six). The music when the free games resume, and whether a press resumes them, are not seen (the deck is out of frame); the next free game spins within about a second."
 
 [[claim]]
 id = "free-games.award"

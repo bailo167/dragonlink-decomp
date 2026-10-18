@@ -1890,12 +1890,16 @@ pub fn update_meters(
             // A feature under way, from its trigger spin on (the game is in it
             // before the screen shows it): CREDIT holds still while the
             // trigger's win counts on WIN (cabinet footage).
-            CabMeter::Credit if show.in_feature() || !sim.game.is_idle() => amount(
-                presentation
-                    .shown_credits
-                    .saturating_sub(presentation.shown_win),
-                cents,
-            ),
+            // Its end too (completion, count and payment): on the last free
+            // game the engine is idle before they are shown.
+            CabMeter::Credit if show.in_feature() || show.counting() || !sim.game.is_idle() => {
+                amount(
+                    presentation
+                        .shown_credits
+                        .saturating_sub(presentation.shown_win),
+                    cents,
+                )
+            }
             CabMeter::Credit => {
                 let at_rest = sim.game.is_idle() && presentation.queue.is_empty();
                 let held = if at_rest && (sim.game.can_gamble() || gamble.active) {
@@ -7510,7 +7514,18 @@ pub fn wild_stacks(
         *stacks = WildStacks::default();
         return;
     }
-    if show.reveal.is_some() || show.hold_and_spin() {
+    if show.hold_and_spin() {
+        // The trigger game's stacks are over once Hold & Spin starts; they
+        // must not stand again after it.
+        if !stacks.list.is_empty() || !stacks.landed.is_empty() {
+            *stacks = WildStacks {
+                found: true,
+                ..default()
+            };
+        }
+        return;
+    }
+    if show.reveal.is_some() {
         return;
     }
     let now = time.elapsed_secs();
@@ -8299,6 +8314,11 @@ mod tests {
                 );
             }
         }
+        // A value too wide for its box is set smaller, to fit.
+        let mini = (1209.0 - 975.0) * k;
+        let size = jackpot_value_size("$1,234,567.89", mini);
+        assert!(size < JACKPOT_VALUE_SIZE);
+        assert!(meter_ems("$1,234,567.89") * size <= mini * JACKPOT_VALUE_FILL + 0.01);
         // The values the bar shows today keep the full size.
         assert_eq!(
             jackpot_value_size("$250.00", (1209.0 - 975.0) * k),

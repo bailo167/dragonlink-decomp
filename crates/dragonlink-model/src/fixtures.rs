@@ -453,6 +453,10 @@ pub fn golden_century_synthetic() -> MathModel {
         (JACK, [0, 5, 10, 50]),       // 3,4 read; 5 synthetic
         (TEN, [0, 5, 10, 50]),        // 3,4 read; 5 synthetic
         (NINE, [0, 5, 10, 40]),       // synthetic
+        // A run led by emperors pays the emperor's own line (the game's
+        // help screen, official mobile; not read on the cabinet). Only
+        // doors put an emperor on reel 1.
+        (EMPEROR, [5, 25, 100, 500]),
     ] {
         for (count, pay) in (2u8..=5).zip(pays) {
             if pay > 0 {
@@ -565,9 +569,9 @@ pub fn golden_century_synthetic() -> MathModel {
     // Free-game reels: like the base reels with a mystery symbol (`doors`),
     // in long stacks so whole reels of doors are common (cabinet footage),
     // that reveals to one drawn symbol across all its positions, as Golden
-    // Century's free games do. Coins land here too (the owner's session:
-    // 19 of 23 free-game stills show some, and six started Hold & Spin
-    // inside the free games), in pairs. The scatter stays, so free games can
+    // Century's free games do. Coins land here too (public recording
+    // y8c8lEdPW8Y, a Queensland club: 19 of 23 free-game stills show some,
+    // and six started Hold & Spin inside the free games), in pairs. The scatter stays, so free games can
     // retrigger. Strips, weights and the reveal table are synthetic.
     let free_reel_strips = vec![
         reel(&[

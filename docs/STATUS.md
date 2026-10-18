@@ -420,13 +420,16 @@ From the owner's play test of the prepared runs:
   lists (VERIFIED): the emperor about one reveal in five and the coin one in eight (synthetic,
   near a tally of 60 filmed reveals: emperor 12, coin 7, a sample leaning to big wins). Revealed
   coins each draw a prize (as the mobile build does) and open with it. Coins also land on the free
-  reels themselves (the owner's session), and count with revealed ones.
+  reels themselves (public recording y8c8lEdPW8Y, a Queensland club), and count with revealed
+  ones. A run of revealed emperors from reel 1 pays the emperor's line (help screen).
 - **Hold & Spin inside the free games.** Six or more coins in a free game start Hold & Spin, which
   holds the free games and hands them back when it ends, its win in their total; on the last free
-  game FEATURE COMPLETED follows. Presented as the owner's cabinet session shows it (STRONG,
-  `free-games.hold-and-spin-inside`): the usual intro, "Free Game N of 6" kept on the status
-  line, FREE SPINS COMPLETED and its count, WIN counting on from the free games' total, the next
-  free game with no START FEATURE. In simulation about one free-games round in five has one.
+  game FEATURE COMPLETED follows. Presented as the public Queensland club recording y8c8lEdPW8Y
+  shows it (STRONG, `free-games.hold-and-spin-inside`): the usual intro, "Free Game N of 6" kept
+  on the status line, FREE SPINS COMPLETED and its count, WIN counting on from the free games'
+  total, CREDIT held until the feature ends, the next free game with no START FEATURE. The music
+  and the ending after the last free game come from a probably US casino recording (HYPOTHESIS
+  for the club machine). In simulation about one free-games round in five has one.
 - **Jackpot bar.** Each value centred in its box (they sat up to 58 bar pixels left; the Mini's
   $250.00 at $1 ran over its box), set smaller only if too wide.
 - **Coin plates.** A coin landing on a Hold & Spin respin now carries its MINI / MINOR / MAJOR
@@ -434,9 +437,10 @@ From the owner's play test of the prepared runs:
 - **Testing.** `DRAGONLINK_SCENARIO=doors` (coins open Hold & Spin by the third free game, the
   emperor in another, no progressive, so the gamble is offered), and `DRAGONLINK_CAPTURE` (with
   `_EVERY` and `_FROM`) saves an unattended run's frames from the renderer for checking by eye.
-- **Evidence.** The wild lands on reels 2 to 5, never reel 1 (the owner's session transcription;
-  the claims said reels 2 to 4). The synthetic base strips still carry it on reels 2 to 4 only:
-  noted for the next pass.
+- **Evidence.** In the base game the wild lands on reels 2 to 5, never reel 1 (the project's
+  transcription of y8c8lEdPW8Y; the claims said reels 2 to 4); doors can put it on reel 1 in the
+  free games (filmed). The synthetic base strips still carry it on reels 2 to 4 only: noted for
+  the next pass.
 
 ## Known limits of what exists
 
@@ -456,7 +460,7 @@ From the owner's play test of the prepared runs:
 - The exact Hold & Spin analysis values every jackpot at its bet multiple, at full chance.
   Golden Century's game pays fixed Mini and Minor prizes and progressive Major and Grand meters,
   each with a chance that follows the stake, so its played return is not the analysed figure; the
-  report says so. Simulated with the meters set, it runs from about 74% to 100% across stakes and
+  report says so. Simulated with the meters set, it runs from about 77% to 116% across stakes and
   denominations (`gc_synthetic_plays`), where the standard allows a bet to move the return by 0.20
   points at most: synthetic, and not tuned to that.
 - Replay has never been given an observation of an original game: none has been transcribed.

@@ -1869,13 +1869,35 @@ fn present(
                 if fidelity.0 {
                     feature.reveal_faces = faces;
                 } else {
-                    // The placeholder opens the doors at once.
+                    // The placeholder opens the doors at once, in the
+                    // revealed symbol's colour (a coin's for coins).
+                    let kind = model
+                        .symbols
+                        .iter()
+                        .find(|s| &s.key == symbol)
+                        .map(|s| s.kind);
+                    let mut opened = Vec::new();
                     for (label, mut text) in &mut labels {
                         if text.0 == "doors" {
-                            text.0 = faces
+                            let face = faces
                                 .iter()
                                 .find(|(reel, row, _)| (*reel, *row) == (label.reel, label.row))
-                                .map_or_else(|| symbol.clone(), |(_, _, face)| face.clone());
+                                .map(|(_, _, face)| face.clone());
+                            let color = if face.is_some() {
+                                orb_color
+                            } else {
+                                cell_color(kind, symbol)
+                            };
+                            text.0 = face.unwrap_or_else(|| symbol.clone());
+                            opened.push((label.reel, label.row, color));
+                        }
+                    }
+                    for (cell, mut background) in &mut cells {
+                        if let Some((_, _, color)) = opened
+                            .iter()
+                            .find(|(reel, row, _)| (*reel, *row) == (cell.reel, cell.row))
+                        {
+                            background.0 = *color;
                         }
                     }
                 }
@@ -1902,6 +1924,13 @@ fn present(
                 games_played,
                 total_award,
             } => {
+                // After a Hold & Spin on the last free game: its dimmed
+                // positions light again.
+                for (_, mut text) in &mut labels {
+                    if let Some(rest) = text.0.strip_prefix("DIM:") {
+                        text.0 = rest.to_string();
+                    }
+                }
                 presentation.status =
                     format!("FREE GAMES complete: {games_played} games paid {total_award}");
             }
@@ -2924,6 +2953,8 @@ mod tests {
             total_award: 100,
             full_grid: false,
         });
+        // The engine is idle by now; CREDIT holds while its end is shown.
+        assert!(show.counting());
         show.on_event(&Event::FreeGamesCompleted {
             games_played: 6,
             total_award: 150,
