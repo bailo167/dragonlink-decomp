@@ -506,7 +506,7 @@ note = "Parameterised respin loop with tests; trigger count, respins, chances an
 id = "jackpots"
 name = "Jackpot model and presentation"
 status = "partial"
-note = "Four tiers with synthetic fixed amounts, shown on a jackpot bar and awarded in Hold & Spin (full grid awards the Grand). Progressive meters that build and reset are not modelled; the real levels are progressive and unknown."
+note = "Four tiers on a jackpot bar, awarded in Hold & Spin (full grid awards the Grand). Golden Century: Mini and Minor fixed by denomination as club footage shows them (1,000 / 5,000 credits to 10c, 250 / 1,250 at $1); Major and Grand progressive meters the core pays and restarts, climbing irregularly in the app. Meter start values, rates, restarts and ceilings are synthetic; odds unknown."
 
 [[category.item]]
 id = "free-games"

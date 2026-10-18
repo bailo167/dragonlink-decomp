@@ -27,8 +27,9 @@ pub mod title;
 pub use evidence::{Confidence, SourceClass, Sourced};
 pub use layout::{GridShape, Payline};
 pub use math::{
-    BetModel, FreeGamesModel, HoldAndSpinModel, JackpotDef, JackpotTier, LinePay, MathModel,
-    MathProvenance, ModelError, OrbValue, Ratio, ScatterPay, WeightedOrbValue, WeightedSymbol,
+    BetModel, FixedPrize, FreeGamesModel, HoldAndSpinModel, JackpotDef, JackpotTier, LinePay,
+    MathModel, MathProvenance, ModelError, OrbValue, Ratio, ScatterPay, WeightedOrbValue,
+    WeightedSymbol,
 };
 pub use symbol::{SymbolDef, SymbolId, SymbolKind};
 pub use title::TitleId;

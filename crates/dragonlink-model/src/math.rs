@@ -106,8 +106,40 @@ pub enum JackpotTier {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct JackpotDef {
     pub tier: JackpotTier,
-    /// Award as a multiple of the total bet of the triggering spin.
+    /// Award as a multiple of the total bet of the triggering spin, unless one
+    /// of the two below applies.
     pub total_bet_multiple: u32,
+    /// A fixed prize in credits instead, by the size of a credit: the entry
+    /// with the largest `from_unit` not above the game's credit size applies
+    /// (Australian club footage: the Mini is 1,000 credits up to 10c and 250
+    /// from $1).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub fixed_credits: Vec<FixedPrize>,
+    /// A progressive meter, in the money unit credits are counted in (cents):
+    /// the award is the meter's value when won, and it then starts again from
+    /// this value. Until the meter has been set, the bet multiple applies.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub progressive_reset: Option<u64>,
+}
+
+impl JackpotDef {
+    /// A jackpot paying a multiple of the total bet.
+    pub fn multiple(tier: JackpotTier, total_bet_multiple: u32) -> JackpotDef {
+        JackpotDef {
+            tier,
+            total_bet_multiple,
+            fixed_credits: Vec::new(),
+            progressive_reset: None,
+        }
+    }
+}
+
+/// A fixed jackpot prize from a credit size up (see [`JackpotDef::fixed_credits`]).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct FixedPrize {
+    /// The smallest credit size, in money units, this prize applies from.
+    pub from_unit: u32,
+    pub credits: u64,
 }
 
 /// What a Hold & Spin prize symbol carries.

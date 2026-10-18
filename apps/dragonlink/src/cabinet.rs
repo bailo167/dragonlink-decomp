@@ -3438,6 +3438,9 @@ pub struct FeatureShow {
     grand_done: bool,
     /// This game won a progressive jackpot (the Major or the Grand).
     progressive: bool,
+    /// The progressive jackpots this game's shown wins include (their meters
+    /// restart once shown).
+    pub link_won: Vec<JackpotTier>,
     /// Seconds "FREE SPINS COMPLETED" has shown, until the collection.
     completed_wait: Option<f32>,
     /// The WINNER total being paid onto WIN.
@@ -3497,6 +3500,7 @@ impl FeatureShow {
                 self.grand = None;
                 self.grand_done = false;
                 self.progressive = false;
+                self.link_won.clear();
                 self.win_lines.clear();
                 self.scatter_paid = false;
                 self.stage = Stage::Base;
@@ -3507,7 +3511,10 @@ impl FeatureShow {
                 self.intro = None;
             }
             Event::JackpotAwarded { tier, award } => {
-                self.progressive |= matches!(tier, JackpotTier::Major | JackpotTier::Grand);
+                if matches!(tier, JackpotTier::Major | JackpotTier::Grand) {
+                    self.progressive = true;
+                    self.link_won.push(*tier);
+                }
                 self.jackpots.push((*tier, *award));
             }
             Event::ScatterWin { award, .. } if !matches!(self.stage, Stage::FreeGames { .. }) => {

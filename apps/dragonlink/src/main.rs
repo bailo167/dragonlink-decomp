@@ -36,7 +36,7 @@ use std::collections::VecDeque;
 use bevy::prelude::*;
 #[cfg(not(target_arch = "wasm32"))]
 use bevy::render::view::screenshot::{Screenshot, save_to_disk};
-use dragonlink_core::{Command, CreditReason, DevRng, Event, Game};
+use dragonlink_core::{Command, CreditReason, DevRng, Event, Game, OutcomeRng};
 use dragonlink_model::MathModel;
 use dragonlink_model::fixtures::{
     autumn_moon_synthetic, golden_century_synthetic, happy_prosperous_synthetic,
@@ -53,6 +53,151 @@ mod cabinet;
 /// Synthetic either way; never a claim about the original.
 const FEATURE_TEST_ORB: usize = 3;
 const FEATURE_TEST_SCATTER: usize = 6;
+
+/// Testing only (`DRAGONLINK_SCENARIO`, Golden Century): prepared runs whose
+/// first spin lands six coins and three flags, so Hold & Spin plays and the
+/// free games follow, the free games' reels carrying the mystery doors often.
+/// The outcome source is left alone: its first spin's reel stops are worked
+/// out from the seed and the synthetic strips are dressed at those stops.
+/// Changes to that run's synthetic model only, never a claim about the
+/// original.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Scenario {
+    /// `both`: coins land on most respins, so the grid fills for the Grand.
+    Both,
+    /// `jackpots`: Hold & Spin ends with one Major, four Minis and two Minors
+    /// (and no Grand), at [`JACKPOTS_SEED`].
+    Jackpots,
+    /// `minors`: four Minis and two Minors, no Major or Grand, so the win
+    /// may be gambled, at [`MINORS_SEED`].
+    Minors,
+}
+
+/// The seeds the `jackpots` and `minors` runs play: found by
+/// `find_jackpot_scenario_seeds` and held by
+/// `the_jackpot_scenarios_win_what_they_promise`.
+const JACKPOTS_SEED: u64 = 1;
+const MINORS_SEED: u64 = 17;
+
+impl Scenario {
+    fn from_env() -> Option<Scenario> {
+        match std::env::var("DRAGONLINK_SCENARIO").ok()?.as_str() {
+            "both" => Some(Scenario::Both),
+            "jackpots" => Some(Scenario::Jackpots),
+            "minors" => Some(Scenario::Minors),
+            _ => None,
+        }
+    }
+
+    /// The seed this run plays.
+    fn seed(self, seed: u64) -> u64 {
+        match self {
+            Scenario::Both => seed,
+            Scenario::Jackpots => JACKPOTS_SEED,
+            Scenario::Minors => MINORS_SEED,
+        }
+    }
+
+    /// This run's model, for the seed it plays.
+    fn model(self, model: MathModel, seed: u64) -> MathModel {
+        let mut model = both_features_scenario(model, seed);
+        let Some(hs) = model.hold_and_spin.as_mut() else {
+            return model;
+        };
+        match self {
+            Scenario::Both => {}
+            Scenario::Jackpots | Scenario::Minors => {
+                // Fewer coins per respin, and jackpots on more of them.
+                hs.orb_land_chance = dragonlink_model::Ratio { num: 1, den: 6 };
+                let major = if self == Scenario::Jackpots { 8 } else { 0 };
+                hs.orb_values = [
+                    (14, OrbValue::BetMultiple(1)),
+                    (12, OrbValue::BetMultiple(2)),
+                    (10, OrbValue::BetMultiple(3)),
+                    (8, OrbValue::BetMultiple(5)),
+                    (6, OrbValue::BetMultiple(10)),
+                    (30, OrbValue::Jackpot(JackpotTier::Mini)),
+                    (15, OrbValue::Jackpot(JackpotTier::Minor)),
+                    (major, OrbValue::Jackpot(JackpotTier::Major)),
+                ]
+                .into_iter()
+                .filter(|(weight, _)| *weight > 0)
+                .map(|(weight, value)| dragonlink_model::WeightedOrbValue { weight, value })
+                .collect();
+            }
+        }
+        model
+    }
+}
+
+/// The model and seed a run plays: as given, or a prepared run's (see
+/// [`Scenario`]).
+fn scenario(model: MathModel, seed: u64) -> (MathModel, u64) {
+    match Scenario::from_env() {
+        Some(run) => {
+            let seed = run.seed(seed);
+            (run.model(model, seed), seed)
+        }
+        None => (model, seed),
+    }
+}
+
+/// The `both` run's model (see [`Scenario`]); the others start from it.
+fn both_features_scenario(mut model: MathModel, seed: u64) -> MathModel {
+    let id = |key: &str| {
+        model
+            .symbols
+            .iter()
+            .position(|s| s.key == key)
+            .and_then(|i| u16::try_from(i).ok())
+            .map(dragonlink_model::SymbolId)
+    };
+    let (Some(orb), Some(flag), Some(doors)) = (id("orb"), id("pennant"), id("doors")) else {
+        return model;
+    };
+    // The first spin's window, reel by reel, top row first: six coins and
+    // three flags; the other cells keep the strip's own symbols.
+    let window: [[Option<dragonlink_model::SymbolId>; 3]; 5] = [
+        [Some(flag), Some(orb), Some(orb)],
+        [Some(orb), None, Some(orb)],
+        [Some(flag), Some(orb), None],
+        [Some(orb), None, None],
+        [Some(flag), None, None],
+    ];
+    // The stops the seeded source will draw for the first spin: one draw
+    // below each base strip's length, reel by reel (dragonlink-core's spin).
+    let mut rng = DevRng::new(seed);
+    for (reel, cells) in window.iter().enumerate() {
+        let Some(strip) = model.reel_strips.get_mut(reel) else {
+            break;
+        };
+        let len = strip.len();
+        let Ok(stop) = u32::try_from(len).map(|n| rng.below(n)) else {
+            break;
+        };
+        let Ok(stop) = stop else { break };
+        for (row, cell) in cells.iter().enumerate() {
+            if let Some(symbol) = cell {
+                strip[(stop as usize + row) % len] = *symbol;
+            }
+        }
+    }
+    // Coins on most respins, so the grid fills and the Grand is won.
+    if let Some(hs) = model.hold_and_spin.as_mut() {
+        hs.orb_land_chance = dragonlink_model::Ratio { num: 3, den: 4 };
+    }
+    // The doors on every third stop of the free games' reels.
+    if let Some(fg) = model.free_games.as_mut() {
+        for strip in &mut fg.free_reel_strips {
+            for (i, s) in strip.iter_mut().enumerate() {
+                if i % 3 == 1 {
+                    *s = doors;
+                }
+            }
+        }
+    }
+    model
+}
 
 /// The model with extra orbs and scatters spread through its base reels (see
 /// [`FEATURE_TEST_ORB`]).
@@ -371,6 +516,198 @@ fn parse_args(args: &[String]) -> Result<Cli, String> {
 struct Sim {
     game: Game,
     rng: DevRng,
+}
+
+/// The progressive jackpots' meters as the screen shows them. The Major and
+/// the Grand climb by irregular amounts at irregular moments, as the meters
+/// on Australian machines do (claims/family.toml, jackpots.meters-au), and
+/// the simulation is told each new value (`Command::SetProgressive`), so a
+/// win pays what the meter shows. Where they start, how fast they climb and
+/// where they stop are this project's synthetic choices: no source shows a
+/// start-up value, an increment rate or a ceiling. They draw on their own
+/// generator, never the outcome source.
+#[derive(Resource, Default)]
+struct Link {
+    rng: u64,
+    meters: Vec<LinkMeter>,
+}
+
+/// One progressive meter of the [`Link`].
+struct LinkMeter {
+    spec: &'static LinkSpec,
+    /// What the meter shows, in cents.
+    shown: u64,
+    /// The value last given to the simulation.
+    told: u64,
+    /// Seconds until it next climbs.
+    wait: f32,
+    /// Won, and the win not yet shown: the meter holds the amount won.
+    held: bool,
+}
+
+/// How a progressive meter starts and climbs (synthetic, the owner's
+/// ranges: the Grand from $5,000 to $15,000, the Major from $500 to $1,500,
+/// opening anywhere up to 80% of the top).
+struct LinkSpec {
+    tier: JackpotTier,
+    /// The meter stops climbing here, in cents.
+    ceiling: u64,
+    /// It opens at most here, in cents (and at least at its restart value).
+    opens_below: u64,
+    /// Seconds between climbs, at least and at most.
+    every: (f32, f32),
+    /// Cents a climb adds, at least and at most.
+    climb: (u64, u64),
+    /// One climb in [`LINK_JUMP_ONE_IN`] adds this many instead.
+    jump: (u64, u64),
+}
+
+const LINK_SPECS: [LinkSpec; 2] = [
+    LinkSpec {
+        tier: JackpotTier::Grand,
+        ceiling: 1_500_000,
+        opens_below: 1_200_000,
+        every: (0.15, 1.6),
+        climb: (1, 12),
+        jump: (25, 90),
+    },
+    LinkSpec {
+        tier: JackpotTier::Major,
+        ceiling: 150_000,
+        opens_below: 120_000,
+        every: (0.4, 3.0),
+        climb: (1, 4),
+        jump: (5, 20),
+    },
+];
+const LINK_JUMP_ONE_IN: u64 = 15;
+
+impl Link {
+    /// The next number of the meters' own generator (splitmix64).
+    fn next(&mut self) -> u64 {
+        self.rng = self.rng.wrapping_add(0x9E37_79B9_7F4A_7C15);
+        let mut z = self.rng;
+        z = (z ^ (z >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
+        z = (z ^ (z >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
+        z ^ (z >> 31)
+    }
+
+    /// A whole number from `lo` to `hi`, both included.
+    fn between(&mut self, (lo, hi): (u64, u64)) -> u64 {
+        let span = hi.saturating_sub(lo).saturating_add(1);
+        lo.saturating_add(self.next() % span)
+    }
+
+    /// Seconds from `lo` to `hi`.
+    fn seconds(&mut self, (lo, hi): (f32, f32)) -> f32 {
+        let unit = (self.next() >> 40) as f32 / (1u64 << 24) as f32;
+        lo + (hi - lo) * unit
+    }
+
+    /// The meter the screen shows for a progressive jackpot, in cents.
+    fn shown(&self, tier: JackpotTier) -> Option<u64> {
+        self.meters
+            .iter()
+            .find(|m| m.spec.tier == tier)
+            .map(|m| m.shown)
+    }
+}
+
+/// Tell the simulation a progressive meter's value. The command draws
+/// nothing, so it is given an outcome source that has nothing to give.
+fn set_progressive(game: &mut Game, tier: JackpotTier, value: u64) -> bool {
+    let mut none = dragonlink_core::ScriptedRng::new(Vec::new());
+    game.apply(Command::SetProgressive { tier, value }, &mut none)
+        .is_ok()
+}
+
+/// Open the link for a new game: each progressive the model has starts
+/// somewhere between its restart value and 80% of its ceiling.
+fn open_link(game: &mut Game, seed: u64) -> Link {
+    let mut link = Link {
+        rng: seed ^ 0x6C69_6E6B_6D65_7465,
+        meters: Vec::new(),
+    };
+    for spec in &LINK_SPECS {
+        let reset = game
+            .model()
+            .hold_and_spin
+            .as_ref()
+            .and_then(|hs| hs.jackpots.iter().find(|j| j.tier == spec.tier))
+            .and_then(|j| j.progressive_reset);
+        let Some(reset) = reset else { continue };
+        let value = link.between((reset, spec.opens_below.max(reset)));
+        let wait = link.seconds(spec.every);
+        if set_progressive(game, spec.tier, value) {
+            link.meters.push(LinkMeter {
+                spec,
+                shown: value,
+                told: value,
+                wait,
+                held: false,
+            });
+        }
+    }
+    link
+}
+
+/// The progressive meters climb, through features too. A meter the
+/// simulation has paid out holds the amount won until the win is shown.
+fn link_creep(
+    time: Res<Time>,
+    smoke: Res<Smoke>,
+    presentation: Res<Presentation>,
+    show: Res<cabinet::FeatureShow>,
+    mut link: ResMut<Link>,
+    mut sim: ResMut<Sim>,
+) {
+    let shown_all = sim.game.is_idle() && presentation.queue.is_empty();
+    link.tick(&mut sim.game, smoke.dt(&time), &|tier| {
+        shown_all || show.link_won.contains(&tier)
+    });
+}
+
+impl Link {
+    /// `dt` seconds of the link: each meter climbs when its time comes, and
+    /// one the simulation has paid out shows the amount won until `win_shown`
+    /// says its win has been shown.
+    fn tick(&mut self, game: &mut Game, dt: f32, win_shown: &dyn Fn(JackpotTier) -> bool) {
+        for i in 0..self.meters.len() {
+            let spec = self.meters[i].spec;
+            let tier = spec.tier;
+            let now = game.meter(tier).unwrap_or(self.meters[i].told);
+            let mut wait = self.meters[i].wait - dt;
+            let mut told = self.meters[i].told;
+            let mut held = self.meters[i].held;
+            if now != told {
+                // Won: the simulation paid it and restarted it.
+                told = now;
+                held = true;
+            }
+            if held && win_shown(tier) {
+                held = false;
+            }
+            if wait <= 0.0 {
+                wait = self.seconds(spec.every);
+                let add = if self.next().is_multiple_of(LINK_JUMP_ONE_IN) {
+                    self.between(spec.jump)
+                } else {
+                    self.between(spec.climb)
+                };
+                let next = told.saturating_add(add).min(spec.ceiling.max(told));
+                if next != told && set_progressive(game, tier, next) {
+                    told = next;
+                }
+            }
+            let meter = &mut self.meters[i];
+            meter.wait = wait;
+            meter.told = told;
+            meter.held = held;
+            if !held {
+                meter.shown = told;
+            }
+        }
+    }
 }
 
 /// Events waiting to be shown, each with the delay after the one before it.
@@ -1538,6 +1875,7 @@ fn hud(
     sim: Res<Sim>,
     presentation: Res<Presentation>,
     denom: Res<Denom>,
+    link: Res<Link>,
     mut hud: Single<&mut Text, (With<HudText>, Without<StatusText>)>,
     mut status: Single<&mut Text, (With<StatusText>, Without<HudText>)>,
     mut meters: Query<(&JackpotMeter, &mut Text), (Without<HudText>, Without<StatusText>)>,
@@ -1564,16 +1902,15 @@ fn hud(
     if !presentation.status.is_empty() {
         status.0.clone_from(&presentation.status);
     }
-    // Jackpot meters: synthetic fixed amounts for the current bet.
-    let total_bet = game.total_bet();
+    // Jackpot meters: a progressive's meter in money, any other its prize
+    // now in credits.
     for (meter, mut text) in &mut meters {
-        let amount = game
-            .model()
-            .hold_and_spin
-            .as_ref()
-            .and_then(|hs| hs.jackpots.iter().find(|j| j.tier == meter.tier))
-            .map(|j| u64::from(j.total_bet_multiple).saturating_mul(total_bet));
-        text.0 = amount.map_or_else(|| "-".to_string(), |c| money(c, cents));
+        text.0 = match link.shown(meter.tier) {
+            Some(meter_cents) => money(meter_cents, 1),
+            None => game
+                .jackpot_value(meter.tier)
+                .map_or_else(|| "-".to_string(), |c| money(c, cents)),
+        };
     }
 }
 
@@ -1928,11 +2265,13 @@ fn menu_input(
         return;
     }
     let game = MENU_GAMES[launch.selected];
-    match Game::new(game.model(), launch.credits) {
-        Ok(g) => {
+    let (model, seed) = scenario(game.model(), launch.seed);
+    match Game::new(model, launch.credits) {
+        Ok(mut g) => {
+            commands.insert_resource(open_link(&mut g, seed));
             commands.insert_resource(Sim {
                 game: g,
-                rng: DevRng::new(launch.seed),
+                rng: DevRng::new(seed),
             });
             presentation.shown_credits = launch.credits;
             next.set(Screen::Playing);
@@ -1995,11 +2334,15 @@ fn main() -> AppExit {
     let explicit_game = args.iter().any(|a| a == "--game");
     let direct_boot = fidelity || explicit_game || cli.smoke_frames.is_some();
     let direct_sim = if direct_boot {
-        match Game::new(cli.game.model(), cli.credits) {
-            Ok(game) => Some(Sim {
-                game,
-                rng: DevRng::new(cli.seed),
-            }),
+        let (model, seed) = scenario(cli.game.model(), cli.seed);
+        match Game::new(model, cli.credits) {
+            Ok(mut game) => Some((
+                open_link(&mut game, seed),
+                Sim {
+                    game,
+                    rng: DevRng::new(seed),
+                },
+            )),
             Err(e) => {
                 eprintln!("cannot start the game: {e}");
                 return AppExit::error();
@@ -2100,6 +2443,7 @@ fn main() -> AppExit {
                 cabinet::clear_buttons,
                 drive_features,
                 present,
+                link_creep,
                 animate_reels,
                 hud,
                 banner,
@@ -2146,11 +2490,13 @@ fn main() -> AppExit {
     );
 
     match direct_sim {
-        Some(sim) => {
+        Some((link, sim)) => {
+            app.insert_resource(link);
             app.insert_resource(sim);
             app.insert_state(Screen::Playing);
         }
         None => {
+            app.insert_resource(Link::default());
             app.insert_resource(Launch {
                 seed: cli.seed,
                 credits: cli.credits,
@@ -2168,6 +2514,172 @@ mod tests {
 
     fn args(list: &[&str]) -> Vec<String> {
         list.iter().map(|s| (*s).to_string()).collect()
+    }
+
+    #[test]
+    fn the_both_features_scenario_opens_with_hold_and_spin_then_free_games() {
+        let seed = 1;
+        let model = Scenario::Both.model(golden_century_synthetic(), seed);
+        let mut game = Game::new(model, 100_000).unwrap();
+        let mut rng = DevRng::new(seed);
+        let events = game.play_spin(&mut rng).unwrap();
+        let at = |f: &dyn Fn(&Event) -> bool| events.iter().position(f);
+        let hs = at(&|e| {
+            matches!(
+                e,
+                Event::FeatureTriggered {
+                    feature: dragonlink_core::Feature::HoldAndSpin,
+                    ..
+                }
+            )
+        });
+        let fg = at(&|e| matches!(e, Event::FreeGamesStarted { .. }));
+        let grand = at(&|e| {
+            matches!(
+                e,
+                Event::JackpotAwarded {
+                    tier: JackpotTier::Grand,
+                    ..
+                }
+            )
+        });
+        assert!(hs.is_some(), "Hold & Spin starts");
+        assert!(fg.is_some(), "the free games start");
+        assert!(hs < fg, "Hold & Spin first, then the free games");
+        assert!(grand.is_some(), "the grid fills for the Grand");
+        // The whole spin's win, Hold & Spin and free games together, can be
+        // gambled afterwards.
+        assert!(game.can_gamble());
+    }
+
+    /// What a prepared run's first spin does at `seed`: the jackpots it
+    /// wins, whether the free games follow Hold & Spin, and whether its win
+    /// can then be gambled (by the simulation; the app also refuses after a
+    /// progressive win).
+    fn first_spin(run: Scenario, seed: u64) -> (Vec<JackpotTier>, bool, bool) {
+        let model = run.model(golden_century_synthetic(), seed);
+        let mut game = Game::new(model, 100_000).unwrap();
+        let mut rng = DevRng::new(seed);
+        let events = game.play_spin(&mut rng).unwrap();
+        let mut won: Vec<JackpotTier> = events
+            .iter()
+            .filter_map(|e| match e {
+                Event::JackpotAwarded { tier, .. } => Some(*tier),
+                _ => None,
+            })
+            .collect();
+        won.sort();
+        let at = |f: &dyn Fn(&Event) -> bool| events.iter().position(f);
+        let hs = at(&|e| {
+            matches!(
+                e,
+                Event::FeatureTriggered {
+                    feature: dragonlink_core::Feature::HoldAndSpin,
+                    ..
+                }
+            )
+        });
+        let fg = at(&|e| matches!(e, Event::FreeGamesStarted { .. }));
+        let both = hs.is_some() && fg.is_some() && hs < fg;
+        (won, both, game.can_gamble())
+    }
+
+    fn tally(tier: JackpotTier, count: usize) -> Vec<JackpotTier> {
+        vec![tier; count]
+    }
+
+    /// The jackpots each prepared run promises, smallest tier first.
+    fn promised(run: Scenario) -> Vec<JackpotTier> {
+        let mut won = tally(JackpotTier::Mini, 4);
+        won.extend(tally(JackpotTier::Minor, 2));
+        if run == Scenario::Jackpots {
+            won.push(JackpotTier::Major);
+        }
+        won.sort();
+        won
+    }
+
+    /// Finds seeds for the `jackpots` and `minors` runs (run by hand:
+    /// `cargo test -p dragonlink find_jackpot_scenario_seeds -- --ignored
+    /// --nocapture`).
+    #[test]
+    #[ignore = "a search, run by hand"]
+    fn find_jackpot_scenario_seeds() {
+        for run in [Scenario::Jackpots, Scenario::Minors] {
+            let want = promised(run);
+            let found: Vec<u64> = (0..200_000u64)
+                .filter(|&seed| {
+                    let (won, both, gamble) = first_spin(run, seed);
+                    both && won == want && gamble
+                })
+                .take(5)
+                .collect();
+            println!("{run:?}: {found:?}");
+        }
+    }
+
+    #[test]
+    fn the_jackpot_scenarios_win_what_they_promise() {
+        for run in [Scenario::Jackpots, Scenario::Minors] {
+            let (won, both, gamble) = first_spin(run, run.seed(0));
+            assert!(both, "{run:?}: Hold & Spin, then the free games");
+            assert_eq!(won, promised(run), "{run:?}: its jackpots");
+            // The simulation offers the gamble either way; the app refuses
+            // it after the Major (a progressive win).
+            assert!(gamble, "{run:?}: the win may be gambled");
+        }
+    }
+
+    #[test]
+    fn the_link_opens_below_eighty_percent_and_climbs_unevenly_to_its_ceiling() {
+        for seed in 0..50 {
+            let mut game = Game::new(golden_century_synthetic(), 1000).unwrap();
+            let link = open_link(&mut game, seed);
+            let grand = link.shown(JackpotTier::Grand).unwrap();
+            let major = link.shown(JackpotTier::Major).unwrap();
+            assert!((500_000..=1_200_000).contains(&grand), "{grand}");
+            assert!((50_000..=120_000).contains(&major), "{major}");
+            // The simulation pays what the meters show.
+            assert_eq!(game.meter(JackpotTier::Grand), Some(grand));
+            assert_eq!(game.meter(JackpotTier::Major), Some(major));
+        }
+        let mut game = Game::new(golden_century_synthetic(), 1000).unwrap();
+        let mut link = open_link(&mut game, 7);
+        let mut rises = std::collections::BTreeSet::new();
+        let mut last = link.shown(JackpotTier::Grand).unwrap();
+        // A minute in tenths of a second: it climbs, by differing amounts.
+        for _ in 0..600 {
+            link.tick(&mut game, 0.1, &|_| true);
+            let now = link.shown(JackpotTier::Grand).unwrap();
+            assert!(now >= last);
+            if now > last {
+                rises.insert(now - last);
+            }
+            last = now;
+        }
+        assert!(rises.len() > 3, "uneven rises: {rises:?}");
+        assert_eq!(game.meter(JackpotTier::Grand), Some(last));
+        // A day later both meters wait at their ceilings.
+        for _ in 0..86_400 {
+            link.tick(&mut game, 1.0, &|_| true);
+        }
+        assert_eq!(link.shown(JackpotTier::Grand), Some(1_500_000));
+        assert_eq!(link.shown(JackpotTier::Major), Some(150_000));
+    }
+
+    #[test]
+    fn a_won_meter_holds_the_win_until_it_is_shown() {
+        let mut game = Game::new(golden_century_synthetic(), 1000).unwrap();
+        let mut link = open_link(&mut game, 3);
+        let won = link.shown(JackpotTier::Major).unwrap();
+        // The simulation pays the Major and restarts its meter at $500.
+        let mut state = game.state().clone();
+        state.meters.insert(JackpotTier::Major, 50_000);
+        game = Game::resume(game.model().clone(), state).unwrap();
+        link.tick(&mut game, 0.0, &|_| false);
+        assert_eq!(link.shown(JackpotTier::Major), Some(won));
+        link.tick(&mut game, 0.0, &|_| true);
+        assert_eq!(link.shown(JackpotTier::Major), Some(50_000));
     }
 
     #[test]

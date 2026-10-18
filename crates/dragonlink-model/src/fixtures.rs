@@ -14,8 +14,8 @@
 
 use crate::layout::{GridShape, Payline};
 use crate::math::{
-    BetModel, FreeGamesModel, HoldAndSpinModel, JackpotDef, JackpotTier, LinePay, MathModel,
-    MathProvenance, OrbValue, Ratio, ScatterPay, WeightedOrbValue, WeightedSymbol,
+    BetModel, FixedPrize, FreeGamesModel, HoldAndSpinModel, JackpotDef, JackpotTier, LinePay,
+    MathModel, MathProvenance, OrbValue, Ratio, ScatterPay, WeightedOrbValue, WeightedSymbol,
 };
 use crate::symbol::{SymbolDef, SymbolId, SymbolKind};
 
@@ -210,10 +210,7 @@ pub fn synthetic_dev_fixture() -> MathModel {
         (JackpotTier::Grand, 2500),
     ]
     .into_iter()
-    .map(|(tier, total_bet_multiple)| JackpotDef {
-        tier,
-        total_bet_multiple,
-    })
+    .map(|(tier, total_bet_multiple)| JackpotDef::multiple(tier, total_bet_multiple))
     .collect();
 
     MathModel {
@@ -520,9 +517,41 @@ pub fn golden_century_synthetic() -> MathModel {
         (JackpotTier::Grand, 1000),
     ]
     .into_iter()
-    .map(|(tier, total_bet_multiple)| JackpotDef {
-        tier,
-        total_bet_multiple,
+    .map(|(tier, total_bet_multiple)| {
+        let mut def = JackpotDef::multiple(tier, total_bet_multiple);
+        // Australian club footage: the Mini is 1,000 credits and the Minor
+        // 5,000 up to 10c, 250 and 1,250 from $1 ($10 / $50 at 1c, $250 /
+        // $1,250 at $1); the Major and Grand are running meters, here
+        // restarting at $500 and $5,000 (synthetic start-up values).
+        match tier {
+            JackpotTier::Mini => {
+                def.fixed_credits = vec![
+                    FixedPrize {
+                        from_unit: 1,
+                        credits: 1_000,
+                    },
+                    FixedPrize {
+                        from_unit: 100,
+                        credits: 250,
+                    },
+                ];
+            }
+            JackpotTier::Minor => {
+                def.fixed_credits = vec![
+                    FixedPrize {
+                        from_unit: 1,
+                        credits: 5_000,
+                    },
+                    FixedPrize {
+                        from_unit: 100,
+                        credits: 1_250,
+                    },
+                ];
+            }
+            JackpotTier::Major => def.progressive_reset = Some(50_000),
+            JackpotTier::Grand => def.progressive_reset = Some(500_000),
+        }
+        def
     })
     .collect();
 
@@ -934,10 +963,7 @@ pub fn autumn_moon_synthetic() -> MathModel {
         (JackpotTier::Grand, 1000),
     ]
     .into_iter()
-    .map(|(tier, total_bet_multiple)| JackpotDef {
-        tier,
-        total_bet_multiple,
-    })
+    .map(|(tier, total_bet_multiple)| JackpotDef::multiple(tier, total_bet_multiple))
     .collect();
 
     // Free-game reels: orb-free, with the medallion mystery and the scatter.
@@ -1334,10 +1360,7 @@ pub fn happy_prosperous_synthetic() -> MathModel {
         (JackpotTier::Grand, 1000),
     ]
     .into_iter()
-    .map(|(tier, total_bet_multiple)| JackpotDef {
-        tier,
-        total_bet_multiple,
-    })
+    .map(|(tier, total_bet_multiple)| JackpotDef::multiple(tier, total_bet_multiple))
     .collect();
 
     // Free-game reels: the royals removed (official US rule), so only the four
@@ -1672,10 +1695,7 @@ pub fn panda_magic_synthetic() -> MathModel {
         (JackpotTier::Grand, 1000),
     ]
     .into_iter()
-    .map(|(tier, total_bet_multiple)| JackpotDef {
-        tier,
-        total_bet_multiple,
-    })
+    .map(|(tier, total_bet_multiple)| JackpotDef::multiple(tier, total_bet_multiple))
     .collect();
 
     // Free-game reels: the royals removed (official US rule), so only the four

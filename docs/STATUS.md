@@ -3,7 +3,7 @@
 The current state of the project, what was last done, and what is next. Updated with every
 meaningful increment. Item-level state is in `progress/progress.toml`; this page is the narrative.
 
-**Last updated: 2026-10-17.**
+**Last updated: 2026-10-18.**
 
 ## Project interpretation (owner reset, 2026-10-14)
 
@@ -377,10 +377,33 @@ and the code, each re-checked by a verifier, and the fixes follow their verified
 - **Coins.** Black tiles under every coin; plates at the measured size and no longer stretched
   while spinning; digits and "$" as measured.
 - **Gamble.** Laid out from the footage, the base game's backdrop undimmed, upright captions,
-  the card turning 0.35 s after a choice, the chosen button filling yellow, redrawn art; sounds
-  from a labelled cue table (one weakly evidenced, the rest substitutes, none on a loss or take
-  win); five history cards from the start.
+  the card turning 0.15 s after a choice, the chosen button filling yellow, redrawn art; five
+  history cards from the start. Its sounds were then found on about 20 machines' recordings: a
+  win tune and a loss buzz (both VERIFIED, Golden Century among them), everything else silent;
+  the app plays our own synthesis of the two (golden-century-sound-cues.md).
 - **Testing.** `DRAGONLINK_MUTE=1` silences every run.
+
+### Jackpots as the club machines run them; prepared test runs (2026-10-18)
+
+The owner's next play test asked for the jackpots to behave as on the machines:
+
+- **Mini and Minor** are fixed for each denomination, as Queensland club footage shows them
+  (STRONG, claims/family.toml `jackpots.minor-mini-au`): 1,000 and 5,000 credits from 1c to 10c,
+  250 and 1,250 at $1, so $10 / $50 at 1c up to $250 / $1,250 at $1. The model carries them as
+  fixed prizes by credit size (`FixedPrize`); the core pays them by the denomination in play.
+- **Major and Grand** are progressive meters in money (that they climb: STRONG,
+  `jackpots.meters-au`). The core pays the meter, in whole credits with the cents held over, and
+  restarts it (`Command::SetProgressive`, `GameState::meters`). The app's link opens each meter at
+  random between its restart and 80% of a ceiling (Grand $5,000 to $12,000 of $15,000, Major $500
+  to $1,200 of $1,500, the owner's ranges), climbs it by a few cents at irregular moments with an
+  occasional jump, through features too, and holds a won meter at the amount won until the win is
+  shown. Start values, rates, restarts and ceilings are synthetic: no source shows them.
+- **Prepared runs** (`DRAGONLINK_SCENARIO`): `both` (Hold & Spin then free games, the Grand),
+  `jackpots` (a Major, four Minis and two Minors, then free games; no gamble after the Major) and
+  `minors` (the same without the Major; the win can be gambled). Each dresses its run's synthetic
+  model only; tests hold each run to what it promises.
+- "FREE SPINS COMPLETED" at the end of Hold & Spin stays: it is what the official app and the
+  cabinet footage show (VERIFIED).
 
 ## Known limits of what exists
 
@@ -395,6 +418,9 @@ and the code, each re-checked by a verifier, and the fixes follow their verified
   titles still draw generated tiles. About 55 of the game's sound clips are not placed yet, and some
   rules are unknown (the win-tune rule between measured sizes, the big-coin sound threshold). The
   build is checked by eye from screen recordings of unattended runs on the Windows host.
+- The exact Hold & Spin analysis values every jackpot at its bet multiple. Golden Century's game
+  now pays fixed Mini and Minor prizes and progressive Major and Grand meters, so its played return
+  depends on the bet and the meters and is not the analysed figure.
 - Replay has never been given an observation of an original game: none has been transcribed.
 - The mathematics tooling has never seen a real configuration. Its model will need extending when
   one arrives ([reverse-engineering/math/CONFIGURATION.md](reverse-engineering/math/CONFIGURATION.md)).

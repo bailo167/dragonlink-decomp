@@ -25,6 +25,8 @@
 //! This order is ours. Nothing is known about the order, or the generator,
 //! of the original.
 
+use std::collections::BTreeMap;
+
 use dragonlink_model::{
     FreeGamesModel, HoldAndSpinModel, JackpotTier, MathModel, ModelError, OrbValue, SymbolId,
     SymbolKind,
@@ -67,6 +69,10 @@ pub enum Command {
     /// the next change. Only while idle; a win waiting to be gambled is kept
     /// and no longer offered.
     ChangeDenomination { from: u32, to: u32 },
+    /// A progressive jackpot's meter, as the link reports it, in the money
+    /// unit (cents): the jackpot pays this when won. Accepted at any time;
+    /// only for a jackpot the model makes progressive.
+    SetProgressive { tier: JackpotTier, value: u64 },
 }
 
 /// A gamble choice: a colour pays double, a suit four times.
@@ -132,6 +138,8 @@ pub enum GameError {
     Overflow,
     #[error("a denomination must be worth at least one unit")]
     ZeroDenomination,
+    #[error("the {0:?} jackpot is not progressive")]
+    NotProgressive(JackpotTier),
     #[error("internal invariant broken: {0}")]
     Invariant(&'static str),
 }
@@ -215,6 +223,17 @@ pub struct GameState {
     /// unit of [`Command::ChangeDenomination`]: less than one credit.
     #[serde(default)]
     pub residue: u64,
+    /// The size of a credit in that unit (cents per credit), as the last
+    /// denomination change set it; 1 until one is made.
+    #[serde(default = "one_unit")]
+    pub unit: u32,
+    /// The progressive jackpots' meters, in that unit, as last reported.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub meters: BTreeMap<JackpotTier, u64>,
+}
+
+fn one_unit() -> u32 {
+    1
 }
 
 /// A game: a math model and the state of play under it.
@@ -287,6 +306,8 @@ impl Game {
                 gamble_stake: 0,
                 gambles: 0,
                 residue: 0,
+                unit: 1,
+                meters: BTreeMap::new(),
             },
         })
     }
@@ -390,6 +411,18 @@ impl Game {
             Command::ChangeDenomination { from, to } => {
                 Self::change_denomination(&mut next, from, to, &mut events)?;
             }
+            Command::SetProgressive { tier, value } => {
+                let progressive = self
+                    .model
+                    .hold_and_spin
+                    .as_ref()
+                    .and_then(|hs| hs.jackpots.iter().find(|j| j.tier == tier))
+                    .is_some_and(|j| j.progressive_reset.is_some());
+                if !progressive {
+                    return Err(GameError::NotProgressive(tier));
+                }
+                next.meters.insert(tier, value);
+            }
         }
         // A completed game's win may be gambled.
         if let Some(Event::SpinCompleted { total_award, .. }) = events
@@ -490,9 +523,80 @@ impl Game {
         });
         next.credits = credits;
         next.residue = money % u64::from(to);
+        next.unit = to;
         next.gamble_stake = 0;
         next.gambles = 0;
         Ok(())
+    }
+
+    /// What a jackpot pays now, in credits, and for a progressive one the
+    /// meter it leaves behind: a progressive pays its meter (in whole credits,
+    /// the rest joining the residue) and restarts; a fixed prize pays its
+    /// credits for this credit size; any other the bet multiple.
+    fn jackpot_now(
+        hs: &HoldAndSpinModel,
+        unit: u32,
+        meters: &BTreeMap<JackpotTier, u64>,
+        tier: JackpotTier,
+        total_bet: u64,
+    ) -> Result<(u64, Option<(u64, u64)>), GameError> {
+        let def = hs
+            .jackpots
+            .iter()
+            .find(|j| j.tier == tier)
+            .ok_or(GameError::Model(ModelError::UndefinedJackpot(tier)))?;
+        if let (Some(reset), Some(&meter)) = (def.progressive_reset, meters.get(&tier)) {
+            let size = u64::from(unit.max(1));
+            return Ok((meter / size, Some((meter % size, reset))));
+        }
+        if let Some(fixed) = def
+            .fixed_credits
+            .iter()
+            .filter(|f| f.from_unit <= unit)
+            .max_by_key(|f| f.from_unit)
+        {
+            return Ok((fixed.credits, None));
+        }
+        Ok((jackpot_award(hs, tier, total_bet)?, None))
+    }
+
+    /// Award a jackpot: its credits, and a progressive's meter restarted
+    /// (the money short of a whole credit joining the residue).
+    fn award_jackpot(
+        hs: &HoldAndSpinModel,
+        unit: u32,
+        meters: &mut BTreeMap<JackpotTier, u64>,
+        residue: &mut u64,
+        tier: JackpotTier,
+        total_bet: u64,
+    ) -> Result<u64, GameError> {
+        let (credits, restart) = Self::jackpot_now(hs, unit, meters, tier, total_bet)?;
+        if let Some((left, reset)) = restart {
+            *residue = add(*residue, left)?;
+            meters.insert(tier, reset);
+        }
+        Ok(credits)
+    }
+
+    /// What a jackpot would pay now, in credits, at the current bet: its
+    /// progressive meter, its fixed prize for this credit size, or its bet
+    /// multiple.
+    pub fn jackpot_value(&self, tier: JackpotTier) -> Option<u64> {
+        let hs = self.model.hold_and_spin.as_ref()?;
+        Self::jackpot_now(
+            hs,
+            self.state.unit,
+            &self.state.meters,
+            tier,
+            self.total_bet(),
+        )
+        .ok()
+        .map(|(credits, _)| credits)
+    }
+
+    /// A progressive jackpot's meter, in the money unit, once reported.
+    pub fn meter(&self, tier: JackpotTier) -> Option<u64> {
+        self.state.meters.get(&tier).copied()
     }
 
     /// Spin, then play any feature to its end. For headless runs.
@@ -919,7 +1023,14 @@ impl Game {
                         .checked_mul(feature.total_bet)
                         .ok_or(GameError::Overflow)?,
                     OrbValue::Jackpot(tier) => {
-                        let award = jackpot_award(hs, *tier, feature.total_bet)?;
+                        let award = Self::award_jackpot(
+                            hs,
+                            next.unit,
+                            &mut next.meters,
+                            &mut next.residue,
+                            *tier,
+                            feature.total_bet,
+                        )?;
                         events.push(Event::JackpotAwarded { tier: *tier, award });
                         award
                     }
@@ -927,7 +1038,14 @@ impl Game {
                 total = add(total, award)?;
             }
             if full_grid && let Some(tier) = hs.full_grid_award {
-                let award = jackpot_award(hs, tier, feature.total_bet)?;
+                let award = Self::award_jackpot(
+                    hs,
+                    next.unit,
+                    &mut next.meters,
+                    &mut next.residue,
+                    tier,
+                    feature.total_bet,
+                )?;
                 events.push(Event::JackpotAwarded { tier, award });
                 total = add(total, award)?;
             }
@@ -992,7 +1110,7 @@ mod tests {
     use crate::rng::{DevRng, Draw, RecordingRng, ScriptedRng};
     use dragonlink_model::fixtures::synthetic_dev_fixture;
     use dragonlink_model::{
-        BetModel, GridShape, JackpotDef, MathProvenance, Payline, Ratio, SymbolDef,
+        BetModel, FixedPrize, GridShape, JackpotDef, MathProvenance, Payline, Ratio, SymbolDef,
         WeightedOrbValue,
     };
 
@@ -1046,14 +1164,8 @@ mod tests {
                 ],
                 full_grid_award: Some(JackpotTier::Grand),
                 jackpots: vec![
-                    JackpotDef {
-                        tier: JackpotTier::Mini,
-                        total_bet_multiple: 5,
-                    },
-                    JackpotDef {
-                        tier: JackpotTier::Grand,
-                        total_bet_multiple: 100,
-                    },
+                    JackpotDef::multiple(JackpotTier::Mini, 5),
+                    JackpotDef::multiple(JackpotTier::Grand, 100),
                 ],
             }),
             free_games: None,
@@ -1435,6 +1547,113 @@ mod tests {
         }));
         assert_eq!(game.credits(), 100 - 10 + 1040);
         assert_eq!(rng.remaining(), 0);
+    }
+
+    /// [`tiny`] with a fixed Mini (1,000 credits to 99c, 250 from $1) and a
+    /// progressive Grand restarting at $500.
+    fn tiny_with_link() -> MathModel {
+        let mut model = tiny();
+        let hs = model.hold_and_spin.as_mut().unwrap();
+        hs.jackpots = vec![
+            JackpotDef {
+                fixed_credits: vec![
+                    FixedPrize {
+                        from_unit: 1,
+                        credits: 1000,
+                    },
+                    FixedPrize {
+                        from_unit: 100,
+                        credits: 250,
+                    },
+                ],
+                ..JackpotDef::multiple(JackpotTier::Mini, 5)
+            },
+            JackpotDef {
+                progressive_reset: Some(50_000),
+                ..JackpotDef::multiple(JackpotTier::Grand, 100)
+            },
+        ];
+        model.validate().unwrap();
+        model
+    }
+
+    #[test]
+    fn a_fixed_jackpot_pays_by_the_credit_size_and_a_progressive_its_meter() {
+        let mut game = Game::new(tiny_with_link(), 1_000_000).unwrap();
+        let mut rng = DevRng::new(1);
+        assert_eq!(game.jackpot_value(JackpotTier::Mini), Some(1000));
+        // The Grand pays its bet multiple until the link reports a meter.
+        assert_eq!(game.meter(JackpotTier::Grand), None);
+        assert_eq!(game.jackpot_value(JackpotTier::Grand), Some(1000));
+        game.apply(Command::ChangeDenomination { from: 1, to: 100 }, &mut rng)
+            .unwrap();
+        assert_eq!(game.state().unit, 100);
+        assert_eq!(game.jackpot_value(JackpotTier::Mini), Some(250));
+        game.apply(
+            Command::SetProgressive {
+                tier: JackpotTier::Grand,
+                value: 123_456,
+            },
+            &mut rng,
+        )
+        .unwrap();
+        assert_eq!(game.meter(JackpotTier::Grand), Some(123_456));
+        // $1,234.56 is 1,234 credits of $1.
+        assert_eq!(game.jackpot_value(JackpotTier::Grand), Some(1234));
+    }
+
+    #[test]
+    fn winning_a_progressive_pays_the_meter_and_restarts_it() {
+        let mut game = Game::new(tiny_with_link(), 1_000_000).unwrap();
+        let mut rng = DevRng::new(1);
+        game.apply(Command::ChangeDenomination { from: 1, to: 10 }, &mut rng)
+            .unwrap();
+        game.apply(
+            Command::SetProgressive {
+                tier: JackpotTier::Grand,
+                value: 123_456,
+            },
+            &mut rng,
+        )
+        .unwrap();
+        let start = game.credits();
+        // A full grid at once: one Mini and three ×1 orbs.
+        let mut rng = ScriptedRng::new(vec![d(4, 2), d(4, 2), d(2, 1), d(2, 0), d(2, 0), d(2, 0)]);
+        let events = game.play_spin(&mut rng).unwrap();
+        assert!(events.contains(&Event::JackpotAwarded {
+            tier: JackpotTier::Mini,
+            award: 1000
+        }));
+        // $1,234.56 at 10c: 12,345 credits and 6 cents held over.
+        assert!(events.contains(&Event::JackpotAwarded {
+            tier: JackpotTier::Grand,
+            award: 12_345
+        }));
+        assert!(events.contains(&Event::HoldAndSpinCompleted {
+            total_award: 30 + 1000 + 12_345,
+            full_grid: true
+        }));
+        assert_eq!(game.credits(), start - 10 + 13_375);
+        assert_eq!(game.state().residue, 6);
+        assert_eq!(game.meter(JackpotTier::Grand), Some(50_000));
+    }
+
+    #[test]
+    fn only_a_progressive_jackpot_takes_a_meter() {
+        let mut game = Game::new(tiny_with_link(), 1000).unwrap();
+        let before = game.clone();
+        let mut rng = DevRng::new(1);
+        assert_eq!(
+            game.apply(
+                Command::SetProgressive {
+                    tier: JackpotTier::Mini,
+                    value: 5000
+                },
+                &mut rng
+            ),
+            Err(GameError::NotProgressive(JackpotTier::Mini))
+        );
+        assert_eq!(game, before);
     }
 
     #[test]

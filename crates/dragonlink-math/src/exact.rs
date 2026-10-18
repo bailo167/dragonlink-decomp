@@ -731,14 +731,8 @@ mod tests {
                 ],
                 full_grid_award: Some(JackpotTier::Grand),
                 jackpots: vec![
-                    JackpotDef {
-                        tier: JackpotTier::Mini,
-                        total_bet_multiple: 8,
-                    },
-                    JackpotDef {
-                        tier: JackpotTier::Grand,
-                        total_bet_multiple: 200,
-                    },
+                    JackpotDef::multiple(JackpotTier::Mini, 8),
+                    JackpotDef::multiple(JackpotTier::Grand, 200),
                 ],
             }),
             free_games: None,
