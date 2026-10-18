@@ -73,6 +73,7 @@ const STAKES: [(&str, u32, usize, u16); 8] = [
 
 /// The played return of each configuration over `spins`, the meters held at
 /// `meters` (Major, Grand), as a list of (label, return).
+#[cfg(test)]
 fn returns_at(spins: u64, meters: (u64, u64), seed: u64) -> Vec<(&'static str, f64)> {
     STAKES
         .iter()
