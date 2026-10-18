@@ -1681,30 +1681,35 @@ pub fn clear_buttons(mut input: ResMut<CabinetInput>) {
 // Reel motion
 // ---------------------------------------------------------------------------
 
-/// The game's pace, measured frame by frame on the real game (base-game
-/// spins at 30 fps, every one the same): the reels start the frame after the
-/// press; reel 1 is deepest past its stop 24 frames after the press, snaps
-/// back the next frame and is still 9 frames later; each further reel 14
-/// frames (0.467 s) after the one before. A reel's stop is presented here,
-/// and it runs on about 3.5 symbols to its stop and on past it.
+/// The cabinet's pace, measured on 60 fps cabinet footage (wEmf3ep-euA, 8
+/// spins; BMavaGxuOD0): reel 1 comes to rest about 0.95 s after the reels
+/// start, so it is deepest past its stop about 0.66 s in; each further reel
+/// 0.45 s after the one before. A reel's stop is presented here, and it runs
+/// on about 3.5 symbols to its stop and on past it. (The official mobile app
+/// is slower: deepest 24 frames after the press, reels 14 frames apart.)
 pub const TIMING: Timing = Timing {
-    lead_in: 24.0 / 30.0 - RUN_ON,
-    reel_interval: 14.0 / 30.0,
+    lead_in: 0.66 - RUN_ON,
+    reel_interval: 0.45,
     event_interval: 0.14,
 };
 
-/// Reel speed in symbols per second while spinning (real game: half a symbol
-/// a frame, reached at once, constant to the stop).
-const SPIN_SPEED: f32 = 15.0;
-/// A stopping reel runs on at full speed past its stop, up to a whole
-/// symbol (real game: +84 to +87 px of an 86 px symbol on most landings),
-/// shows there for a frame, snaps back to 0.36 of a symbol past its stop and
-/// slides home in a straight line in 9 frames. The clink is at the snap.
-const DEEP: f32 = 1.0;
-const OVERSHOOT: f32 = 0.36;
-const SETTLE_SECONDS: f32 = 9.0 / 30.0;
-/// The frame the reel shows at its deepest before the snap.
-const DEEP_HOLD: f32 = 1.0 / 30.0;
+/// Reel speed in symbols per second while spinning: the cabinet's 20
+/// (two-thirds of a symbol a 30 fps frame, on two cabinets), reached at once,
+/// constant to the stop. The mobile app spins at 15.
+const SPIN_SPEED: f32 = 20.0;
+/// A stopping reel runs on at full speed through its stop to about 0.65 of
+/// a symbol past it for one refresh, comes back to 0.40 past it and slides
+/// home in a straight line in 8 frames at 30 fps (cabinet footage, 12
+/// landings: the frame after the deepest is always +0.40, and no frame shows
+/// a whole symbol past). The mobile app instead dips a whole symbol, snaps to
+/// 0.36 and slides in 9 frames; copied from it, that read as a jolt. The
+/// clink is at the snap.
+const DEEP: f32 = 0.65;
+const OVERSHOOT: f32 = 0.40;
+const SETTLE_SECONDS: f32 = 8.0 / 30.0;
+/// The refresh the reel shows at its deepest before the snap (never 0: the
+/// snap is what sounds the clink).
+const DEEP_HOLD: f32 = 1.0 / 60.0;
 /// Seconds from a reel's presented stop to its deepest point: the run-on of
 /// 3 to 4 symbols and one more, at a speed adjusted a little so every reel
 /// lands on the beat.
@@ -1999,6 +2004,7 @@ pub fn spin_reels(
         (&StripGhost, &mut ImageNode, &mut Node, &mut Visibility),
         (Without<StripColumn>, Without<StripSlot>),
     >,
+    images: Res<Assets<Image>>,
 ) {
     if !fidelity.0 || reels.states.is_empty() {
         return;
@@ -2128,8 +2134,37 @@ pub fn spin_reels(
         {
             image.image = handle;
         }
-        node.top = Val::Px(cy - h / 2.0);
-        node.height = Val::Px(h);
+        // While a reel settles, the symbols just outside the window are cut at
+        // their own cell's edge: at rest the landed cells draw only the three
+        // in the window, so an overhang drawn now would vanish as it stops.
+        let mut top = cy - h / 2.0;
+        let mut height = h;
+        let mut rect = None;
+        if let Motion::Stopping {
+            target,
+            bounce: Some(_),
+            ..
+        } = reels.states[reel].motion
+            && let Some(size) = images.get(&image.image).map(|i| i.size_f32())
+        {
+            let first = target as i64;
+            if n < first {
+                // Above the window: nothing below its cell's bottom.
+                height = (cy + p / 2.0 - top).clamp(0.0, h);
+                rect = Some(Rect::new(0.0, 0.0, size.x, size.y * height / h));
+            } else if n >= first + 3 {
+                // Below the window: nothing above its cell's top.
+                let cut = (cy - p / 2.0 - top).clamp(0.0, h);
+                top += cut;
+                height = h - cut;
+                rect = Some(Rect::new(0.0, size.y * cut / h, size.x, size.y));
+            }
+        }
+        if image.rect != rect {
+            image.rect = rect;
+        }
+        node.top = Val::Px(top);
+        node.height = Val::Px(height);
         node.width = Val::Px(w);
         node.left = Val::Px((column_width() - w) / 2.0);
     }
@@ -2184,8 +2219,10 @@ pub fn symbol_image(art: &ArtPack, key: &str, t: f32) -> Option<Handle<Image>> {
 }
 
 /// The motion smear: copies this far (in symbols) from each symbol, and how
-/// strongly they show.
-const BLUR_OFFSETS: [f32; 2] = [-0.16, 0.16];
+/// strongly they show. None: the cabinet draws its moving symbols crisp
+/// (60 fps footage); the doubled images in some recordings are the camera's
+/// exposure across two refreshes, not the game.
+const BLUR_OFFSETS: [f32; 0] = [];
 const BLUR_ALPHA: f32 = 0.38;
 
 /// A faint copy of a moving symbol, for the motion smear.
