@@ -5886,6 +5886,7 @@ pub fn spawn_banner_amount(b: &mut ChildSpawnerCommands, font: &Handle<Font>, w:
 }
 
 /// Run the doors reveal: wait, open the doors on the revealed symbol.
+#[allow(clippy::too_many_arguments)]
 pub fn door_reveal(
     fidelity: Res<Fidelity>,
     time: Res<Time>,

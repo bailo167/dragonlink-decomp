@@ -2539,14 +2539,14 @@ fn main() -> AppExit {
         return AppExit::error();
     }
     let fidelity = art_dir.is_some();
-    if let Some(dir) = &art_dir {
-        if let Err(missing) = cabinet::check_pack(dir, &cli.game.model()) {
-            eprintln!("authentic pack at {dir} is incomplete; missing:");
-            for m in missing {
-                eprintln!("  {m}");
-            }
-            return AppExit::error();
+    if let Some(dir) = &art_dir
+        && let Err(missing) = cabinet::check_pack(dir, &cli.game.model())
+    {
+        eprintln!("authentic pack at {dir} is incomplete; missing:");
+        for m in missing {
+            eprintln!("  {m}");
         }
+        return AppExit::error();
     }
     let explicit_game = args.iter().any(|a| a == "--game");
     let direct_boot = fidelity || explicit_game || cli.smoke_frames.is_some();
