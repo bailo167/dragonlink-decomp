@@ -281,12 +281,28 @@ fn draw_weighted(
 /// Draw a coin's value. A jackpot drawn below its full-chance stake stands
 /// only with chance stake / full-chance stake and is otherwise drawn again
 /// from the bet multiples (see [`dragonlink_model::JackpotDef::full_chance_stake`]).
+/// While a MAJOR coin is already showing (`major_shown`), a second MAJOR is
+/// drawn again from the other values: the game's help screen allows one
+/// MAJOR coin at a time (docs/reverse-engineering/GOLDEN_CENTURY_PAYTABLE.md).
 fn draw_orb_value(
     hs: &HoldAndSpinModel,
     stake: Stake,
+    major_shown: bool,
     rng: &mut dyn OutcomeRng,
 ) -> Result<OrbValue, GameError> {
-    let value = draw_weighted(hs, |_| true, rng)?;
+    let major = OrbValue::Jackpot(JackpotTier::Major);
+    let mut value = draw_weighted(hs, |_| true, rng)?;
+    if value == major && major_shown {
+        let others: u64 = hs
+            .orb_values
+            .iter()
+            .filter(|v| v.value != major)
+            .map(|v| u64::from(v.weight))
+            .sum();
+        if others > 0 {
+            value = draw_weighted(hs, |v| *v != major, rng)?;
+        }
+    }
     if let OrbValue::Jackpot(tier) = value
         && !jackpot_stands(hs, tier, stake, rng)?
     {
@@ -784,7 +800,7 @@ impl Game {
                         credits: total_bet,
                         unit: self.state.unit,
                     };
-                    let value = draw_orb_value(hs, stake, rng)?;
+                    let value = draw_orb_value(hs, stake, major_shown(&orbs), rng)?;
                     orbs[index] = Some(value);
                     events.push(Event::OrbValueShown { reel, row, value });
                 }
@@ -986,7 +1002,7 @@ impl Game {
             };
             for (index, (reel, row, symbol)) in grid.iter().enumerate() {
                 if self.model.kind(symbol) == Some(SymbolKind::Orb) {
-                    let value = draw_orb_value(hs, stake, rng)?;
+                    let value = draw_orb_value(hs, stake, major_shown(&orbs), rng)?;
                     orbs[index] = Some(value);
                     events.push(Event::OrbValueShown { reel, row, value });
                 }
@@ -1134,7 +1150,8 @@ impl Game {
                         credits: feature.total_bet,
                         unit: next.unit,
                     };
-                    let value = draw_orb_value(hs, stake, rng)?;
+                    let held = major_shown(&feature.cells);
+                    let value = draw_orb_value(hs, stake, held, rng)?;
                     feature.cells[index] = Some(value);
                     landed.push(LockedOrb {
                         reel: (index / rows) as u8,
@@ -1259,6 +1276,13 @@ impl Game {
         }
         Ok(())
     }
+}
+
+/// A MAJOR coin is among `cells`.
+fn major_shown(cells: &[Option<OrbValue>]) -> bool {
+    cells
+        .iter()
+        .any(|c| *c == Some(OrbValue::Jackpot(JackpotTier::Major)))
 }
 
 fn locked_orbs(cells: &[Option<OrbValue>], rows: usize) -> Vec<LockedOrb> {
@@ -1909,6 +1933,47 @@ mod tests {
             award: 12_346
         }));
         assert_eq!(game.state().residue, 3);
+    }
+
+    #[test]
+    fn a_second_major_coin_is_drawn_again() {
+        // Coins ×1 (weight 1), Mini (1) and Major (1); a full grid of four.
+        let mut model = tiny_with_link();
+        let hs = model.hold_and_spin.as_mut().unwrap();
+        hs.orb_values.push(WeightedOrbValue {
+            weight: 1,
+            value: OrbValue::Jackpot(JackpotTier::Major),
+        });
+        hs.jackpots
+            .push(JackpotDef::multiple(JackpotTier::Major, 50));
+        model.validate().unwrap();
+        let mut game = Game::new(model, 1000).unwrap();
+        // Two Majors drawn: the second is drawn again from ×1 and Mini
+        // (bound 2), and comes out ×1.
+        let mut rng = ScriptedRng::new(vec![
+            d(4, 2),
+            d(4, 2),
+            d(3, 2),
+            d(3, 2),
+            d(2, 0),
+            d(3, 0),
+            d(3, 0),
+        ]);
+        let events = game.play_spin(&mut rng).unwrap();
+        let majors = events
+            .iter()
+            .filter(|e| {
+                matches!(
+                    e,
+                    Event::OrbValueShown {
+                        value: OrbValue::Jackpot(JackpotTier::Major),
+                        ..
+                    }
+                )
+            })
+            .count();
+        assert_eq!(majors, 1);
+        assert_eq!(rng.remaining(), 0);
     }
 
     #[test]

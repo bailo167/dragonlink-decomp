@@ -196,6 +196,7 @@ fn dress_scenario(mut model: MathModel, seed: u64, coins: bool) -> MathModel {
     let (Some(orb), Some(flag), Some(doors)) = (id("orb"), id("pennant"), id("doors")) else {
         return model;
     };
+    let nine = id("9");
     // The first spin's window, reel by reel, top row first: three flags and
     // six coins (or none: the strip's own symbols stay, never a coin); the
     // other cells keep the strip's own symbols.
@@ -219,6 +220,17 @@ fn dress_scenario(mut model: MathModel, seed: u64, coins: bool) -> MathModel {
             break;
         };
         let Ok(stop) = stop else { break };
+        // A reel given a flag keeps only that one (a nine in place of its
+        // own), so no window shows two flags on one reel.
+        if cells.contains(&Some(flag))
+            && let Some(nine) = nine
+        {
+            for s in strip.iter_mut() {
+                if *s == flag {
+                    *s = nine;
+                }
+            }
+        }
         for (row, cell) in cells.iter().enumerate() {
             if let Some(symbol) = cell {
                 strip[(stop as usize + row) % len] = *symbol;

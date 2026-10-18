@@ -283,7 +283,7 @@ pub fn golden_century_synthetic() -> MathModel {
     const VASE: u16 = 6;
     const CHEST: u16 = 7;
     const WOMEN: u16 = 8;
-    const EMPEROR: u16 = 9; // wild, reels 2 to 4 only
+    const EMPEROR: u16 = 9; // wild, reels 2 to 5 (help screen); reel 1 only through the doors
     const PENNANT: u16 = 10; // scatter
     const ORB: u16 = 11; // Hold & Spin prize symbol
     const DOORS: u16 = 12; // free-games mystery symbol
@@ -397,6 +397,7 @@ pub fn golden_century_synthetic() -> MathModel {
             (TEN, 6),
             (ORB, 3),
             (NINE, 6),
+            (EMPEROR, 2),
             (WARRIORS, 2),
             (JACK, 5),
             (VASE, 2),
@@ -654,6 +655,7 @@ pub fn golden_century_synthetic() -> MathModel {
             (DOORS, 9),
             (ORB, 2),
             (NINE, 6),
+            (EMPEROR, 2),
             (WARRIORS, 2),
             (JACK, 5),
             (VASE, 2),
@@ -1815,6 +1817,44 @@ pub fn panda_magic_synthetic() -> MathModel {
 mod tests {
     use super::*;
 
+    /// Two scatters never share a reel's window: on every strip, base and
+    /// free, of every title, scatters stand at least a window's height apart
+    /// (the owner: two flags in one column cannot happen on the machine).
+    #[test]
+    fn no_window_shows_two_scatters_on_one_reel() {
+        for model in [
+            synthetic_dev_fixture(),
+            golden_century_synthetic(),
+            autumn_moon_synthetic(),
+            happy_prosperous_synthetic(),
+            panda_magic_synthetic(),
+        ] {
+            let rows = model.grid.rows as usize;
+            let free = model
+                .free_games
+                .as_ref()
+                .map(|fg| fg.free_reel_strips.clone())
+                .unwrap_or_default();
+            for strip in model.reel_strips.iter().chain(free.iter()) {
+                let at: Vec<usize> = strip
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, s)| model.kind(**s) == Some(SymbolKind::Scatter))
+                    .map(|(i, _)| i)
+                    .collect();
+                for (n, &a) in at.iter().enumerate() {
+                    let b = at[(n + 1) % at.len()];
+                    let gap = (b + strip.len() - a) % strip.len();
+                    assert!(
+                        at.len() == 1 || gap >= rows,
+                        "{}: scatters {a} and {b} share a window",
+                        model.id
+                    );
+                }
+            }
+        }
+    }
+
     #[test]
     fn the_fixture_is_valid_and_labelled_synthetic() {
         let m = synthetic_dev_fixture();
@@ -1882,6 +1922,7 @@ mod tests {
             .map(|s| s.iter().filter(|x| x.0 as usize == orb).count())
             .sum();
         assert_eq!(orbs, 15);
-        assert_eq!(m.reel_strips.iter().map(Vec::len).sum::<usize>(), 261);
+        // 261 stops, and the emperor block on reel 5 (help screen).
+        assert_eq!(m.reel_strips.iter().map(Vec::len).sum::<usize>(), 263);
     }
 }
