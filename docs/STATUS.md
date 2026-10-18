@@ -3,7 +3,21 @@
 The current state of the project, what was last done, and what is next. Updated with every
 meaningful increment. Item-level state is in `progress/progress.toml`; this page is the narrative.
 
-**Last updated: 2026-10-18.**
+**Last updated: 2026-10-19.**
+
+## Overnight report (2026-10-18 to 19, autonomous, owner-approved plan)
+
+The owner approved one plan for the night: Golden Century to our best-effort 100%, a machine
+switcher, then each of the eight Dragon Link titles in the mobile build (scope widened by the
+owner; docs/DECISIONS.md). Every run muted. Progress, newest last:
+
+- **Golden Century rules.** At most one flag per reel (every strip of every title checked by a
+  test; the prepared runs' dressing had added a second flag); the emperor on reel 5 too (help
+  screen; the y8c8lEdPW8Y transcription); one MAJOR coin at a time (help screen).
+- **Flat return.** Each jackpot's chance is now the stake over its own prize (a progressive's
+  restart), so its share of the return is the same at every bet and denomination; with the coin
+  values retuned, Golden Century returns about 90% at every bet the decks allow, within about two
+  points in 800,000-spin simulations (noise included). Synthetic, not Dragon Link's maths.
 
 ## Project interpretation (owner reset, 2026-10-14)
 
@@ -399,11 +413,10 @@ The owner's next play test asked for the jackpots to behave as on the machines:
   occasional jump, through features too, and holds a won meter at the amount won until the win is
   counted. Start values, rates, restarts and ceilings are synthetic: no source shows them.
 - **Chance follows the stake.** The national standard requires a jackpot's chance to be directly
-  and linearly proportional to the bet (NS 4.17, PUBLISHED_RETURNS.md). Each jackpot now has its
-  full chance from a stake up (synthetic: 50 credits for the Mini and Minor, $5 for the Major,
-  $25 for the Grand); below it a jackpot coin, or a full grid's Grand, stands only in proportion
-  to the stake. Without this a 1c bet could win a $5,000 Grand at the same chance as a $5 bet, and
-  the synthetic return ran past 8,000% at the smallest stake.
+  and linearly proportional to the bet (NS 4.17, PUBLISHED_RETURNS.md). A jackpot coin, or a full
+  grid's Grand, stands only with chance stake / its prize (a progressive's restart value), so a
+  1c bet cannot win a $5,000 Grand at a $5 bet's chance (the return once ran past 8,000% at the
+  smallest stake). Updated 2026-10-19: first a set stake per jackpot, now its prize.
 - **Prepared runs** (`DRAGONLINK_SCENARIO`): `both` (Hold & Spin then free games, the Grand),
   `jackpots` (a Major, four Minis and two Minors, then free games; no gamble after the Major) and
   `minors` (the same without the Major; the win can be gambled). Golden Century only. Each
@@ -460,9 +473,9 @@ From the owner's play test of the prepared runs:
 - The exact Hold & Spin analysis values every jackpot at its bet multiple, at full chance.
   Golden Century's game pays fixed Mini and Minor prizes and progressive Major and Grand meters,
   each with a chance that follows the stake, so its played return is not the analysed figure; the
-  report says so. Simulated with the meters set, it runs from about 77% to 116% across stakes and
-  denominations (`gc_synthetic_plays`), where the standard allows a bet to move the return by 0.20
-  points at most: synthetic, and not tuned to that.
+  report says so. Simulated with the meters set, it returns about 90% at every bet the decks
+  allow, the configurations within about two points of each other in 800,000-spin runs, noise
+  included (`gc_synthetic_plays`); the standard allows 0.20 points between bets. Synthetic.
 - Replay has never been given an observation of an original game: none has been transcribed.
 - The mathematics tooling has never seen a real configuration. Its model will need extending when
   one arrives ([reverse-engineering/math/CONFIGURATION.md](reverse-engineering/math/CONFIGURATION.md)).

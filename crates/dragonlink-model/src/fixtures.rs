@@ -495,21 +495,21 @@ pub fn golden_century_synthetic() -> MathModel {
     // levels are the official visible values; only the weights are synthetic
     // (small prizes common, big ones rare).
     let orb_values = [
-        (260, OrbValue::BetMultiple(1)),
+        (220, OrbValue::BetMultiple(1)),
         (220, OrbValue::BetMultiple(2)),
         (160, OrbValue::BetMultiple(3)),
         (120, OrbValue::BetMultiple(4)),
         (90, OrbValue::BetMultiple(5)),
-        (70, OrbValue::BetMultiple(10)),
-        (46, OrbValue::BetMultiple(15)),
-        (28, OrbValue::BetMultiple(20)),
-        (12, OrbValue::BetMultiple(50)),
+        (100, OrbValue::BetMultiple(10)),
+        (70, OrbValue::BetMultiple(15)),
+        (45, OrbValue::BetMultiple(20)),
+        (20, OrbValue::BetMultiple(50)),
         (6, OrbValue::BetMultiple(100)),
         (3, OrbValue::BetMultiple(200)),
         (2, OrbValue::BetMultiple(250)),
-        (45, OrbValue::Jackpot(JackpotTier::Mini)),
-        (14, OrbValue::Jackpot(JackpotTier::Minor)),
-        (3, OrbValue::Jackpot(JackpotTier::Major)),
+        (100, OrbValue::Jackpot(JackpotTier::Mini)),
+        (30, OrbValue::Jackpot(JackpotTier::Minor)),
+        (10, OrbValue::Jackpot(JackpotTier::Major)),
     ]
     .into_iter()
     .map(|(weight, value)| WeightedOrbValue { weight, value })
@@ -518,19 +518,21 @@ pub fn golden_century_synthetic() -> MathModel {
     // The bet multiples are synthetic: the exact analysis values every tier
     // by them, and a progressive pays one until its meter is set. In play
     // the Mini and Minor pay the footage's fixed prizes and the Major and
-    // Grand their meters. Each jackpot's chance is proportional to the stake
-    // up to a synthetic stake (credits for the Mini and Minor, cents for the
-    // Major and Grand), chosen so the return stays playable at every stake.
+    // Grand their meters. Each jackpot's chance is the stake over its own
+    // prize (its restart value for the Major and Grand), so its share of
+    // the return is the same at every stake and denomination, as the
+    // national standard requires a jackpot's chance be proportional to the
+    // bet (synthetic; the real chances are unknown).
     let jackpots = [
-        (JackpotTier::Mini, 15, 50),
-        (JackpotTier::Minor, 60, 50),
-        (JackpotTier::Major, 300, 500),
-        (JackpotTier::Grand, 1000, 2_500),
+        (JackpotTier::Mini, 15),
+        (JackpotTier::Minor, 60),
+        (JackpotTier::Major, 300),
+        (JackpotTier::Grand, 1000),
     ]
     .into_iter()
-    .map(|(tier, total_bet_multiple, full_chance_stake)| {
+    .map(|(tier, total_bet_multiple)| {
         let mut def = JackpotDef::multiple(tier, total_bet_multiple);
-        def.full_chance_stake = Some(full_chance_stake);
+        def.full_chance_share = Some(Ratio { num: 1, den: 1 });
         // Australian club footage: the Mini is 1,000 credits and the Minor
         // 5,000 up to 10c, 250 and 1,250 from $1 ($10 / $50 at 1c, $250 /
         // $1,250 at $1); the Major and Grand are running meters, here
@@ -726,7 +728,7 @@ pub fn golden_century_synthetic() -> MathModel {
             trigger_count: 6,
             initial_respins: 3,
             reset_respins_on_new_orb: true,
-            orb_land_chance: Ratio { num: 1, den: 14 },
+            orb_land_chance: Ratio { num: 1, den: 11 },
             orb_values,
             full_grid_award: Some(JackpotTier::Grand),
             jackpots,

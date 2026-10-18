@@ -610,7 +610,7 @@ note = "Presentation follows the official app recording step by step (trigger, m
 id = "jackpots"
 name = "Jackpot levels and presentation"
 status = "partial"
-note = "Australia, from public footage: Grand and Major are running meters; Mini and Minor are fixed per denomination (1,000 and 5,000 credits up to 10c; 250 and 1,250 at $1). Strong evidence the Grand is linked and the Major stand-alone. Start-up values, rates and ceilings not public. Implemented: the Mini and Minor footage values by denomination; Major and Grand meters the core pays and restarts and the app climbs; each jackpot's chance proportional to the stake below a threshold (the national standard's rule). The meters' openings, climb, restarts and ceilings, the thresholds and the odds are synthetic; presentation not compared side by side."
+note = "Australia, from public footage: Grand and Major are running meters; Mini and Minor are fixed per denomination (1,000 and 5,000 credits up to 10c; 250 and 1,250 at $1). Strong evidence the Grand is linked and the Major stand-alone. Start-up values, rates and ceilings not public. Implemented: the Mini and Minor footage values by denomination; Major and Grand meters the core pays and restarts and the app climbs; each jackpot's chance the stake over its prize, so the return is about 90% at every bet (the national standard's rule). The meters' openings, climb, restarts and ceilings, the chances and the odds are synthetic; presentation not compared side by side."
 
 [[category.item]]
 id = "free-games"

@@ -325,7 +325,26 @@ fn jackpot_stands(
         .iter()
         .find(|j| j.tier == tier)
         .ok_or(GameError::Model(ModelError::UndefinedJackpot(tier)))?;
-    let Some(full) = def.full_chance_stake else {
+    // The full-chance stake: a share of the prize, or a set stake.
+    let from_share = def.full_chance_share.and_then(|share| {
+        let prize = match def.progressive_reset {
+            Some(reset) => Some(reset),
+            None => def
+                .fixed_credits
+                .iter()
+                .filter(|f| f.from_unit <= stake.unit)
+                .max_by_key(|f| f.from_unit)
+                .map(|f| f.credits),
+        }?;
+        Some(
+            prize
+                .saturating_mul(u64::from(share.num))
+                .checked_div(u64::from(share.den))
+                .unwrap_or(0)
+                .max(1),
+        )
+    });
+    let Some(full) = from_share.or(def.full_chance_stake) else {
         return Ok(true);
     };
     let at = if def.progressive_reset.is_some() {

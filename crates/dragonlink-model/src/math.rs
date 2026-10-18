@@ -131,6 +131,15 @@ pub struct JackpotDef {
     /// same chance at every stake.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub full_chance_stake: Option<u64>,
+    /// The stake from which this jackpot has its full chance, as a share of
+    /// its own prize: the fixed prize in credits at the game's credit size,
+    /// or a progressive's restart value in money. In place of
+    /// `full_chance_stake` when set. Below it the chance is stake / that, so
+    /// the jackpot's share of the return is the same at every stake and
+    /// denomination (a progressive's grows with its meter). No effect on a
+    /// bet-multiple prize, whose award already follows the bet.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub full_chance_share: Option<Ratio>,
 }
 
 impl JackpotDef {
@@ -142,6 +151,7 @@ impl JackpotDef {
             fixed_credits: Vec::new(),
             progressive_reset: None,
             full_chance_stake: None,
+            full_chance_share: None,
         }
     }
 }
@@ -484,8 +494,16 @@ impl MathModel {
                 {
                     return Err(ModelError::BadFullChanceStake(j.tier));
                 }
+                if let Some(share) = j.full_chance_share
+                    && (share.num == 0 || share.den == 0)
+                {
+                    return Err(ModelError::BadFullChanceStake(j.tier));
+                }
             }
-            let scaled = hs.jackpots.iter().any(|j| j.full_chance_stake.is_some());
+            let scaled = hs
+                .jackpots
+                .iter()
+                .any(|j| j.full_chance_stake.is_some() || j.full_chance_share.is_some());
             let multiples: u64 = hs
                 .orb_values
                 .iter()

@@ -56,44 +56,87 @@ fn the_synthetic_golden_century_is_playable() {
     assert!(report.hit_frequency.estimate > 0.05 && report.hit_frequency.estimate < 0.95);
 }
 
-/// The return the app plays: the Major and Grand meters set (at their
-/// restarts and at the top of where the link opens them), at the smallest
-/// stake, the first bet option and the largest, at 1c and at $1. Each
-/// jackpot's chance follows the stake, so none of these is free money or a
-/// black hole. Synthetic figures, not targets and not Dragon Link's.
-#[test]
-fn the_synthetic_golden_century_stays_playable_with_meters_at_every_stake() {
-    let spins = 150_000;
-    for (unit, label) in [(1u32, "1c"), (100, "$1")] {
-        for (index, lines, stake) in [
-            (0usize, 1u16, "1 x 1"),
-            (0, 50, "1 x 50"),
-            (5, 50, "10 x 50"),
-        ] {
-            for (major, grand) in [(50_000u64, 500_000u64), (120_000, 1_200_000)] {
-                let mut game = Game::new(golden_century_synthetic(), u64::MAX / 4).unwrap();
-                let mut rng = DevRng::new(0);
-                if unit != 1 {
-                    game.apply(Command::ChangeDenomination { from: 1, to: unit }, &mut rng)
-                        .unwrap();
-                }
-                game.apply(Command::SetStake { index, lines }, &mut rng)
+/// The configurations a flat return is measured over: (label, credit size
+/// in cents, bet option index, lines).
+/// Every one is a bet the club or casino deck allows (cabinet::line_keys,
+/// lines_for and the bet keys).
+const STAKES: [(&str, u32, usize, u16); 8] = [
+    ("1c 1x1", 1, 0, 1),
+    ("1c 1x50", 1, 0, 50),
+    ("1c 10x50", 1, 5, 50),
+    ("2c 2x50", 2, 1, 50),
+    ("10c 1x25", 10, 0, 25),
+    ("10c 10x25", 10, 5, 25),
+    ("$1 1x1", 100, 0, 1),
+    ("$1 10x5", 100, 5, 5),
+];
+
+/// The played return of each configuration over `spins`, the meters held at
+/// `meters` (Major, Grand), as a list of (label, return).
+fn returns_at(spins: u64, meters: (u64, u64), seed: u64) -> Vec<(&'static str, f64)> {
+    STAKES
+        .iter()
+        .map(|&(label, unit, index, lines)| {
+            let mut game = Game::new(golden_century_synthetic(), u64::MAX / 4).unwrap();
+            let mut rng = DevRng::new(0);
+            if unit != 1 {
+                game.apply(Command::ChangeDenomination { from: 1, to: unit }, &mut rng)
                     .unwrap();
-                let meters = [(JackpotTier::Major, major), (JackpotTier::Grand, grand)];
-                let report = simulate_game(game, &meters, 7, spins).unwrap();
-                eprintln!(
-                    "{label} {stake}, meters {major}/{grand}: RTP {:.1}% (feature {:.1}); jackpots {:?}",
-                    report.rtp.estimate * 100.0,
-                    report.feature_rtp * 100.0,
-                    report.jackpot_awards,
-                );
-                assert!(
-                    (0.5..1.5).contains(&report.rtp.estimate),
-                    "{label} {stake}, meters {major}/{grand}: RTP {:.3}",
-                    report.rtp.estimate
-                );
             }
+            game.apply(Command::SetStake { index, lines }, &mut rng)
+                .unwrap();
+            let held = [
+                (JackpotTier::Major, meters.0),
+                (JackpotTier::Grand, meters.1),
+            ];
+            let report = simulate_game(game, &held, seed, spins).unwrap();
+            eprintln!(
+                "{label}: RTP {:.2}% (feature {:.1}); jackpots {:?}",
+                report.rtp.estimate * 100.0,
+                report.feature_rtp * 100.0,
+                report.jackpot_awards
+            );
+            (label, report.rtp.estimate)
+        })
+        .collect()
+}
+
+/// The return the app plays is the same at every bet the decks allow, as a
+/// real machine's is (the standard allows 0.20 points between bets): each
+/// jackpot's chance follows the stake over its prize. With the meters at
+/// their restarts and near the top, every configuration returns about 90%
+/// (synthetic, not Dragon Link's) and they agree within the run's noise.
+#[test]
+fn the_return_is_flat_across_stakes_and_denominations() {
+    for meters in [(50_000, 500_000), (120_000, 1_200_000)] {
+        let r = returns_at(150_000, meters, 7);
+        for (label, x) in &r {
+            assert!((0.80..1.0).contains(x), "{label}: RTP {x:.3}");
         }
+        let (lo, hi) = r.iter().fold((f64::MAX, f64::MIN), |(lo, hi), (_, x)| {
+            (lo.min(*x), hi.max(*x))
+        });
+        assert!(hi - lo < 0.08, "spread {:.3}", hi - lo);
+    }
+}
+
+/// A long measurement of the return's flatness, run by hand:
+/// `cargo test --release -p dragonlink-math --test gc_synthetic_plays
+/// measure_the_return_across_stakes -- --ignored --nocapture`.
+#[test]
+#[ignore = "a long measurement, run by hand"]
+fn measure_the_return_across_stakes() {
+    for meters in [(50_000, 500_000), (120_000, 1_200_000)] {
+        eprintln!("meters {meters:?}");
+        let spins = std::env::var("GC_RTP_SPINS")
+            .ok()
+            .and_then(|n| n.parse().ok())
+            .unwrap_or(2_000_000);
+        let r = returns_at(spins, meters, 11);
+        let (lo, hi) = r.iter().fold((f64::MAX, f64::MIN), |(lo, hi), (_, x)| {
+            (lo.min(*x), hi.max(*x))
+        });
+        eprintln!("spread {:.2} points", (hi - lo) * 100.0);
     }
 }
 

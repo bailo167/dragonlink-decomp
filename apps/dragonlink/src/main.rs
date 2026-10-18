@@ -84,7 +84,7 @@ enum Scenario {
 /// `the_jackpot_scenarios_win_what_they_promise`.
 const JACKPOTS_SEED: u64 = 1;
 const MINORS_SEED: u64 = 17;
-const DOORS_SEED: u64 = 6;
+const DOORS_SEED: u64 = 34;
 
 impl Scenario {
     fn from_env() -> Option<Scenario> {
@@ -136,6 +136,7 @@ impl Scenario {
         };
         for jackpot in &mut hs.jackpots {
             jackpot.full_chance_stake = None;
+            jackpot.full_chance_share = None;
         }
         match self {
             // Coins on most respins, so the grid fills and the Grand is won.
