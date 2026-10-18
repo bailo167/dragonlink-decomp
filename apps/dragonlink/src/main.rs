@@ -377,6 +377,17 @@ impl GameChoice {
         }
     }
 
+    /// The title's name in file names and on the command line.
+    fn slug(self) -> &'static str {
+        match self {
+            GameChoice::GoldenCentury => "golden-century",
+            GameChoice::AutumnMoon => "autumn-moon",
+            GameChoice::HappyProsperous => "happy-prosperous",
+            GameChoice::PandaMagic => "panda-magic",
+            GameChoice::Synthetic => "synthetic",
+        }
+    }
+
     /// The name shown on screen for this title.
     fn title(self) -> &'static str {
         match self {
@@ -388,6 +399,41 @@ impl GameChoice {
         }
     }
 }
+
+/// The local authentic pack for `game`, never in the repository:
+/// `DRAGONLINK_ART` names Golden Century's pack itself (as it always has) or
+/// a folder of packs, one per title (`<folder>/<slug>`).
+fn pack_dir(game: GameChoice) -> Option<String> {
+    let dir = std::env::var("DRAGONLINK_ART")
+        .ok()
+        .filter(|d| !d.is_empty())?;
+    let root = std::path::Path::new(&dir);
+    if root.join("symbols").is_dir() {
+        return (game == GameChoice::GoldenCentury).then_some(dir);
+    }
+    let own = root.join(game.slug());
+    own.join("symbols")
+        .is_dir()
+        .then(|| own.display().to_string())
+}
+
+/// "GOLDEN CENTURY" as "Golden Century", for the window's title.
+fn title_case(name: &str) -> String {
+    name.split(' ')
+        .map(|w| {
+            let mut c = w.chars();
+            match c.next() {
+                Some(f) => f.to_string() + &c.as_str().to_lowercase(),
+                None => String::new(),
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+/// The pack the running title uses, if any.
+#[derive(Resource, Default, Clone)]
+struct PackDir(Option<String>);
 
 /// The four titles in scope, in the order the launcher menu lists them. The
 /// synthetic development fixture is not a title and is offered only by flag.
@@ -854,6 +900,9 @@ struct ArtPack {
     ui: std::collections::HashMap<String, Handle<Image>>,
     /// Pixel size of each symbol image, for drawing it at its own size.
     sizes: std::collections::HashMap<String, (f32, f32)>,
+    /// Which of the title's symbols plays which part (wild, scatter, coin,
+    /// mystery), from its model.
+    roles: cabinet::Roles,
     /// The game's animations, as frame sequences (`anim/<name>/NNNN.png`).
     anims: std::collections::HashMap<String, Vec<Handle<Image>>>,
     /// Whether the pack has been read (loading happens once, on first use).
@@ -986,15 +1035,17 @@ fn setup(
     mut fonts: ResMut<Assets<Font>>,
     mut sounds: ResMut<cabinet::Sounds>,
     profile: Res<cabinet::Profile>,
+    pack: Res<PackDir>,
 ) {
     // The initial state's OnEnter runs before Startup systems, so the pack is
     // read here, on first use.
-    load_art(&asset_server, &mut art);
+    load_art(&asset_server, &mut art, pack.0.as_deref());
     let model = sim.game.model();
+    art.roles = cabinet::Roles::from_model(model);
     if fidelity.0 {
         let cab_fonts = cabinet::load_fonts(&mut fonts);
-        if let Ok(dir) = std::env::var("DRAGONLINK_ART") {
-            *sounds = cabinet::Sounds::load(&asset_server, &dir);
+        if let Some(dir) = &pack.0 {
+            *sounds = cabinet::Sounds::load(&asset_server, dir);
         }
         cabinet::spawn(&mut commands, model, &art, &cab_fonts, *profile);
         return;
@@ -1653,6 +1704,10 @@ fn present(
     if reels_spin.spinning.len() != reels {
         reels_spin.spinning = vec![false; reels];
     }
+    // The title's wild and mystery symbols, from its model.
+    let roles = cabinet::Roles::from_model(sim.game.model());
+    let wild = roles.wild.as_str();
+    let mystery = roles.mystery.as_deref();
     presentation.wait -= smoke.dt(&time);
     while presentation.wait <= 0.0 {
         // Flags that won the free games play their sequence (the bell, the
@@ -1715,7 +1770,7 @@ fn present(
                         rows.0.get(reel as usize).is_some_and(|&row| {
                             labels
                                 .iter()
-                                .any(|(l, t)| l.reel == reel && l.row == row && t.0 == "emperor")
+                                .any(|(l, t)| l.reel == reel && l.row == row && t.0 == wild)
                         })
                     })
                 })
@@ -1896,7 +1951,7 @@ fn present(
                         .map(|s| s.kind);
                     let mut opened = Vec::new();
                     for (label, mut text) in &mut labels {
-                        if text.0 == "doors" {
+                        if Some(text.0.as_str()) == mystery {
                             let face = faces
                                 .iter()
                                 .find(|(reel, row, _)| (*reel, *row) == (label.reel, label.row))
@@ -2149,12 +2204,12 @@ fn spawn_camera(mut commands: Commands) {
 /// Only files that exist are loaded; a symbol with no file keeps its
 /// placeholder tile. Nothing proprietary ships in the repository: the pack is
 /// a local, git-ignored set built from the owner's own source material.
-fn load_art(asset_server: &AssetServer, pack: &mut ArtPack) {
+fn load_art(asset_server: &AssetServer, pack: &mut ArtPack, dir: Option<&str>) {
     if pack.loaded {
         return;
     }
     pack.loaded = true;
-    if let Ok(dir) = std::env::var("DRAGONLINK_ART") {
+    if let Some(dir) = dir {
         let root = std::path::Path::new(&dir);
         load_pngs(asset_server, &root.join("symbols"), "symbols", pack, true);
         load_pngs(asset_server, &root.join("ui"), "ui", pack, false);
@@ -2472,18 +2527,19 @@ fn main() -> AppExit {
     // flag or a smoke run boots straight into the game, so every automated
     // path (the gate, the tests) stays on the direct path and never waits on a
     // menu.
-    // The fidelity build: an authentic pack is configured. It is Golden
-    // Century only, boots straight into the game, and refuses to start on an
-    // incomplete pack rather than fall back to placeholder tiles.
-    let art_dir = std::env::var("DRAGONLINK_ART")
-        .ok()
-        .filter(|d| !d.is_empty());
+    // The fidelity build: an authentic pack is configured for the title. It
+    // boots straight into the game, and refuses to start on an incomplete
+    // pack rather than fall back to placeholder tiles.
+    let art_dir = pack_dir(cli.game);
+    if art_dir.is_none()
+        && let Ok(dir) = std::env::var("DRAGONLINK_ART")
+        && !dir.is_empty()
+    {
+        eprintln!("no authentic pack for {} under {dir}", cli.game.title());
+        return AppExit::error();
+    }
     let fidelity = art_dir.is_some();
     if let Some(dir) = &art_dir {
-        if cli.game != GameChoice::GoldenCentury {
-            eprintln!("the authentic pack is Golden Century's; run with --game golden-century");
-            return AppExit::error();
-        }
         if let Err(missing) = cabinet::check_pack(dir, &cli.game.model()) {
             eprintln!("authentic pack at {dir} is incomplete; missing:");
             for m in missing {
@@ -2516,7 +2572,7 @@ fn main() -> AppExit {
     let mut app = App::new();
     let plugins = DefaultPlugins.set(WindowPlugin {
         primary_window: Some(if fidelity {
-            cabinet::window()
+            cabinet::window(&title_case(cli.game.title()))
         } else {
             primary_window()
         }),
@@ -2524,14 +2580,15 @@ fn main() -> AppExit {
     });
     // When an authentic asset pack is configured, point the asset server at it
     // so `symbols/<key>.png` resolves there. The pack is never in the repo.
-    let plugins = match std::env::var("DRAGONLINK_ART") {
-        Ok(dir) if !dir.is_empty() => plugins.set(bevy::asset::AssetPlugin {
+    let plugins = match art_dir.clone() {
+        Some(dir) => plugins.set(bevy::asset::AssetPlugin {
             file_path: dir,
             ..default()
         }),
-        _ => plugins,
+        None => plugins,
     };
     app.add_plugins(plugins);
+    app.insert_resource(PackDir(art_dir.clone()));
     #[cfg(target_arch = "wasm32")]
     app.add_systems(Startup, announce_placeholder_mode);
     // Testing (`DRAGONLINK_MUTE`): every sound plays at zero volume, so runs
@@ -2997,7 +3054,7 @@ mod tests {
     /// (skipped when no pack is configured; plays nothing).
     #[test]
     fn the_named_clips_are_in_the_pack() {
-        let Ok(dir) = std::env::var("DRAGONLINK_ART") else {
+        let Some(dir) = pack_dir(GameChoice::GoldenCentury) else {
             return;
         };
         use cabinet::{GambleCue, bet_beep, gamble_cue};

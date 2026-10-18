@@ -193,6 +193,60 @@ pub fn check_pack(dir: &str, model: &MathModel) -> Result<(), Vec<String>> {
     }
 }
 
+/// The model's symbols by the part they play, so the presentation names no
+/// title's own symbols: Golden Century's emperor, pennant and doors are
+/// another title's wild, scatter and mystery symbol.
+#[derive(Clone, Debug, Default)]
+pub struct Roles {
+    pub wild: String,
+    pub scatter: String,
+    pub coin: String,
+    /// The free games' mystery symbol, if the title has one.
+    pub mystery: Option<String>,
+    /// What a respinning Hold & Spin position shows passing: every symbol
+    /// but the mystery one, the coin last.
+    pub respin: Vec<String>,
+}
+
+impl Roles {
+    pub fn from_model(model: &MathModel) -> Roles {
+        let key_of = |kind: SymbolKind| {
+            model
+                .symbols
+                .iter()
+                .find(|s| s.kind == kind)
+                .map(|s| s.key.clone())
+                .unwrap_or_default()
+        };
+        let mystery = model
+            .free_games
+            .as_ref()
+            .and_then(|fg| fg.mystery)
+            .and_then(|id| model.symbols.get(id.0 as usize))
+            .map(|s| s.key.clone());
+        let coin = model
+            .hold_and_spin
+            .as_ref()
+            .and_then(|hs| model.symbols.get(hs.orb.0 as usize))
+            .map(|s| s.key.clone())
+            .unwrap_or_else(|| key_of(SymbolKind::Orb));
+        let mut respin: Vec<String> = model
+            .symbols
+            .iter()
+            .map(|s| s.key.clone())
+            .filter(|k| Some(k) != mystery.as_ref() && *k != coin)
+            .collect();
+        respin.push(coin.clone());
+        Roles {
+            wild: key_of(SymbolKind::Wild),
+            scatter: key_of(SymbolKind::Scatter),
+            coin,
+            mystery,
+            respin,
+        }
+    }
+}
+
 /// A PNG's pixel size, read from its header.
 pub fn png_size(path: &Path) -> Option<(f32, f32)> {
     let mut f = std::fs::File::open(path).ok()?;
@@ -207,9 +261,9 @@ pub fn png_size(path: &Path) -> Option<(f32, f32)> {
 }
 
 /// The primary window for the cabinet: borderless full screen.
-pub fn window() -> Window {
+pub fn window(title: &str) -> Window {
     Window {
-        title: "Golden Century".into(),
+        title: title.into(),
         mode: WindowMode::BorderlessFullscreen(MonitorSelection::Primary),
         // Testing (`DRAGONLINK_ONTOP`): stay in front, for screen captures.
         window_level: if std::env::var_os("DRAGONLINK_ONTOP").is_some() {
@@ -830,8 +884,13 @@ fn spawn_meter_band(
     // The message row: the start prompts at its right, right-aligned to
     // x 1685, wholly above the band.
     for (which, count, key, text) in [
-        (0u8, "3", "pennant", "Start FREE GAMES"),
-        (1u8, "6", "orb", "Start HOLD & SPIN FEATURE"),
+        (0u8, "3", art.roles.scatter.as_str(), "Start FREE GAMES"),
+        (
+            1u8,
+            "6",
+            art.roles.coin.as_str(),
+            "Start HOLD & SPIN FEATURE",
+        ),
     ] {
         c.spawn((
             StartPrompt { which },
@@ -4259,10 +4318,6 @@ const RESPIN_STRIKE: f32 = RESPIN_DOONK + 0.07;
 const RESPIN_DONE: f32 = 4.5 / 30.0;
 /// Frames per second of the game's animations.
 const ANIM_FPS: f32 = 30.0;
-/// Symbols an open position shows while it respins.
-const RESPIN_SYMBOLS: [&str; 12] = [
-    "9", "10", "J", "Q", "K", "vase", "chest", "women", "warriors", "emperor", "pennant", "orb",
-];
 /// The tint of a dimmed symbol on an open Hold & Spin position.
 pub const DIM_TINT: Color = Color::srgb(0.62, 0.62, 0.68);
 /// The slate under the whole Hold & Spin grid.
@@ -4557,18 +4612,23 @@ fn open(label: &str) -> bool {
     !label.starts_with("ORB")
 }
 
-/// A symbol for an open position, from a stable hash.
-fn respin_symbol(reel: u8, row: u8, n: i64) -> &'static str {
+/// A symbol for an open position, from a stable hash (`Roles::respin`:
+/// the title's symbols, the coin last).
+fn respin_symbol<'a>(roles: &'a Roles, reel: u8, row: u8, n: i64) -> &'a str {
+    let symbols = &roles.respin;
+    if symbols.len() < 2 {
+        return roles.coin.as_str();
+    }
     let h = (n as u64)
         .wrapping_mul(0x9E37_79B9_7F4A_7C15)
         .rotate_left(23)
         ^ (u64::from(reel) * 7 + u64::from(row)).wrapping_mul(0xC2B2_AE3D_27D4_EB4F);
     // Coins pass less often than other symbols.
-    let i = (h % 23) as usize;
-    if i >= RESPIN_SYMBOLS.len() + 10 {
-        "orb"
+    let i = (h % (symbols.len() as u64 + 11)) as usize;
+    if i >= symbols.len() + 10 {
+        roles.coin.as_str()
     } else {
-        RESPIN_SYMBOLS[i % (RESPIN_SYMBOLS.len() - 1)]
+        symbols[i % (symbols.len() - 1)].as_str()
     }
 }
 
@@ -4608,17 +4668,18 @@ impl RespinAnim {
 
 /// The symbol at strip index `n` of a respinning position that comes to
 /// rest at `end` (a coin there if one lands; never a coin otherwise).
-fn respin_key(reel: u8, row: u8, n: i64, end: i64, coin: bool) -> &'static str {
-    let key = respin_symbol(reel, row, n);
+fn respin_key<'a>(roles: &'a Roles, reel: u8, row: u8, n: i64, end: i64, coin: bool) -> &'a str {
+    let key = respin_symbol(roles, reel, row, n);
+    let is_coin = key == roles.coin;
     if n == end {
         if coin {
-            "orb"
-        } else if key == "orb" {
+            roles.coin.as_str()
+        } else if is_coin {
             "Q"
         } else {
             key
         }
-    } else if (n - end).abs() == 1 && key == "orb" {
+    } else if (n - end).abs() == 1 && is_coin {
         // No stray coin right beside the landing one.
         "K"
     } else {
@@ -4722,16 +4783,18 @@ pub fn hs_spin_digits(
                 letter(&art, ch, text.as_deref(), children, &mut digits);
                 continue;
             }
-            let text = (respin_key(spin.reel, spin.row, n, end, coin) == "orb").then(|| {
-                // Passing coins carry bet multiples, never a tier plate.
-                let face = passing_face(spin.reel, n * 3 + i64::from(spin.row));
-                let face = if tier_image(face).is_some() {
-                    "x2"
-                } else {
-                    face
-                };
-                face_credits(face, total_bet).map(|c| coin_text(c, cents))
-            });
+            let text = (respin_key(&art.roles, spin.reel, spin.row, n, end, coin)
+                == art.roles.coin)
+                .then(|| {
+                    // Passing coins carry bet multiples, never a tier plate.
+                    let face = passing_face(spin.reel, n * 3 + i64::from(spin.row));
+                    let face = if tier_image(face).is_some() {
+                        "x2"
+                    } else {
+                        face
+                    };
+                    face_credits(face, total_bet).map(|c| coin_text(c, cents))
+                });
             letter(&art, ch, text.flatten().as_deref(), children, &mut digits);
         }
     }
@@ -5091,6 +5154,7 @@ pub fn hold_and_spin_motion(
     mut show: ResMut<FeatureShow>,
     sounds: Res<Sounds>,
     rollup: Res<Rollup>,
+    art: Res<ArtPack>,
     mut commands: Commands,
     mut labels: Query<(&CellLabel, &mut Text)>,
 ) {
@@ -5215,7 +5279,10 @@ pub fn hold_and_spin_motion(
                 let end = anim.end_of(at);
                 for (l, mut text) in &mut labels {
                     if l.reel == reel && l.row == row && open(&text.0) {
-                        text.0 = format!("{DIM}{}", respin_key(reel, row, end, end, false));
+                        text.0 = format!(
+                            "{DIM}{}",
+                            respin_key(&art.roles, reel, row, end, end, false)
+                        );
                     }
                 }
             }
@@ -5553,7 +5620,7 @@ pub fn hold_and_spin_draw(
                 continue;
             };
             let n = base + i64::from(img.index);
-            let key = respin_key(spin.reel, spin.row, n, end, coin);
+            let key = respin_key(&art.roles, spin.reel, spin.row, n, end, coin);
             let (w, h) = art
                 .sizes
                 .get(key)
@@ -5770,10 +5837,11 @@ pub struct BannerAmount;
 /// The opening doors of one position.
 pub fn spawn_door_fx(cell: &mut ChildSpawnerCommands, art: &ArtPack, reel: u8, row: u8) {
     let (cw, ch) = cell_size();
+    let mystery = art.roles.mystery.as_deref().unwrap_or("doors");
     let (w, h) = art
         .sizes
-        .get("doors")
-        .map_or((cw, ch), |s| symbol_size("doors", *s));
+        .get(mystery)
+        .map_or((cw, ch), |s| symbol_size(mystery, *s));
     cell.spawn((
         DoorFx { reel, row },
         // Over the coin's prize and plate (ZIndex 1) while the doors open.
@@ -5824,6 +5892,7 @@ pub fn door_reveal(
     smoke: Res<Smoke>,
     mut show: ResMut<FeatureShow>,
     sounds: Res<Sounds>,
+    art: Res<ArtPack>,
     mut commands: Commands,
     mut labels: Query<(&CellLabel, &mut Text)>,
 ) {
@@ -5839,7 +5908,7 @@ pub fn door_reveal(
     let cells = if cells.is_empty() {
         labels
             .iter()
-            .filter(|(_, text)| text.0 == "doors")
+            .filter(|(_, text)| Some(text.0.as_str()) == art.roles.mystery.as_deref())
             .map(|(l, _)| (l.reel, l.row))
             .collect()
     } else {
@@ -7501,6 +7570,7 @@ pub fn wild_stacks(
     time: Res<Time>,
     reels: Res<Reels>,
     show: Res<FeatureShow>,
+    art: Res<ArtPack>,
     labels: Query<(&CellLabel, &Text)>,
     mut stacks: ResMut<WildStacks>,
 ) {
@@ -7545,7 +7615,7 @@ pub fn wild_stacks(
         for (l, text) in &labels {
             if l.reel == reel && (l.row as usize) < 3 {
                 let (key, dim) = label_symbol(&text.0);
-                column[l.row as usize] = key == "emperor" && !dim;
+                column[l.row as usize] = key == art.roles.wild && !dim;
             }
         }
         let mut row = 0;
@@ -7683,7 +7753,7 @@ pub fn symbol_fx(
     let line_cells = cells.clone();
     if show.scatter_shown {
         for (l, t) in &labels {
-            if t.0 == "pennant" {
+            if t.0 == art.roles.scatter {
                 cells.push((l.reel, l.row));
             }
         }
@@ -7700,7 +7770,7 @@ pub fn symbol_fx(
         let frame = on
             .then(|| {
                 // The flags wave at 20 frames a second (real game).
-                let fps = if key == "pennant" {
+                let fps = if key == art.roles.scatter {
                     20.0
                 } else {
                     SYMBOL_FX_FPS
