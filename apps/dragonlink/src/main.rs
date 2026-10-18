@@ -1333,7 +1333,12 @@ fn input(
         && !gamble.active
         && reels.rested_for() >= cabinet::SPIN_AFTER_REST;
     // The cabinet's GAMES MENU opens on a touch at rest.
-    if fidelity.0 && cabinet_input.menu && at_rest && !menu.showing() {
+    // Testing (`DRAGONLINK_SHOW=menu`, an unattended run only): the GAMES
+    // MENU opens by itself two seconds in, so it can be captured.
+    let show_menu = smoke.frames_left.is_some()
+        && smoke.frame == 120
+        && std::env::var("DRAGONLINK_SHOW").as_deref() == Ok("menu");
+    if fidelity.0 && (cabinet_input.menu || show_menu) && at_rest && !menu.showing() {
         menu.open_now();
     }
     // A denomination: touched on the GAMES MENU, or the next one with D.

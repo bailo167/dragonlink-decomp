@@ -276,3 +276,22 @@ could not say what it was a model of.
 the mobile analysis (draw order, reveal, per-position Hold & Spin strips, prize codes) are options
 a configuration selects, and a cabinet configuration selects only what cabinet evidence shows.
 Reports and strips generated from private data are written beside it, never into the work tree.
+
+## D-018 — The scope widens to all eight titles in the mobile build; one app switches machines (2026-10-18)
+
+**Decided by the owner.** Once Golden Century reaches the project's best-effort standard, the work
+continues to every Dragon Link title the owner's mobile build holds: Autumn Moon, Happy &
+Prosperous and Panda Magic (the original scope), then Genghis Khan, Golden Gong, Peace & Long Life
+and Spring Festival. The app gains a machine chooser on its menu button, so one build plays every
+title, each as its own machine with its own art, sound, rules and jackpots.
+
+**Why.** Golden Century proved the platform: the engine, the cabinet frame, Hold & Spin, the free
+games, the jackpots and the gamble are shared across the family, so each further title is mostly
+its own evidence, data and presentation.
+
+**Consequence.** Each title follows Golden Century's method: evidence first (footage, its help
+screens, claims), a synthetic model with its evidenced structure and a flat synthetic return,
+presentation from its own scene layout and local pack, sounds placed from recordings, captures
+and a side-by-side check. The machine chooser is this app's feature, not a claim about any
+cabinet. The rules of CLAUDE.md apply unchanged: nothing proprietary in Git, every invented value
+labelled synthetic.

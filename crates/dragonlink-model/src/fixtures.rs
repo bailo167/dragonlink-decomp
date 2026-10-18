@@ -454,9 +454,9 @@ pub fn golden_century_synthetic() -> MathModel {
         (JACK, [0, 5, 10, 50]),       // 3,4 read; 5 synthetic
         (TEN, [0, 5, 10, 50]),        // 3,4 read; 5 synthetic
         (NINE, [0, 5, 10, 40]),       // synthetic
-        // A run led by emperors pays the emperor's own line (the game's
-        // help screen, official mobile; not read on the cabinet). Only
-        // doors put an emperor on reel 1.
+        // A run led by emperors pays the emperor's own line. Synthetic: the
+        // values the mobile help screen shows, not cabinet evidence (D-017).
+        // Only doors put an emperor on reel 1.
         (EMPEROR, [5, 25, 100, 500]),
     ] {
         for (count, pay) in (2u8..=5).zip(pays) {
