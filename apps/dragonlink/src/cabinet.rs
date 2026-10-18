@@ -4572,6 +4572,10 @@ pub struct HsSpinImage {
 pub struct HsSpinDigit {
     index: u8,
 }
+/// The MINI / MINOR / MAJOR plate of a coin landing on a respinning
+/// position, so it shows as the coin arrives, as its prize digits do.
+#[derive(Component)]
+pub struct HsSpinTier;
 
 /// Letter the coins passing on respinning positions, as the machine does.
 #[allow(clippy::type_complexity, clippy::too_many_arguments)]
@@ -4584,7 +4588,8 @@ pub fn hs_spin_digits(
     spins: Query<(&HsSpin, &Children)>,
     images: Query<(&HsSpinImage, &Children)>,
     labels: Query<(&CellLabel, &Text)>,
-    mut digits: Query<(&HsSpinDigit, &mut ImageNode, &mut Node)>,
+    mut digits: Query<(&HsSpinDigit, &mut ImageNode, &mut Node), Without<HsSpinTier>>,
+    mut plates: Query<(&mut ImageNode, &mut Node, &mut Visibility), With<HsSpinTier>>,
 ) {
     if !fidelity.0 {
         return;
@@ -4592,6 +4597,12 @@ pub fn hs_spin_digits(
     let Some(anim) = show.respin.as_ref() else {
         return;
     };
+    // The plate sits on the coin image as on a landed coin (TIER_PLATE).
+    let (ow, oh) = art
+        .sizes
+        .get("orb")
+        .map_or(cell_size(), |s| symbol_size("orb", *s));
+    let (pw, ph) = TIER_PLATE;
     let total_bet = sim.game.total_bet();
     let cents = denom.cents();
     let ch = cell_size().1;
@@ -4611,6 +4622,28 @@ pub fn hs_spin_digits(
                 continue;
             };
             let n = base + i64::from(img.index);
+            let plate = (coin && n == end)
+                .then(|| landing.as_deref().and_then(tier_image))
+                .flatten()
+                .and_then(|k| art.ui.get(k));
+            for child in children.iter() {
+                let Ok((mut image, mut node, mut vis)) = plates.get_mut(child) else {
+                    continue;
+                };
+                match plate {
+                    Some(handle) => {
+                        if image.image != *handle {
+                            image.image = handle.clone();
+                        }
+                        node.width = Val::Px(pw);
+                        node.height = Val::Px(ph);
+                        node.left = Val::Px((ow - pw) / 2.0);
+                        node.top = Val::Px((oh - ph) / 2.0 + TIER_DROP);
+                        *vis = Visibility::Inherited;
+                    }
+                    None => *vis = Visibility::Hidden,
+                }
+            }
             if coin && n == end {
                 let text = landing
                     .as_deref()
@@ -4640,7 +4673,7 @@ fn letter(
     ch: f32,
     text: Option<&str>,
     children: &Children,
-    digits: &mut Query<(&HsSpinDigit, &mut ImageNode, &mut Node)>,
+    digits: &mut Query<(&HsSpinDigit, &mut ImageNode, &mut Node), Without<HsSpinTier>>,
 ) {
     let digit_h = ch * COIN_DIGIT_SHARE;
     let scale = text.map_or(1.0, |t| coin_digit_scale(t, art, digit_h));
@@ -4765,6 +4798,20 @@ pub fn spawn_hs_spin(cell: &mut ChildSpawnerCommands, art: &ArtPack, reel: u8, r
                 },
             ))
             .with_children(|img| {
+                // A landing coin's tier plate.
+                img.spawn((
+                    HsSpinTier,
+                    ZIndex(1),
+                    Node {
+                        position_type: PositionType::Absolute,
+                        ..default()
+                    },
+                    ImageNode {
+                        image_mode: NodeImageMode::Stretch,
+                        ..default()
+                    },
+                    Visibility::Hidden,
+                ));
                 // A passing coin's prize.
                 for digit in 0..COIN_SLOTS {
                     img.spawn((

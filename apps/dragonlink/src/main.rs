@@ -761,6 +761,10 @@ struct Smoke {
     /// Run on the clock rather than a fixed step (the cabinet build, so an
     /// unattended run keeps the machine's real pace for recording).
     real_time: bool,
+    /// Testing (`DRAGONLINK_CAPTURE=<folder>`): every `n`th frame of an
+    /// unattended run saved there (`DRAGONLINK_CAPTURE_EVERY`, default 6),
+    /// from the renderer, so other windows cannot spoil it.
+    capture: Option<(String, u32)>,
 }
 
 impl Smoke {
@@ -1941,6 +1945,17 @@ fn smoke(
     let Some(left) = smoke.frames_left else {
         return;
     };
+    // A capture of the run, frame by frame (testing only; the pictures go
+    // to a folder outside the repository, see docs/LEGAL.md).
+    #[cfg(not(target_arch = "wasm32"))]
+    if let Some((dir, every)) = &smoke.capture
+        && smoke.frame.is_multiple_of(*every)
+    {
+        let path = format!("{dir}/f{:05}.png", smoke.frame);
+        commands
+            .spawn(Screenshot::primary_window())
+            .observe(save_to_disk(path));
+    }
     // The picture is taken on the first settled frame (nothing waiting to be
     // shown) inside the window before the end, or at the window's last frame.
     let settled = presentation.queue.is_empty() && smoke.hold == 0;
@@ -2435,6 +2450,17 @@ fn main() -> AppExit {
         frame: 0,
         hold: 0,
         real_time: fidelity,
+        capture: std::env::var("DRAGONLINK_CAPTURE")
+            .ok()
+            .filter(|d| !d.is_empty())
+            .map(|dir| {
+                let every = std::env::var("DRAGONLINK_CAPTURE_EVERY")
+                    .ok()
+                    .and_then(|n| n.parse().ok())
+                    .filter(|n: &u32| *n > 0)
+                    .unwrap_or(6);
+                (dir, every)
+            }),
     })
     .add_systems(Startup, spawn_camera)
     .add_systems(OnEnter(Screen::Menu), menu_setup)
