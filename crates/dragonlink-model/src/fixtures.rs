@@ -562,16 +562,18 @@ pub fn golden_century_synthetic() -> MathModel {
     })
     .collect();
 
-    // Free-game reels: like the base reels but with no orbs (so the Hold &
-    // Spin feature does not nest here) and a mystery symbol (`doors`), in
-    // long stacks so whole reels of doors are common (cabinet footage), that,
-    // when it appears, reveals to one drawn symbol across all its positions,
-    // as Golden Century's free games do. The scatter stays, so free games can
+    // Free-game reels: like the base reels with a mystery symbol (`doors`),
+    // in long stacks so whole reels of doors are common (cabinet footage),
+    // that reveals to one drawn symbol across all its positions, as Golden
+    // Century's free games do. Coins land here too (the owner's session:
+    // 19 of 23 free-game stills show some, and six started Hold & Spin
+    // inside the free games), in pairs. The scatter stays, so free games can
     // retrigger. Strips, weights and the reveal table are synthetic.
     let free_reel_strips = vec![
         reel(&[
             (NINE, 6),
             (DOORS, 9),
+            (ORB, 2),
             (TEN, 5),
             (WARRIORS, 2),
             (JACK, 5),
@@ -591,6 +593,7 @@ pub fn golden_century_synthetic() -> MathModel {
             (EMPEROR, 2),
             (NINE, 6),
             (DOORS, 9),
+            (ORB, 2),
             (JACK, 5),
             (VASE, 2),
             (QUEEN, 4),
@@ -607,6 +610,7 @@ pub fn golden_century_synthetic() -> MathModel {
         reel(&[
             (JACK, 6),
             (DOORS, 9),
+            (ORB, 2),
             (NINE, 6),
             (EMPEROR, 2),
             (TEN, 5),
@@ -625,6 +629,7 @@ pub fn golden_century_synthetic() -> MathModel {
         reel(&[
             (NINE, 6),
             (DOORS, 9),
+            (ORB, 2),
             (TEN, 5),
             (EMPEROR, 2),
             (JACK, 5),
@@ -643,6 +648,7 @@ pub fn golden_century_synthetic() -> MathModel {
         reel(&[
             (TEN, 6),
             (DOORS, 9),
+            (ORB, 2),
             (NINE, 6),
             (WARRIORS, 2),
             (JACK, 5),
@@ -660,9 +666,11 @@ pub fn golden_century_synthetic() -> MathModel {
     ];
     // What the doors reveal to: the game's help screen lists the emperor,
     // the picture symbols, K to 9 and the coin. The weights are synthetic,
-    // towards the lower symbols, with the emperor (wild) and the coin about
-    // one reveal in eight each; revealed coins each draw a prize, and six or
-    // more start Hold & Spin.
+    // towards the lower symbols, with the emperor (wild) about one reveal in
+    // five and the coin one in eight, near a tally of 60 filmed reveals
+    // (emperor 12, coin 7; a small sample leaning to big wins, so not a
+    // measurement); revealed coins each draw a prize, and six or more coins
+    // start Hold & Spin.
     let reveal_values = [
         (28, NINE),
         (24, TEN),
@@ -673,8 +681,8 @@ pub fn golden_century_synthetic() -> MathModel {
         (5, VASE),
         (4, CHEST),
         (2, WOMEN),
-        (18, EMPEROR),
-        (18, ORB),
+        (30, EMPEROR),
+        (20, ORB),
     ]
     .into_iter()
     .map(|(weight, symbol)| WeightedSymbol {

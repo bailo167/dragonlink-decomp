@@ -84,7 +84,7 @@ enum Scenario {
 /// `the_jackpot_scenarios_win_what_they_promise`.
 const JACKPOTS_SEED: u64 = 1;
 const MINORS_SEED: u64 = 17;
-const DOORS_SEED: u64 = 38;
+const DOORS_SEED: u64 = 6;
 
 impl Scenario {
     fn from_env() -> Option<Scenario> {
@@ -112,13 +112,24 @@ impl Scenario {
     fn model(self, model: MathModel, seed: u64) -> MathModel {
         let mut model = dress_scenario(model, seed, self != Scenario::Doors);
         let orb = model.symbols.iter().position(|s| s.key == "orb");
-        // The runs that promise their jackpots keep the doors off coins, so
-        // their free games start no Hold & Spin of their own.
+        // The runs that promise their jackpots keep coins out of their free
+        // games (off the doors and off the reels, a nine in each coin's
+        // place), so those start no Hold & Spin of their own.
+        let nine = model.symbols.iter().position(|s| s.key == "9");
         if self != Scenario::Doors
             && let Some(fg) = model.free_games.as_mut()
         {
             fg.reveal_values
                 .retain(|v| Some(usize::from(v.symbol.0)) != orb);
+            if let Some(nine) = nine.and_then(|n| u16::try_from(n).ok()) {
+                for strip in &mut fg.free_reel_strips {
+                    for s in strip.iter_mut() {
+                        if Some(usize::from(s.0)) == orb {
+                            *s = dragonlink_model::SymbolId(nine);
+                        }
+                    }
+                }
+            }
         }
         let Some(hs) = model.hold_and_spin.as_mut() else {
             return model;

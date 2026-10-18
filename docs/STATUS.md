@@ -417,8 +417,10 @@ The owner's next play test asked for the jackpots to behave as on the machines:
 From the owner's play test of the prepared runs:
 
 - **Doors.** They now open onto the emperor (wild) and the coin too, as the game's help screen
-  lists (VERIFIED), each about one reveal in eight (synthetic). Revealed coins each draw a prize
-  (as the mobile build does) and open with it.
+  lists (VERIFIED): the emperor about one reveal in five and the coin one in eight (synthetic,
+  near a tally of 60 filmed reveals: emperor 12, coin 7, a sample leaning to big wins). Revealed
+  coins each draw a prize (as the mobile build does) and open with it. Coins also land on the free
+  reels themselves (the owner's session), and count with revealed ones.
 - **Hold & Spin inside the free games.** Six or more coins in a free game start Hold & Spin, which
   holds the free games and hands them back when it ends, its win in their total; on the last free
   game FEATURE COMPLETED follows. Presented as the owner's cabinet session shows it (STRONG,
@@ -433,8 +435,8 @@ From the owner's play test of the prepared runs:
   emperor in another, no progressive, so the gamble is offered), and `DRAGONLINK_CAPTURE` (with
   `_EVERY` and `_FROM`) saves an unattended run's frames from the renderer for checking by eye.
 - **Evidence.** The wild lands on reels 2 to 5, never reel 1 (the owner's session transcription;
-  the claims said reels 2 to 4). The synthetic base strips still carry it on reels 2 to 4 only,
-  and the free reels carry no coins though the session shows some: both noted for the next pass.
+  the claims said reels 2 to 4). The synthetic base strips still carry it on reels 2 to 4 only:
+  noted for the next pass.
 
 ## Known limits of what exists
 
