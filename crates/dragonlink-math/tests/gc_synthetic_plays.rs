@@ -6,7 +6,9 @@
 //! makes no claim about Dragon Link — every figure here is a property of a
 //! synthetic fixture, not of any original game.
 
-use dragonlink_math::sim::simulate;
+use dragonlink_core::{Command, DevRng, Game};
+use dragonlink_math::sim::{simulate, simulate_game};
+use dragonlink_model::JackpotTier;
 use dragonlink_model::fixtures::golden_century_synthetic;
 
 #[test]
@@ -52,6 +54,47 @@ fn the_synthetic_golden_century_is_playable() {
         report.feature_frequency.estimate
     );
     assert!(report.hit_frequency.estimate > 0.05 && report.hit_frequency.estimate < 0.95);
+}
+
+/// The return the app plays: the Major and Grand meters set (at their
+/// restarts and at the top of where the link opens them), at the smallest
+/// stake, the first bet option and the largest, at 1c and at $1. Each
+/// jackpot's chance follows the stake, so none of these is free money or a
+/// black hole. Synthetic figures, not targets and not Dragon Link's.
+#[test]
+fn the_synthetic_golden_century_stays_playable_with_meters_at_every_stake() {
+    let spins = 150_000;
+    for (unit, label) in [(1u32, "1c"), (100, "$1")] {
+        for (index, lines, stake) in [
+            (0usize, 1u16, "1 x 1"),
+            (0, 50, "1 x 50"),
+            (5, 50, "10 x 50"),
+        ] {
+            for (major, grand) in [(50_000u64, 500_000u64), (120_000, 1_200_000)] {
+                let mut game = Game::new(golden_century_synthetic(), u64::MAX / 4).unwrap();
+                let mut rng = DevRng::new(0);
+                if unit != 1 {
+                    game.apply(Command::ChangeDenomination { from: 1, to: unit }, &mut rng)
+                        .unwrap();
+                }
+                game.apply(Command::SetStake { index, lines }, &mut rng)
+                    .unwrap();
+                let meters = [(JackpotTier::Major, major), (JackpotTier::Grand, grand)];
+                let report = simulate_game(game, &meters, 7, spins).unwrap();
+                eprintln!(
+                    "{label} {stake}, meters {major}/{grand}: RTP {:.1}% (feature {:.1}); jackpots {:?}",
+                    report.rtp.estimate * 100.0,
+                    report.feature_rtp * 100.0,
+                    report.jackpot_awards,
+                );
+                assert!(
+                    (0.5..1.5).contains(&report.rtp.estimate),
+                    "{label} {stake}, meters {major}/{grand}: RTP {:.3}",
+                    report.rtp.estimate
+                );
+            }
+        }
+    }
 }
 
 #[test]

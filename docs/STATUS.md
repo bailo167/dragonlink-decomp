@@ -397,11 +397,18 @@ The owner's next play test asked for the jackpots to behave as on the machines:
   random between its restart and 80% of a ceiling (Grand $5,000 to $12,000 of $15,000, Major $500
   to $1,200 of $1,500, the owner's ranges), climbs it by a few cents at irregular moments with an
   occasional jump, through features too, and holds a won meter at the amount won until the win is
-  shown. Start values, rates, restarts and ceilings are synthetic: no source shows them.
+  counted. Start values, rates, restarts and ceilings are synthetic: no source shows them.
+- **Chance follows the stake.** The national standard requires a jackpot's chance to be directly
+  and linearly proportional to the bet (NS 4.17, PUBLISHED_RETURNS.md). Each jackpot now has its
+  full chance from a stake up (synthetic: 50 credits for the Mini and Minor, $5 for the Major,
+  $25 for the Grand); below it a jackpot coin, or a full grid's Grand, stands only in proportion
+  to the stake. Without this a 1c bet could win a $5,000 Grand at the same chance as a $5 bet, and
+  the synthetic return ran past 8,000% at the smallest stake.
 - **Prepared runs** (`DRAGONLINK_SCENARIO`): `both` (Hold & Spin then free games, the Grand),
   `jackpots` (a Major, four Minis and two Minors, then free games; no gamble after the Major) and
-  `minors` (the same without the Major; the win can be gambled). Each dresses its run's synthetic
-  model only; tests hold each run to what it promises.
+  `minors` (the same without the Major; the win can be gambled). Golden Century only. Each
+  dresses its run's synthetic model only, its jackpots at full chance whatever the bet; tests hold
+  each run to what it promises.
 - "FREE SPINS COMPLETED" at the end of Hold & Spin stays: it is what the official app and the
   cabinet footage show (VERIFIED).
 
@@ -411,16 +418,21 @@ The owner's next play test asked for the jackpots to behave as on the machines:
   has been checked on an Australian machine.
 - The synthetic development fixture is not Dragon Link: five lines, 24-stop strips, symbols `A` to
   `H`. The four title configurations are also synthetic: their structure is evidenced but every
-  strip, weight, chance and jackpot amount is invented and labelled so.
+  strip, weight and chance is invented and labelled so, and so is every jackpot amount except
+  Golden Century's Mini and Minor, which take the club footage's values (STRONG,
+  `jackpots.minor-mini-au`).
 - The importer handles standard media that is loose or inside ZIP-family archives, and identifies
   nothing. No proprietary container is unpacked. The application cannot display imported assets.
 - Golden Century uses the authentic art and sound only when the local pack is present; the other
   titles still draw generated tiles. About 55 of the game's sound clips are not placed yet, and some
   rules are unknown (the win-tune rule between measured sizes, the big-coin sound threshold). The
   build is checked by eye from screen recordings of unattended runs on the Windows host.
-- The exact Hold & Spin analysis values every jackpot at its bet multiple. Golden Century's game
-  now pays fixed Mini and Minor prizes and progressive Major and Grand meters, so its played return
-  depends on the bet and the meters and is not the analysed figure.
+- The exact Hold & Spin analysis values every jackpot at its bet multiple, at full chance.
+  Golden Century's game pays fixed Mini and Minor prizes and progressive Major and Grand meters,
+  each with a chance that follows the stake, so its played return is not the analysed figure; the
+  report says so. Simulated with the meters set, it runs from about 74% to 100% across stakes and
+  denominations (`gc_synthetic_plays`), where the standard allows a bet to move the return by 0.20
+  points at most: synthetic, and not tuned to that.
 - Replay has never been given an observation of an original game: none has been transcribed.
 - The mathematics tooling has never seen a real configuration. Its model will need extending when
   one arrives ([reverse-engineering/math/CONFIGURATION.md](reverse-engineering/math/CONFIGURATION.md)).

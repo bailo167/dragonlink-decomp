@@ -12,7 +12,7 @@
 
 use std::collections::BTreeMap;
 
-use dragonlink_core::{DevRng, Event, Game, GameError};
+use dragonlink_core::{Command, DevRng, Event, Game, GameError};
 use dragonlink_model::{JackpotTier, MathModel};
 use serde::Serialize;
 
@@ -79,9 +79,21 @@ pub struct SimReport {
     pub max_award: f64,
 }
 
-/// Play `spins` spins of `model` at its first bet option from `seed`.
+/// Play `spins` spins of `model` at its first bet option from `seed`. A
+/// progressive jackpot pays its bet multiple here, its meter never being set.
 pub fn simulate(model: &MathModel, seed: u64, spins: u64) -> Result<SimReport, GameError> {
-    let mut game = Game::new(model.clone(), u64::MAX / 2)?;
+    simulate_game(Game::new(model.clone(), u64::MAX / 2)?, &[], seed, spins)
+}
+
+/// Play `spins` spins of `game` as it stands (its stake, its denomination)
+/// from `seed`, with each progressive meter in `meters` (in money units) held
+/// at its value before every spin, as a link standing at those values would.
+pub fn simulate_game(
+    mut game: Game,
+    meters: &[(JackpotTier, u64)],
+    seed: u64,
+    spins: u64,
+) -> Result<SimReport, GameError> {
     let mut rng = DevRng::new(seed);
     let bet = game.total_bet() as f64;
 
@@ -91,6 +103,9 @@ pub fn simulate(model: &MathModel, seed: u64, spins: u64) -> Result<SimReport, G
     let mut jackpot_awards: BTreeMap<JackpotTier, u64> = BTreeMap::new();
 
     for _ in 0..spins {
+        for &(tier, value) in meters {
+            game.apply(Command::SetProgressive { tier, value }, &mut rng)?;
+        }
         let mut base = 0u64;
         let mut total = 0u64;
         for event in game.play_spin(&mut rng)? {

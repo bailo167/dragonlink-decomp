@@ -247,17 +247,80 @@ fn add(a: u64, b: u64) -> Result<u64, GameError> {
     a.checked_add(b).ok_or(GameError::Overflow)
 }
 
-fn draw_orb_value(hs: &HoldAndSpinModel, rng: &mut dyn OutcomeRng) -> Result<OrbValue, GameError> {
-    let total: u64 = hs.orb_values.iter().map(|v| u64::from(v.weight)).sum();
+/// The stake a jackpot's chance is measured against: the total bet in
+/// credits and the size of a credit in money units.
+#[derive(Debug, Clone, Copy)]
+struct Stake {
+    credits: u64,
+    unit: u32,
+}
+
+/// Draw from the orb values `keep` admits, by weight.
+fn draw_weighted(
+    hs: &HoldAndSpinModel,
+    keep: impl Fn(&OrbValue) -> bool,
+    rng: &mut dyn OutcomeRng,
+) -> Result<OrbValue, GameError> {
+    let entries = || hs.orb_values.iter().filter(|v| keep(&v.value));
+    let total: u64 = entries().map(|v| u64::from(v.weight)).sum();
     let total = u32::try_from(total).map_err(|_| GameError::Overflow)?;
     let mut pick = rng.below(total)?;
-    for entry in &hs.orb_values {
+    for entry in entries() {
         if pick < entry.weight {
             return Ok(entry.value);
         }
         pick -= entry.weight;
     }
     Err(GameError::Invariant("orb value draw past the table"))
+}
+
+/// Draw a coin's value. A jackpot drawn below its full-chance stake stands
+/// only with chance stake / full-chance stake and is otherwise drawn again
+/// from the bet multiples (see [`dragonlink_model::JackpotDef::full_chance_stake`]).
+fn draw_orb_value(
+    hs: &HoldAndSpinModel,
+    stake: Stake,
+    rng: &mut dyn OutcomeRng,
+) -> Result<OrbValue, GameError> {
+    let value = draw_weighted(hs, |_| true, rng)?;
+    if let OrbValue::Jackpot(tier) = value
+        && !jackpot_stands(hs, tier, stake, rng)?
+    {
+        return draw_weighted(hs, |v| matches!(v, OrbValue::BetMultiple(_)), rng);
+    }
+    Ok(value)
+}
+
+/// Whether a jackpot coin or award of `tier` stands at `stake`: always from
+/// its full-chance stake up, below it with chance stake / full-chance stake
+/// (one draw).
+fn jackpot_stands(
+    hs: &HoldAndSpinModel,
+    tier: JackpotTier,
+    stake: Stake,
+    rng: &mut dyn OutcomeRng,
+) -> Result<bool, GameError> {
+    let def = hs
+        .jackpots
+        .iter()
+        .find(|j| j.tier == tier)
+        .ok_or(GameError::Model(ModelError::UndefinedJackpot(tier)))?;
+    let Some(full) = def.full_chance_stake else {
+        return Ok(true);
+    };
+    let at = if def.progressive_reset.is_some() {
+        stake
+            .credits
+            .checked_mul(u64::from(stake.unit.max(1)))
+            .ok_or(GameError::Overflow)?
+    } else {
+        stake.credits
+    };
+    if at >= full {
+        return Ok(true);
+    }
+    let bound = u32::try_from(full).map_err(|_| GameError::Overflow)?;
+    Ok(u64::from(rng.below(bound)?) < at)
 }
 
 /// Draw the symbol a mystery reveals to. The weights are nonzero and sum to a
@@ -560,8 +623,10 @@ impl Game {
         Ok((jackpot_award(hs, tier, total_bet)?, None))
     }
 
-    /// Award a jackpot: its credits, and a progressive's meter restarted
-    /// (the money short of a whole credit joining the residue).
+    /// Award a jackpot: its credits, and a progressive's meter restarted.
+    /// The money short of a whole credit joins the residue; a whole credit
+    /// the residue then reaches is paid with the award, so the residue stays
+    /// under one credit.
     fn award_jackpot(
         hs: &HoldAndSpinModel,
         unit: u32,
@@ -570,9 +635,12 @@ impl Game {
         tier: JackpotTier,
         total_bet: u64,
     ) -> Result<u64, GameError> {
-        let (credits, restart) = Self::jackpot_now(hs, unit, meters, tier, total_bet)?;
+        let (mut credits, restart) = Self::jackpot_now(hs, unit, meters, tier, total_bet)?;
         if let Some((left, reset)) = restart {
-            *residue = add(*residue, left)?;
+            let size = u64::from(unit.max(1));
+            let held = add(*residue, left)?;
+            *residue = held % size;
+            credits = add(credits, held / size)?;
             meters.insert(tier, reset);
         }
         Ok(credits)
@@ -689,7 +757,11 @@ impl Game {
         if let Some(hs) = &self.model.hold_and_spin {
             for (index, (reel, row, symbol)) in grid.iter().enumerate() {
                 if self.model.kind(symbol) == Some(SymbolKind::Orb) {
-                    let value = draw_orb_value(hs, rng)?;
+                    let stake = Stake {
+                        credits: total_bet,
+                        unit: self.state.unit,
+                    };
+                    let value = draw_orb_value(hs, stake, rng)?;
                     orbs[index] = Some(value);
                     events.push(Event::OrbValueShown { reel, row, value });
                 }
@@ -988,7 +1060,11 @@ impl Game {
                     continue;
                 }
                 if rng.below(hs.orb_land_chance.den)? < hs.orb_land_chance.num {
-                    let value = draw_orb_value(hs, rng)?;
+                    let stake = Stake {
+                        credits: feature.total_bet,
+                        unit: next.unit,
+                    };
+                    let value = draw_orb_value(hs, stake, rng)?;
                     feature.cells[index] = Some(value);
                     landed.push(LockedOrb {
                         reel: (index / rows) as u8,
@@ -1037,7 +1113,14 @@ impl Game {
                 };
                 total = add(total, award)?;
             }
-            if full_grid && let Some(tier) = hs.full_grid_award {
+            let stake = Stake {
+                credits: feature.total_bet,
+                unit: next.unit,
+            };
+            if full_grid
+                && let Some(tier) = hs.full_grid_award
+                && jackpot_stands(hs, tier, stake, rng)?
+            {
                 let award = Self::award_jackpot(
                     hs,
                     next.unit,
@@ -1636,6 +1719,107 @@ mod tests {
         assert_eq!(game.credits(), start - 10 + 13_375);
         assert_eq!(game.state().residue, 6);
         assert_eq!(game.meter(JackpotTier::Grand), Some(50_000));
+    }
+
+    #[test]
+    fn a_jackpot_below_its_full_chance_stake_stands_in_proportion_to_the_stake() {
+        let mut model = tiny_with_link();
+        let hs = model.hold_and_spin.as_mut().unwrap();
+        hs.jackpots[0].full_chance_stake = Some(20);
+        model.validate().unwrap();
+        // A full grid at once at a stake of 10 credits: the first coin is a
+        // Mini, which stands on a draw below 10 of 20.
+        let play = |stands: u32| {
+            let mut game = Game::new(model.clone(), 100).unwrap();
+            let mut script = vec![d(4, 2), d(4, 2), d(2, 1), d(20, stands)];
+            if stands >= 10 {
+                // Declined, the coin is drawn again from the bet multiples.
+                script.push(d(1, 0));
+            }
+            script.extend([d(2, 0), d(2, 0), d(2, 0)]);
+            let mut rng = ScriptedRng::new(script);
+            let events = game.play_spin(&mut rng).unwrap();
+            assert_eq!(rng.remaining(), 0);
+            events.contains(&Event::JackpotAwarded {
+                tier: JackpotTier::Mini,
+                award: 1000,
+            })
+        };
+        assert!(play(9), "a draw of 9 keeps it");
+        assert!(!play(10), "a draw of 10 gives it up");
+        // At or above the full-chance stake there is no extra draw.
+        let mut game = Game::new(model.clone(), 100).unwrap();
+        let mut rng = DevRng::new(1);
+        game.apply(Command::SetBet { index: 1 }, &mut rng).unwrap();
+        assert_eq!(game.total_bet(), 20);
+        let mut rng = ScriptedRng::new(vec![d(4, 2), d(4, 2), d(2, 1), d(2, 0), d(2, 0), d(2, 0)]);
+        let events = game.play_spin(&mut rng).unwrap();
+        assert!(events.contains(&Event::JackpotAwarded {
+            tier: JackpotTier::Mini,
+            award: 1000
+        }));
+        assert_eq!(rng.remaining(), 0);
+    }
+
+    #[test]
+    fn a_full_grid_award_below_its_full_chance_stake_needs_its_draw() {
+        let mut model = tiny_with_link();
+        let hs = model.hold_and_spin.as_mut().unwrap();
+        // The Grand is progressive: its stake is counted in money (cents).
+        hs.jackpots[1].full_chance_stake = Some(40);
+        model.validate().unwrap();
+        let play = |stands: u32| {
+            let mut game = Game::new(model.clone(), 100).unwrap();
+            let mut rng = ScriptedRng::new(vec![
+                d(4, 2),
+                d(4, 2),
+                d(2, 0),
+                d(2, 0),
+                d(2, 0),
+                d(2, 0),
+                d(40, stands),
+            ]);
+            let events = game.play_spin(&mut rng).unwrap();
+            events.iter().any(|e| {
+                matches!(
+                    e,
+                    Event::JackpotAwarded {
+                        tier: JackpotTier::Grand,
+                        ..
+                    }
+                )
+            })
+        };
+        // 10 credits of 1c is 10 cents: the Grand stands on 0 to 9 of 40.
+        assert!(play(9));
+        assert!(!play(10));
+    }
+
+    #[test]
+    fn whole_credits_of_residue_are_paid_with_a_progressive() {
+        let mut game = Game::new(tiny_with_link(), 1_000_000).unwrap();
+        let mut rng = DevRng::new(1);
+        game.apply(Command::ChangeDenomination { from: 1, to: 10 }, &mut rng)
+            .unwrap();
+        game.apply(
+            Command::SetProgressive {
+                tier: JackpotTier::Grand,
+                value: 123_456,
+            },
+            &mut rng,
+        )
+        .unwrap();
+        let mut state = game.state().clone();
+        state.residue = 7;
+        game = Game::resume(game.model().clone(), state).unwrap();
+        let mut rng = ScriptedRng::new(vec![d(4, 2), d(4, 2), d(2, 0), d(2, 0), d(2, 0), d(2, 0)]);
+        let events = game.play_spin(&mut rng).unwrap();
+        // 7 cents held and 6 left by the meter make a credit and 3 cents.
+        assert!(events.contains(&Event::JackpotAwarded {
+            tier: JackpotTier::Grand,
+            award: 12_346
+        }));
+        assert_eq!(game.state().residue, 3);
     }
 
     #[test]

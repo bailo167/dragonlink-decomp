@@ -98,12 +98,16 @@ impl Scenario {
         }
     }
 
-    /// This run's model, for the seed it plays.
+    /// This run's model, for the seed it plays. Its jackpots keep their
+    /// full chance at every stake, so the run is the same whatever the bet.
     fn model(self, model: MathModel, seed: u64) -> MathModel {
         let mut model = both_features_scenario(model, seed);
         let Some(hs) = model.hold_and_spin.as_mut() else {
             return model;
         };
+        for jackpot in &mut hs.jackpots {
+            jackpot.full_chance_stake = None;
+        }
         match self {
             Scenario::Both => {}
             Scenario::Jackpots | Scenario::Minors => {
@@ -130,13 +134,17 @@ impl Scenario {
     }
 }
 
-/// The model and seed a run plays: as given, or a prepared run's (see
-/// [`Scenario`]).
-fn scenario(model: MathModel, seed: u64) -> (MathModel, u64) {
+/// The model and seed `game` plays: as given, or a prepared run's (see
+/// [`Scenario`]; Golden Century only).
+fn scenario(game: GameChoice, model: MathModel, seed: u64) -> (MathModel, u64) {
     match Scenario::from_env() {
-        Some(run) => {
+        Some(run) if game == GameChoice::GoldenCentury => {
             let seed = run.seed(seed);
             (run.model(model, seed), seed)
+        }
+        Some(_) => {
+            eprintln!("DRAGONLINK_SCENARIO is for Golden Century only; ignored");
+            (model, seed)
         }
         None => (model, seed),
     }
@@ -379,9 +387,8 @@ struct MenuItem {
 }
 
 /// The denomination: how much money one credit stands for. The simulation
-/// works in credits; in the cabinet build a change recounts them so the money
-/// is unchanged (`Command::ChangeDenomination`), elsewhere it changes only the
-/// dollar figures shown. These are simulation dollars and stand for no real
+/// works in credits; a change recounts them so the money is unchanged
+/// (`Command::ChangeDenomination`). These are simulation dollars and stand for no real
 /// money.
 #[derive(Resource, Default)]
 struct Denom {
@@ -518,14 +525,15 @@ struct Sim {
     rng: DevRng,
 }
 
-/// The progressive jackpots' meters as the screen shows them. The Major and
-/// the Grand climb by irregular amounts at irregular moments, as the meters
-/// on Australian machines do (claims/family.toml, jackpots.meters-au), and
-/// the simulation is told each new value (`Command::SetProgressive`), so a
-/// win pays what the meter shows. Where they start, how fast they climb and
-/// where they stop are this project's synthetic choices: no source shows a
-/// start-up value, an increment rate or a ceiling. They draw on their own
-/// generator, never the outcome source.
+/// The progressive jackpots' meters as the screen shows them. On Australian
+/// machines the Major and the Grand are running meters that increase during
+/// play (STRONG, claims/family.toml, jackpots.meters-au); the simulation is
+/// told each new value (`Command::SetProgressive`), so a win pays what the
+/// meter shows. How they climb here (small irregular steps at irregular
+/// moments, an occasional jump), where they open and where they stop are
+/// this project's synthetic choices ([`LINK_SPECS`]): no source shows an
+/// increment rate or a ceiling. They draw on their own generator, never the
+/// outcome source.
 #[derive(Resource, Default)]
 struct Link {
     rng: u64,
@@ -661,7 +669,12 @@ fn link_creep(
     mut link: ResMut<Link>,
     mut sim: ResMut<Sim>,
 ) {
-    let shown_all = sim.game.is_idle() && presentation.queue.is_empty();
+    // Everything shown, the feature's count included (in the placeholder
+    // presentation, which has no count, once the events are shown).
+    let shown_all = sim.game.is_idle()
+        && presentation.queue.is_empty()
+        && !show.in_feature()
+        && !show.counting();
     link.tick(&mut sim.game, smoke.dt(&time), &|tier| {
         shown_all || show.link_won.contains(&tier)
     });
@@ -1295,8 +1308,10 @@ fn input(
             menu.close();
         }
         let from = denom.cents();
-        if fidelity.0 && from != to && sim.game.is_idle() {
-            // The same money in the new credit; one credit per line (the
+        if from != to && sim.game.is_idle() {
+            // The same money in the new credit, so the simulation's credit
+            // size is always the one shown (fixed prizes and meters depend
+            // on it). The cabinet then plays one credit per line (the
             // multiplier at 1) and the denomination's starting lines
             // (footage).
             let last_bet =
@@ -1307,20 +1322,20 @@ fn input(
                 .zip(u32::try_from(to).ok())
                 .map(|(from, to)| game.apply(Command::ChangeDenomination { from, to }, rng));
             if let Some(Ok(_)) = changed {
-                let _ = game.apply(
-                    Command::SetStake {
-                        index: 0,
-                        lines: profile.lines_on_change(to),
-                    },
-                    rng,
-                );
+                if fidelity.0 {
+                    let _ = game.apply(
+                        Command::SetStake {
+                            index: 0,
+                            lines: profile.lines_on_change(to),
+                        },
+                        rng,
+                    );
+                    menu.changed = Some((from, to));
+                    menu.last_bet_cents = last_bet;
+                }
                 presentation.shown_credits = game.credits();
                 denom.index = index;
-                menu.changed = Some((from, to));
-                menu.last_bet_cents = last_bet;
             }
-        } else if !fidelity.0 {
-            denom.index = index;
         }
     }
     // The lines a denomination allows: fixed in the casino style, the
@@ -1351,7 +1366,8 @@ fn input(
         && smoke.frame.is_multiple_of(SMOKE_PRESS_EVERY);
     // Features play by themselves (see `drive_features`); the player spins and
     // sets the stake.
-    let auto = auto && !gamble.holds_autospin(sim.game.can_gamble());
+    let auto =
+        auto && !gamble.holds_autospin(cabinet::gamble_open(&sim.game, denom.cents(), &feature));
     let options = sim.game.model().bet.credits_per_line_options.clone();
     let bet_index_of = |credits: u32| options.iter().position(|o| *o == credits);
     // Casino: a bet key sets its multiplier and plays in one press. Club: a
@@ -2265,7 +2281,7 @@ fn menu_input(
         return;
     }
     let game = MENU_GAMES[launch.selected];
-    let (model, seed) = scenario(game.model(), launch.seed);
+    let (model, seed) = scenario(game, game.model(), launch.seed);
     match Game::new(model, launch.credits) {
         Ok(mut g) => {
             commands.insert_resource(open_link(&mut g, seed));
@@ -2334,7 +2350,7 @@ fn main() -> AppExit {
     let explicit_game = args.iter().any(|a| a == "--game");
     let direct_boot = fidelity || explicit_game || cli.smoke_frames.is_some();
     let direct_sim = if direct_boot {
-        let (model, seed) = scenario(cli.game.model(), cli.seed);
+        let (model, seed) = scenario(cli.game, cli.game.model(), cli.seed);
         match Game::new(model, cli.credits) {
             Ok(mut game) => Some((
                 open_link(&mut game, seed),

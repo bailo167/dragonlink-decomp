@@ -3438,8 +3438,8 @@ pub struct FeatureShow {
     grand_done: bool,
     /// This game won a progressive jackpot (the Major or the Grand).
     progressive: bool,
-    /// The progressive jackpots this game's shown wins include (their meters
-    /// restart once shown).
+    /// The progressive jackpots this game won whose amounts the count has
+    /// reached (their meters restart then).
     pub link_won: Vec<JackpotTier>,
     /// Seconds "FREE SPINS COMPLETED" has shown, until the collection.
     completed_wait: Option<f32>,
@@ -3513,7 +3513,6 @@ impl FeatureShow {
             Event::JackpotAwarded { tier, award } => {
                 if matches!(tier, JackpotTier::Major | JackpotTier::Grand) {
                     self.progressive = true;
-                    self.link_won.push(*tier);
                 }
                 self.jackpots.push((*tier, *award));
             }
@@ -3646,6 +3645,15 @@ impl FeatureShow {
             || matches!(self.stage, Stage::FreeGames { .. } | Stage::HoldSpin { .. })
             || self.collect_start
             || self.collect.is_some()
+    }
+
+    /// A feature's end is being shown: its completion message, the count of
+    /// its coins or the payment of its total.
+    pub fn counting(&self) -> bool {
+        self.completed_wait.is_some()
+            || self.collect_start
+            || self.collect.is_some()
+            || self.pay.is_some()
     }
 
     /// The Hold & Spin grid is showing.
@@ -4163,9 +4171,9 @@ pub struct RespinAnim {
 #[derive(Clone, Debug, Default)]
 pub struct Collect {
     t: f32,
-    /// Each step's coin position, amount and whether it is a jackpot, in
-    /// order; the Grand, last, has no position (`GRAND_STEP`).
-    coins: Vec<(u8, u8, u64, bool)>,
+    /// Each step's coin position, amount, whether it is a jackpot and which,
+    /// in order; the Grand, last, has no position (`GRAND_STEP`).
+    coins: Vec<(u8, u8, u64, bool, Option<JackpotTier>)>,
     /// Steps begun, and amounts added to the banner.
     launched: usize,
     counted: usize,
@@ -4866,7 +4874,7 @@ impl FeatureShow {
         match &self.collect {
             Some(c) => c.coins[..c.launched]
                 .iter()
-                .any(|(r, w, _, _)| *r == reel && *w == row),
+                .any(|(r, w, ..)| *r == reel && *w == row),
             None => self.winner.is_some(),
         }
     }
@@ -5096,14 +5104,24 @@ pub fn hold_and_spin_motion(
                 let Some(face) = l.strip_prefix("ORB\n") else {
                     continue;
                 };
-                let amount = face_credits(face, total_bet).unwrap_or_else(|| {
-                    jackpots
+                let (amount, tier) = match face_credits(face, total_bet) {
+                    Some(amount) => (amount, None),
+                    None => jackpots
                         .iter()
                         .position(|(tier, _)| format!("{tier:?}") == face)
-                        .map(|i| jackpots.remove(i).1)
-                        .unwrap_or(0)
-                });
-                coins.push((reel, row, amount, face_credits(face, total_bet).is_none()));
+                        .map(|i| {
+                            let (tier, award) = jackpots.remove(i);
+                            (award, Some(tier))
+                        })
+                        .unwrap_or((0, None)),
+                };
+                coins.push((
+                    reel,
+                    row,
+                    amount,
+                    face_credits(face, total_bet).is_none(),
+                    tier,
+                ));
             }
         }
         // A full grid's Grand jackpot is added after the coins.
@@ -5112,7 +5130,7 @@ pub fn hold_and_spin_motion(
             .position(|(tier, _)| *tier == JackpotTier::Grand)
             .map(|i| jackpots.remove(i).1);
         if let Some(g) = grand {
-            coins.push((GRAND_STEP, GRAND_STEP, g, true));
+            coins.push((GRAND_STEP, GRAND_STEP, g, true, Some(JackpotTier::Grand)));
         }
         show.grand = grand;
         show.winner = None;
@@ -5135,7 +5153,7 @@ pub fn hold_and_spin_motion(
         // Each coin in turn flares and sends its comet to the banner.
         while c.launched < c.coins.len() && c.t >= COLLECT_FIRST + c.launched as f32 * COLLECT_STEP
         {
-            let (reel, row, amount, jackpot) = c.coins[c.launched];
+            let (reel, row, amount, jackpot, _) = c.coins[c.launched];
             if reel == GRAND_STEP {
                 c.grand_up = true;
             } else {
@@ -5155,8 +5173,12 @@ pub fn hold_and_spin_motion(
         while c.counted < c.launched
             && c.t >= COLLECT_FIRST + c.counted as f32 * COLLECT_STEP + BOLT_FLIGHT
         {
-            let (_, _, amount, _) = c.coins[c.counted];
+            let (_, _, amount, _, tier) = c.coins[c.counted];
             show.winner = Some(show.winner.unwrap_or(0) + amount);
+            // A progressive's meter restarts as its amount is counted.
+            if let Some(tier @ (JackpotTier::Major | JackpotTier::Grand)) = tier {
+                show.link_won.push(tier);
+            }
             c.counted += 1;
         }
         let last =

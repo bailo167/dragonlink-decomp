@@ -262,7 +262,7 @@ pub fn game_report(
             let _ = writeln!(s, "\n## Jackpot model\n");
             let _ = writeln!(
                 s,
-                "| Level | Value in model (× bet) | Awards per spin | Frequency | Share of return |\n|---|---:|---:|---|---:|"
+                "| Level | Analysed as (× bet) | Awards per spin | Frequency | Share of return |\n|---|---:|---:|---|---:|"
             );
             for j in &f.jackpots {
                 let _ = writeln!(
@@ -275,11 +275,24 @@ pub fn game_report(
                     pct(j.rtp)
                 );
             }
-            let _ = writeln!(
-                s,
-                "\nProgressive contribution: not modelled. The model holds fixed values; meter \
-                 increments and resets are not represented."
-            );
+            let in_play = in_play_jackpots(model);
+            if in_play.is_empty() {
+                let _ = writeln!(
+                    s,
+                    "\nProgressive contribution: not modelled. The model holds fixed values; meter \
+                     increments and resets are not represented."
+                );
+            } else {
+                let _ = writeln!(
+                    s,
+                    "\nIn play the model pays otherwise, which this analysis does not represent: it \
+                     values every level at its bet multiple, at full chance. So its return is not \
+                     the played return, which depends on the bet, the denomination and the meters."
+                );
+                for line in in_play {
+                    let _ = writeln!(s, "- {line}");
+                }
+            }
         }
     }
 
@@ -294,13 +307,24 @@ pub fn game_report(
     );
 
     let _ = writeln!(s, "\n## Denomination and bet effects\n");
-    let _ = writeln!(
-        s,
-        "Bet options (credits per line): {:?}. In this model every pay and jackpot value is \
-         proportional to the bet, so the bet changes monetary scale only. A configuration is one \
-         denomination; compare configurations to see denomination effects.",
-        model.bet.credits_per_line_options
-    );
+    if in_play_jackpots(model).is_empty() {
+        let _ = writeln!(
+            s,
+            "Bet options (credits per line): {:?}. In this model every pay and jackpot value is \
+             proportional to the bet, so the bet changes monetary scale only. A configuration is \
+             one denomination; compare configurations to see denomination effects.",
+            model.bet.credits_per_line_options
+        );
+    } else {
+        let _ = writeln!(
+            s,
+            "Bet options (credits per line): {:?}. Line, scatter and coin pays are proportional \
+             to the bet, but this model's fixed prizes, progressive meters or stake-dependent \
+             jackpot chances (above) are not, so in play the return moves with the bet and the \
+             denomination.",
+            model.bet.credits_per_line_options
+        );
+    }
 
     let _ = writeln!(
         s,
@@ -510,6 +534,35 @@ pub fn progressive_report(config: &GameConfiguration, ev: &ProgressiveEv) -> Str
          average only: a level won once in very many spins returns its share to whoever wins it."
     );
     s
+}
+
+/// How the model's jackpots pay in play where that differs from the bet
+/// multiple at full chance the analysis uses, one line per level.
+fn in_play_jackpots(model: &dragonlink_model::MathModel) -> Vec<String> {
+    let Some(hs) = &model.hold_and_spin else {
+        return Vec::new();
+    };
+    hs.jackpots
+        .iter()
+        .filter_map(|j| {
+            let mut parts = Vec::new();
+            if !j.fixed_credits.is_empty() {
+                let prizes: Vec<String> = j
+                    .fixed_credits
+                    .iter()
+                    .map(|f| format!("{} credits from a credit of {}", f.credits, f.from_unit))
+                    .collect();
+                parts.push(format!("fixed prizes: {}", prizes.join(", ")));
+            }
+            if let Some(reset) = j.progressive_reset {
+                parts.push(format!("a progressive meter restarting at {reset}"));
+            }
+            if let Some(stake) = j.full_chance_stake {
+                parts.push(format!("a chance proportional to the stake below {stake}"));
+            }
+            (!parts.is_empty()).then(|| format!("{:?}: {}", j.tier, parts.join("; ")))
+        })
+        .collect()
 }
 
 #[cfg(test)]

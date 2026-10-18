@@ -101,8 +101,9 @@ pub enum JackpotTier {
     Grand,
 }
 
-/// A jackpot level and what it pays. Only fixed amounts are modelled so far;
-/// progressive meters are not (see `progress/progress.toml`, `runtime.jackpots`).
+/// A jackpot level, what it pays and how its chance follows the stake. A
+/// jackpot pays a multiple of the total bet, a fixed number of credits by
+/// credit size (`fixed_credits`) or a progressive meter (`progressive_reset`).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct JackpotDef {
     pub tier: JackpotTier,
@@ -120,6 +121,16 @@ pub struct JackpotDef {
     /// this value. Until the meter has been set, the bet multiple applies.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub progressive_reset: Option<u64>,
+    /// The stake from which this jackpot has its full chance. Below it a coin
+    /// of this tier, once drawn, stands only with chance stake / this (and is
+    /// otherwise drawn again from the bet multiples), and so does a full
+    /// grid's award of it, so the chance of winning it is proportional to
+    /// the bet there, as the national standard requires of a jackpot (NS
+    /// 4.17, docs/reverse-engineering/PUBLISHED_RETURNS.md). In credits for a
+    /// multiple or fixed prize, in money units for a progressive. None: the
+    /// same chance at every stake.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub full_chance_stake: Option<u64>,
 }
 
 impl JackpotDef {
@@ -130,6 +141,7 @@ impl JackpotDef {
             total_bet_multiple,
             fixed_credits: Vec::new(),
             progressive_reset: None,
+            full_chance_stake: None,
         }
     }
 }
@@ -287,6 +299,10 @@ pub enum ModelError {
     UndefinedJackpot(JackpotTier),
     #[error("jackpot {0:?} is defined twice")]
     DuplicateJackpot(JackpotTier),
+    #[error("jackpot {0:?}: its full-chance stake must be from 1 to {max}", max = u32::MAX)]
+    BadFullChanceStake(JackpotTier),
+    #[error("a jackpot's chance follows the stake, but no bet multiple can replace a coin")]
+    NoBetMultiples,
 }
 
 impl MathModel {
@@ -463,6 +479,21 @@ impl MathModel {
                 if !tiers.insert(j.tier) {
                     return Err(ModelError::DuplicateJackpot(j.tier));
                 }
+                if let Some(stake) = j.full_chance_stake
+                    && (stake == 0 || u32::try_from(stake).is_err())
+                {
+                    return Err(ModelError::BadFullChanceStake(j.tier));
+                }
+            }
+            let scaled = hs.jackpots.iter().any(|j| j.full_chance_stake.is_some());
+            let multiples: u64 = hs
+                .orb_values
+                .iter()
+                .filter(|v| matches!(v.value, OrbValue::BetMultiple(_)))
+                .map(|v| u64::from(v.weight))
+                .sum();
+            if scaled && multiples == 0 {
+                return Err(ModelError::NoBetMultiples);
             }
             let awarded = hs
                 .orb_values

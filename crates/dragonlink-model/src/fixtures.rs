@@ -244,7 +244,7 @@ pub fn synthetic_dev_fixture() -> MathModel {
 }
 
 /// Identifier of [`golden_century_synthetic`], written into trace headers.
-pub const GOLDEN_CENTURY_SYNTHETIC_ID: &str = "golden-century-synthetic-2";
+pub const GOLDEN_CENTURY_SYNTHETIC_ID: &str = "golden-century-synthetic-3";
 
 /// A **synthetic** Golden Century configuration: the game's *evidenced
 /// structure* with *invented* numbers.
@@ -261,9 +261,12 @@ pub const GOLDEN_CENTURY_SYNTHETIC_ID: &str = "golden-century-synthetic-2";
 ///
 /// What is **invented** by this project, and must never be quoted as Dragon
 /// Link's: every reel strip, every weight, every pay not read from a machine,
-/// the scatter and orb value tables, the land chance, the jackpot amounts
-/// (fixed multiples here; the real levels are progressive and unknown), and
-/// paylines 6 to 50. Pays matching a reading of a real machine are marked in
+/// the scatter and orb value tables, the land chance, the jackpots' bet
+/// multiples (which the exact analysis uses), the Major and Grand restart
+/// values, the stakes from which each jackpot has its full chance, and
+/// paylines 6 to 50. The Mini and Minor prizes by denomination are the club
+/// footage's values (claims/family.toml, jackpots.minor-mini-au), and the
+/// Major and Grand are progressive (jackpots.meters-au). Pays matching a reading of a real machine are marked in
 /// the source; the rest are plausible fillers chosen only so the game plays.
 ///
 /// This exists so Golden Century can be played end to end now. When authentic
@@ -507,18 +510,22 @@ pub fn golden_century_synthetic() -> MathModel {
     .map(|(weight, value)| WeightedOrbValue { weight, value })
     .collect();
 
-    // Jackpot amounts are synthetic fixed multiples. The real Grand and Major
-    // are progressive and their values are unknown; the Minor and Mini are
-    // fixed per denomination (GOLDEN_CENTURY_SESSION.md) but not these numbers.
+    // The bet multiples are synthetic: the exact analysis values every tier
+    // by them, and a progressive pays one until its meter is set. In play
+    // the Mini and Minor pay the footage's fixed prizes and the Major and
+    // Grand their meters. Each jackpot's chance is proportional to the stake
+    // up to a synthetic stake (credits for the Mini and Minor, cents for the
+    // Major and Grand), chosen so the return stays playable at every stake.
     let jackpots = [
-        (JackpotTier::Mini, 15),
-        (JackpotTier::Minor, 60),
-        (JackpotTier::Major, 300),
-        (JackpotTier::Grand, 1000),
+        (JackpotTier::Mini, 15, 50),
+        (JackpotTier::Minor, 60, 50),
+        (JackpotTier::Major, 300, 500),
+        (JackpotTier::Grand, 1000, 2_500),
     ]
     .into_iter()
-    .map(|(tier, total_bet_multiple)| {
+    .map(|(tier, total_bet_multiple, full_chance_stake)| {
         let mut def = JackpotDef::multiple(tier, total_bet_multiple);
+        def.full_chance_stake = Some(full_chance_stake);
         // Australian club footage: the Mini is 1,000 credits and the Minor
         // 5,000 up to 10c, 250 and 1,250 from $1 ($10 / $50 at 1c, $250 /
         // $1,250 at $1); the Major and Grand are running meters, here
@@ -675,8 +682,9 @@ pub fn golden_century_synthetic() -> MathModel {
         provenance: MathProvenance::SyntheticDevFixture,
         description: "SYNTHETIC Golden Century: the game's evidenced structure (5x3, symbol roles, \
                       paylines 1-5, scatter-triggered free games, six-orb Hold & Spin, four jackpot \
-                      tiers, denominations and line selection) with INVENTED strips, weights, pays \
-                      and jackpot amounts. Not recovered from any machine; never quote its numbers \
+                      tiers, denominations and line selection) with INVENTED strips, weights, most \
+                      pays, the jackpots' bet multiples, restart values and stake scaling; the Mini \
+                      and Minor by denomination follow club footage. Not recovered from any machine; never quote its numbers \
                       as Dragon Link's (docs/reverse-engineering/GOLDEN_CENTURY_SESSION.md, \
                       docs/DECISIONS.md D-017)."
             .to_string(),
