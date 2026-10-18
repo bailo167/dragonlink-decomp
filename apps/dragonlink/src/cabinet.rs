@@ -18,6 +18,7 @@ use std::path::Path;
 
 use bevy::ecs::hierarchy::ChildSpawnerCommands;
 use bevy::picking::events::PointerPress;
+use bevy::text::{LetterSpacing, LineHeight};
 use bevy::ui::widget::NodeImageMode;
 use bevy::window::{MonitorSelection, PrimaryWindow, WindowMode};
 
@@ -46,12 +47,8 @@ const JACKPOT_BAR_TOP: f32 = 8.0;
 /// The screen below the reels, measured against cabinet footage (the screen
 /// is 1920 wide; each offset is the footage's, scaled to it).
 const REEL_BOTTOM: f32 = GRID_CENTER.1 + 1.5 * PITCH.1;
-/// "Bet Multiplier", the start prompt's top, the dark meter band's top and
-/// the centre line of its meters (cabinet photo, scaled to this screen).
-const MULTIPLIER_Y: f32 = REEL_BOTTOM + 44.0;
-const PROMPT_Y: f32 = REEL_BOTTOM + 84.0;
-const BAND_TOP: f32 = REEL_BOTTOM + 96.0;
-const METER_Y: f32 = REEL_BOTTOM + 176.0;
+/// The screen's foot (the rows under the reels and the meter band are
+/// placed per presentation in [`spawn_meter_band`]).
 const SCREEN_BOTTOM: f32 = REEL_BOTTOM + 248.0;
 /// The button deck under the screen's bezel.
 const DECK_TOP: f32 = SCREEN_BOTTOM + 14.0;
@@ -75,16 +72,47 @@ pub fn lines_for(cents: u64) -> u16 {
     }
 }
 
-/// The clip a bet key sounds (footage: x1 G3, x2 C4, x5 G4, x10 C5, the
-/// first two the game's own beeps, the others the app's shared bank; x3's E4
-/// is the bank's beep between them, not heard on footage).
-pub fn bet_beep(multiplier: u32) -> &'static str {
+/// The clip a bet key sounds and its volume (footage: x1 G3, x2 C4, x5 G4,
+/// x10 C5, the first two the game's own reduced beeps, the others the app's
+/// shared bank, about 10 dB louder, so played at 0.32; x3's E4 is the bank's
+/// beep between them, not heard on footage).
+pub fn bet_beep(multiplier: u32) -> (&'static str, f32) {
     match multiplier {
-        1 => "betbeep1_reduced",
-        2 => "betbeep3_reduced",
-        3 => "bank_betbeep3",
-        5 => "bank_betbeep4",
-        _ => "bank_betbeep5",
+        1 => ("betbeep1_reduced", 1.0),
+        2 => ("betbeep3_reduced", 1.0),
+        3 => ("bank_betbeep3", 0.32),
+        5 => ("bank_betbeep4", 0.32),
+        _ => ("bank_betbeep5", 0.32),
+    }
+}
+
+/// A moment of the gamble that may sound.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum GambleCue {
+    Open,
+    Toggle,
+    Pick,
+    Won,
+    Lost,
+    TakeWin,
+}
+
+/// What the gamble plays. No bank holds the cabinet's gamble sounds (the
+/// mobile game has no gamble); GOLDEN_CENTURY_CABINET_DECK.md and
+/// golden-century-sound-cues.md record the evidence:
+/// - Open: a C4 beep as the screen opens, HYPOTHESIS (weak: one NSW event,
+///   iHDxUc1dlKs 0:08.79; not heard at the $1 machine's opening).
+/// - Toggle (full / half), Pick (the card's turn), Won: SUBSTITUTES from the
+///   game's own banks, chosen to sit with the deck's beeps; not the
+///   cabinet's.
+/// - Lost, TakeWin: none (the on-camera take win at _XHUzg4qDXI 1:19 is
+///   silent, PARTIAL; loss UNKNOWN). No loop while waiting.
+pub fn gamble_cue(cue: GambleCue) -> Option<(&'static str, f32)> {
+    match cue {
+        GambleCue::Open | GambleCue::Toggle => Some(("betbeep3_reduced", 1.0)),
+        GambleCue::Pick => Some(("bank_betbeep3", 0.32)),
+        GambleCue::Won => Some(("wintune01", 1.0)),
+        GambleCue::Lost | GambleCue::TakeWin => None,
     }
 }
 
@@ -197,8 +225,10 @@ pub struct CabFonts {
     pub sans: Handle<Font>,
     /// A face with the card suits.
     pub symbols: Handle<Font>,
-    /// Bold italic, for the gamble screen.
-    pub italic: Handle<Font>,
+    /// A heavy, wide face for the gamble's amounts (Arial Black).
+    pub heavy: Handle<Font>,
+    /// The status and message rows' face (Verdana Bold).
+    pub msg: Handle<Font>,
 }
 
 /// Load the cabinet's fonts from the operating system, where it has them.
@@ -225,9 +255,18 @@ pub fn load_fonts(fonts: &mut Assets<Font>) -> CabFonts {
             "/System/Library/Fonts/Apple Symbols.ttf",
             "C:/Windows/Fonts/seguisym.ttf",
         ]),
-        italic: first(&[
-            "/System/Library/Fonts/Supplemental/Arial Bold Italic.ttf",
-            "C:/Windows/Fonts/arialbi.ttf",
+        heavy: first(&[
+            "/System/Library/Fonts/Supplemental/Arial Black.ttf",
+            "C:/Windows/Fonts/ariblk.ttf",
+            "/System/Library/Fonts/Supplemental/Arial Bold.ttf",
+            "C:/Windows/Fonts/arialbd.ttf",
+        ]),
+        msg: first(&[
+            "/System/Library/Fonts/Supplemental/Verdana Bold.ttf",
+            "/Library/Fonts/Verdana Bold.ttf",
+            "C:/Windows/Fonts/verdanab.ttf",
+            "/System/Library/Fonts/Supplemental/Arial Bold.ttf",
+            "C:/Windows/Fonts/arialbd.ttf",
         ]),
     }
 }
@@ -249,13 +288,6 @@ pub fn cell_size() -> (f32, f32) {
 /// footage the coin spans about 0.88 of the reel's width and 0.90 of a row's
 /// height.
 const ORB_SCALE: (f32, f32) = (1.12, 1.02);
-
-/// The height scale the coin's image is drawn at; what sits on the coin (its
-/// tier plate) is drawn at this scale, at its own proportions, so it stays
-/// inside the coin.
-pub fn orb_scale(_src: (f32, f32)) -> f32 {
-    SYMBOL_SCALE.1 * ORB_SCALE.1
-}
 
 /// The on-canvas size of symbol `key`'s image of `src` pixels.
 pub fn symbol_size(key: &str, src: (f32, f32)) -> (f32, f32) {
@@ -361,6 +393,28 @@ pub fn spawn(
                 sprite(ui("white"), gx, gy, 5.0 * PITCH.0, 3.0 * PITCH.1),
                 Visibility::Hidden,
             ));
+            // The black tile each coin sits on (cabinet footage and the app:
+            // a coin's cell is black, not the blue reel face), inside the
+            // gold separators; under the symbols, so overhangs draw over it.
+            let (cw, ch) = cell_size();
+            for reel in 0..model.grid.reels {
+                for row in 0..model.grid.rows {
+                    let (x, y) = cell_center(reel, row);
+                    c.spawn((
+                        CoinTile { reel, row },
+                        Node {
+                            position_type: PositionType::Absolute,
+                            left: Val::Px(x - cw / 2.0 + 1.0),
+                            top: Val::Px(y - ch / 2.0),
+                            width: Val::Px(cw - 8.0),
+                            height: Val::Px(ch),
+                            ..default()
+                        },
+                        BackgroundColor(Color::BLACK),
+                        Visibility::Hidden,
+                    ));
+                }
+            }
             // The reels: one cell per window position.
             let (cw, ch) = cell_size();
             for reel in 0..model.grid.reels {
@@ -457,7 +511,7 @@ pub fn spawn(
             spawn_meter_band(c, fonts, art, gold, pale, profile);
 
             spawn_deck(c, art, &fonts.sans, &fonts.symbols);
-            spawn_gamble_screen(c, art, fonts);
+            spawn_gamble_screen(c, art, fonts, profile);
             spawn_games_menu(c, art, fonts, profile);
 
             // The shared presentation systems still expect these; unused here.
@@ -480,20 +534,66 @@ pub fn spawn(
         });
 }
 
-/// A small rounded on-screen tab ("GAMES MENU", "GAME RULES"): a gold-rimmed
-/// yellow pill with dark lettering, as on the cabinet.
+/// An on-screen tab's look: the club machines' yellow-to-orange capsule with
+/// navy condensed lettering, or the owner's casino photo's two-tone khaki
+/// and silver ones.
+#[derive(Clone, Copy)]
+enum TabLook {
+    Club,
+    CasinoKhaki,
+    CasinoSilver,
+}
+
+/// A rounded on-screen tab (COLLECT, GAMES MENU, GAME RULES): a capsule with
+/// a gloss across its upper half kept inside the rounded rim.
 #[allow(clippy::too_many_arguments)]
 fn pill(
     c: &mut ChildSpawnerCommands,
-    font: &Handle<Font>,
+    fonts: &CabFonts,
     text: &str,
     cx: f32,
     cy: f32,
     w: f32,
-    face: Color,
-    ink: Color,
+    h: f32,
+    size: f32,
+    look: TabLook,
 ) {
-    let h = 42.0;
+    let stop = |r: u8, g: u8, b: u8, at: f32| {
+        bevy::ui::ColorStop::new(Color::srgb_u8(r, g, b), Val::Percent(at))
+    };
+    let (gradient, rim, ink, font) = match look {
+        TabLook::Club => (
+            bevy::ui::LinearGradient::to_right(vec![
+                stop(250, 245, 200, 0.0),
+                stop(250, 215, 45, 35.0),
+                stop(238, 140, 30, 100.0),
+            ]),
+            Color::srgb_u8(110, 55, 10),
+            Color::srgb_u8(30, 32, 100),
+            &fonts.meter,
+        ),
+        TabLook::CasinoKhaki => (
+            bevy::ui::LinearGradient::to_bottom(vec![
+                stop(250, 250, 228, 0.0),
+                stop(250, 250, 228, 50.0),
+                stop(244, 231, 140, 50.0),
+                stop(244, 231, 140, 100.0),
+            ]),
+            Color::srgb_u8(150, 90, 30),
+            Color::srgb_u8(30, 24, 6),
+            &fonts.sans,
+        ),
+        TabLook::CasinoSilver => (
+            bevy::ui::LinearGradient::to_bottom(vec![
+                stop(245, 248, 250, 0.0),
+                stop(225, 230, 238, 100.0),
+            ]),
+            Color::srgb_u8(120, 125, 140),
+            Color::srgb_u8(50, 52, 73),
+            &fonts.sans,
+        ),
+    };
+    let gloss_h = (h * 0.42).round();
     c.spawn((
         Node {
             position_type: PositionType::Absolute,
@@ -501,40 +601,96 @@ fn pill(
             top: Val::Px(cy - h / 2.0),
             width: Val::Px(w),
             height: Val::Px(h),
-            border: UiRect::all(Val::Px(3.0)),
+            border: UiRect::all(Val::Px(2.0)),
             border_radius: BorderRadius::all(Val::Px(h / 2.0)),
             justify_content: JustifyContent::Center,
             align_items: AlignItems::Center,
-            overflow: Overflow::clip(),
             ..default()
         },
-        BackgroundColor(face),
-        BorderColor::all(Color::srgb(0.85, 0.55, 0.08)),
+        bevy::ui::BackgroundGradient(vec![bevy::ui::Gradient::Linear(gradient)]),
+        BorderColor::all(rim),
     ))
     .with_children(|p| {
-        // The tab's glossy upper half.
+        // The gloss, inset so its rounded top stays within the rim.
         p.spawn((
             Node {
                 position_type: PositionType::Absolute,
-                left: Val::Px(0.0),
-                top: Val::Px(0.0),
-                width: Val::Percent(100.0),
-                height: Val::Percent(48.0),
+                left: Val::Px(4.0),
+                right: Val::Px(4.0),
+                top: Val::Px(2.0),
+                height: Val::Px(gloss_h),
+                border_radius: BorderRadius::top(Val::Px(gloss_h / 2.0)),
                 ..default()
             },
-            BackgroundColor(Color::srgba(1.0, 1.0, 1.0, 0.28)),
+            BackgroundColor(Color::srgba(1.0, 1.0, 1.0, 0.3)),
         ));
         p.spawn((
             Text::new(text),
             TextFont {
                 font: bevy::text::FontSource::Handle(font.clone()),
-                font_size: FontSize::Px(21.0),
+                font_size: FontSize::Px(size),
                 ..default()
             },
             TextLayout::no_wrap(),
             TextColor(ink),
         ));
     });
+}
+
+/// The status line's centre, and its height (the centre of its capitals) on
+/// each presentation (cabinet footage mapped onto the canvas: club 897,
+/// casino 889).
+const STATUS_X: f32 = 956.0;
+fn status_y(profile: Profile) -> f32 {
+    match profile {
+        Profile::Club => 897.0,
+        Profile::Casino => 889.0,
+    }
+}
+
+/// The message row under it (feature prompts, line wins), its top.
+fn message_top(profile: Profile) -> f32 {
+    match profile {
+        Profile::Club => 904.0,
+        Profile::Casino => 898.0,
+    }
+}
+
+/// The dark meter band's top: club 940, casino 933 (owner's photo).
+pub fn band_top(profile: Profile) -> f32 {
+    match profile {
+        Profile::Club => 940.0,
+        Profile::Casino => 933.0,
+    }
+}
+
+/// The meters' centre line.
+fn meter_y(profile: Profile) -> f32 {
+    match profile {
+        Profile::Club => 990.0,
+        Profile::Casino => 984.0,
+    }
+}
+
+/// The status and message rows' text: Verdana Bold 23, pale blue-white,
+/// with a dark edge (cabinet footage); the casino spaces its letters a
+/// little.
+fn status_text(s: &str, fonts: &CabFonts, profile: Profile, justify: Justify) -> impl Bundle {
+    (
+        Text::new(s),
+        TextFont {
+            font: bevy::text::FontSource::Handle(fonts.msg.clone()),
+            font_size: FontSize::Px(23.0),
+            ..default()
+        },
+        TextColor(Color::srgb_u8(210, 220, 245)),
+        TextLayout::justify(justify),
+        LetterSpacing::Px(if profile == Profile::Casino { 1.5 } else { 0.0 }),
+        TextShadow {
+            offset: Vec2::new(2.0, 2.0),
+            color: Color::srgba(0.03, 0.03, 0.05, 0.9),
+        },
+    )
 }
 
 /// The rotating prompt above the meters ("3 [scatter] Start FREE GAMES",
@@ -545,12 +701,11 @@ pub struct StartPrompt {
     which: u8,
 }
 
-/// The screen below the reels, laid out as the cabinet lays it out: the
-/// status line under the reels ("N credits per line" or "Bet Multiplier
-/// N"); one dark meter band with the tall pill and the tabs at the left,
-/// CREDIT, BET and WIN (its value in a box of its own, the start prompt
-/// above it), and the denomination box at the right under COLLECT (club) or
-/// GAMES MENU (casino); "N LINES" either side of the reels.
+/// The screen below the reels, laid out as the cabinet lays it out
+/// (positions mapped from footage onto the canvas): the status line and the
+/// message row on the backdrop under the reels; the dark meter band with
+/// CREDIT, BET and WIN; the tabs and the denomination box; "N LINES" either
+/// side of the reels.
 fn spawn_meter_band(
     c: &mut ChildSpawnerCommands,
     fonts: &CabFonts,
@@ -560,10 +715,7 @@ fn spawn_meter_band(
     profile: Profile,
 ) {
     let font = &fonts.meter;
-    let white = Color::srgb(0.97, 0.97, 0.97);
-    let dark = Color::srgba(0.015, 0.01, 0.03, 0.9);
-    let inset = Color::srgba(0.0, 0.0, 0.0, 0.55);
-    let rim = Color::srgb(0.3, 0.3, 0.36);
+    let club = profile == Profile::Club;
     let rect = |l: f32, t: f32, w: f32, h: f32| Node {
         position_type: PositionType::Absolute,
         left: Val::Px(l),
@@ -572,27 +724,51 @@ fn spawn_meter_band(
         height: Val::Px(h),
         ..default()
     };
-    // The band, across the whole screen.
-    c.spawn((
-        rect(0.0, BAND_TOP, CANVAS_W, SCREEN_BOTTOM - BAND_TOP),
-        BackgroundColor(dark),
-    ));
+    let top = band_top(profile);
+    let my = meter_y(profile);
+    // The band: on the club machines a rounded panel over a darker strip;
+    // in the casino style one dark area from the band to the screen's foot.
+    if club {
+        c.spawn((
+            rect(0.0, 1040.0, CANVAS_W, SCREEN_BOTTOM - 1040.0),
+            BackgroundColor(Color::srgb_u8(6, 5, 10)),
+        ));
+        c.spawn((
+            Node {
+                border_radius: BorderRadius::all(Val::Px(16.0)),
+                ..rect(200.0, top, 1513.0, 100.0)
+            },
+            BackgroundColor(Color::srgba_u8(18, 18, 34, 235)),
+        ));
+    } else {
+        c.spawn((
+            rect(0.0, top + 102.0, CANVAS_W, SCREEN_BOTTOM - top - 102.0),
+            BackgroundColor(Color::srgb_u8(8, 8, 12)),
+        ));
+        c.spawn((
+            Node {
+                border_radius: BorderRadius::right(Val::Px(16.0)),
+                ..rect(0.0, top, 1730.0, 102.0)
+            },
+            BackgroundColor(Color::srgba_u8(8, 8, 12, 245)),
+        ));
+    }
 
-    // "Bet Multiplier 5", centred under the reels.
+    // The status line under the reels.
     c.spawn((
         CabMeter::Multiplier,
-        label(
-            "Bet Multiplier 1",
-            &fonts.sans,
-            27.0,
-            white,
-            GRID_CENTER.0,
-            MULTIPLIER_Y,
-            700.0,
-        ),
+        status_text("", fonts, profile, Justify::Center),
+        Node {
+            position_type: PositionType::Absolute,
+            left: Val::Px(STATUS_X - 600.0),
+            top: Val::Px(status_y(profile) - 14.0),
+            width: Val::Px(1200.0),
+            ..default()
+        },
     ));
 
-    // The start prompts, at the band's top edge above the WIN box.
+    // The message row: the start prompts at its right, right-aligned to
+    // x 1685, wholly above the band.
     for (which, count, key, text) in [
         (0u8, "3", "pennant", "Start FREE GAMES"),
         (1u8, "6", "orb", "Start HOLD & SPIN FEATURE"),
@@ -601,14 +777,14 @@ fn spawn_meter_band(
             StartPrompt { which },
             Node {
                 position_type: PositionType::Absolute,
-                left: Val::Px(1180.0),
-                top: Val::Px(PROMPT_Y),
+                left: Val::Px(1145.0),
+                top: Val::Px(message_top(profile)),
                 width: Val::Px(540.0),
                 height: Val::Px(36.0),
                 flex_direction: FlexDirection::Row,
                 justify_content: JustifyContent::FlexEnd,
                 align_items: AlignItems::Center,
-                column_gap: Val::Px(8.0),
+                column_gap: Val::Px(7.0),
                 ..default()
             },
             if which == 0 {
@@ -618,49 +794,48 @@ fn spawn_meter_band(
             },
         ))
         .with_children(|row| {
-            let caption = |s: &str| {
-                (
-                    Text::new(s),
-                    TextFont {
-                        font: bevy::text::FontSource::Handle(fonts.sans.clone()),
-                        font_size: FontSize::Px(27.0),
-                        ..default()
-                    },
-                    TextColor(white),
-                )
-            };
-            row.spawn(caption(count));
+            row.spawn(status_text(count, fonts, profile, Justify::Left));
+            // The symbol as a small tile, on its own background (a coin on
+            // black).
             row.spawn((
                 Node {
                     width: Val::Px(34.0),
-                    height: Val::Px(30.0),
+                    height: Val::Px(28.0),
                     ..default()
                 },
-                ImageNode {
-                    image: art.symbols.get(key).cloned().unwrap_or_default(),
-                    image_mode: NodeImageMode::Stretch,
-                    ..default()
-                },
-            ));
-            row.spawn(caption(text));
+                BackgroundColor(if key == "orb" {
+                    Color::BLACK
+                } else {
+                    Color::NONE
+                }),
+            ))
+            .with_children(|t| {
+                t.spawn((
+                    Node {
+                        width: Val::Percent(100.0),
+                        height: Val::Percent(100.0),
+                        ..default()
+                    },
+                    ImageNode {
+                        image: art.symbols.get(key).cloned().unwrap_or_default(),
+                        image_mode: NodeImageMode::Stretch,
+                        ..default()
+                    },
+                ));
+            });
+            row.spawn(status_text(text, fonts, profile, Justify::Left));
         });
     }
 
-    // A feature's message ("Scatter wins 100") takes the prompts' place.
+    // A feature's message ("Line 3 wins 20", "Scatter wins 100") takes the
+    // prompts' place on the same row.
     c.spawn((
         FeatureMessage,
-        Text::new(""),
-        TextFont {
-            font: bevy::text::FontSource::Handle(fonts.sans.clone()),
-            font_size: FontSize::Px(27.0),
-            ..default()
-        },
-        TextColor(white),
-        TextLayout::justify(Justify::Right),
+        status_text("", fonts, profile, Justify::Right),
         Node {
             position_type: PositionType::Absolute,
-            left: Val::Px(1180.0),
-            top: Val::Px(PROMPT_Y + 2.0),
+            left: Val::Px(1145.0),
+            top: Val::Px(message_top(profile) + 5.0),
             width: Val::Px(540.0),
             ..default()
         },
@@ -668,21 +843,23 @@ fn spawn_meter_band(
 
     // The tall yellow pill at the far left, with its stacked bars (its
     // function is not shown on footage).
+    let (pill_top, pill_h) = if club { (937.0, 92.0) } else { (945.0, 90.0) };
     c.spawn((
         Node {
-            border: UiRect::all(Val::Px(3.0)),
-            border_radius: BorderRadius::all(Val::Px(18.0)),
+            border: UiRect::all(Val::Px(2.0)),
+            border_radius: BorderRadius::all(Val::Px(20.0)),
             flex_direction: FlexDirection::Column,
             justify_content: JustifyContent::Center,
             align_items: AlignItems::Center,
-            row_gap: Val::Px(9.0),
-            ..rect(16.0, METER_Y - 56.0, 54.0, 112.0)
+            row_gap: Val::Px(7.0),
+            ..rect(12.0, pill_top, 52.0, pill_h)
         },
         BackgroundColor(Color::srgb(0.98, 0.8, 0.14)),
         BorderColor::all(Color::srgb(0.75, 0.45, 0.05)),
+        GlobalZIndex(14),
     ))
     .with_children(|b| {
-        for w in [14.0, 22.0, 28.0] {
+        for w in [28.0, 22.0, 14.0] {
             b.spawn((
                 Node {
                     width: Val::Px(w),
@@ -690,38 +867,27 @@ fn spawn_meter_band(
                     border_radius: BorderRadius::all(Val::Px(3.0)),
                     ..default()
                 },
-                BackgroundColor(Color::srgb(0.35, 0.22, 0.04)),
+                BackgroundColor(Color::srgb(0.12, 0.14, 0.4)),
             ));
         }
     });
-    let tab_face = Color::srgb(0.99, 0.82, 0.25);
-    let tab_ink = Color::srgb(0.24, 0.14, 0.04);
-    let club = profile == Profile::Club;
-    // The club machines: GAMES MENU over GAME RULES at the left; the casino
-    // style: GAME RULES at the left, GAMES MENU over the denomination box.
+    // The tabs. Club: GAMES MENU above the band at the far left, GAME RULES
+    // on it; COLLECT over the denomination box. Casino: GAME RULES on the
+    // band at the left, GAMES MENU over the denomination box.
     if club {
         pill(
             c,
-            &fonts.sans,
+            fonts,
             "GAMES MENU",
-            160.0,
-            METER_Y - 30.0,
-            150.0,
-            tab_face,
-            tab_ink,
-        );
-        pill(
-            c,
-            &fonts.sans,
-            "GAME RULES",
-            160.0,
-            METER_Y + 30.0,
-            150.0,
-            tab_face,
-            tab_ink,
+            59.0,
+            900.0,
+            112.0,
+            40.0,
+            20.0,
+            TabLook::Club,
         );
         c.spawn((
-            rect(85.0, METER_Y - 52.0, 150.0, 44.0),
+            rect(3.0, 880.0, 112.0, 40.0),
             BackgroundColor(Color::NONE),
             GlobalZIndex(1),
         ))
@@ -729,74 +895,54 @@ fn spawn_meter_band(
             |_press: On<PointerPress>, mut input: ResMut<CabinetInput>| {
                 input.menu = true;
             },
+        );
+        pill(
+            c,
+            fonts,
+            "GAME RULES",
+            136.0,
+            1009.0,
+            110.0,
+            42.0,
+            19.0,
+            TabLook::Club,
+        );
+        pill(
+            c,
+            fonts,
+            "COLLECT",
+            1817.0,
+            908.0,
+            176.0,
+            42.0,
+            32.0,
+            TabLook::Club,
         );
     } else {
         pill(
             c,
-            &fonts.sans,
+            fonts,
             "GAME RULES",
-            160.0,
-            METER_Y,
-            150.0,
-            tab_face,
-            tab_ink,
+            156.0,
+            1021.0,
+            158.0,
+            44.0,
+            20.0,
+            TabLook::CasinoSilver,
         );
-    }
-
-    // CREDIT / BET / WIN, their values, WIN's value in its own box.
-    for (text, x, w) in [
-        ("CREDIT", 345.0, 220.0),
-        ("BET", 850.0, 120.0),
-        ("WIN", 1205.0, 120.0),
-    ] {
-        c.spawn(label(text, font, 66.0, gold, x, METER_Y, w));
-    }
-    c.spawn((
-        Node {
-            border: UiRect::all(Val::Px(2.0)),
-            border_radius: BorderRadius::all(Val::Px(10.0)),
-            ..rect(1280.0, METER_Y - 46.0, 440.0, 92.0)
-        },
-        BackgroundColor(inset),
-        BorderColor::all(rim),
-    ));
-    for (meter, x, w) in [
-        (CabMeter::Credit, 615.0, 330.0),
-        (CabMeter::Bet, 1030.0, 240.0),
-        (CabMeter::Win, 1500.0, 420.0),
-    ] {
-        c.spawn((meter, label("-", font, 70.0, pale, x, METER_Y, w)));
-    }
-
-    // The denomination box at the right, under GAMES MENU (casino) or
-    // COLLECT (club); its small line is MIN BET or the credit conversion.
-    c.spawn((
-        Node {
-            border: UiRect::all(Val::Px(2.0)),
-            border_radius: BorderRadius::all(Val::Px(12.0)),
-            ..rect(1745.0, METER_Y - 56.0, 166.0, 120.0)
-        },
-        BackgroundColor(Color::srgba(0.07, 0.06, 0.06, 0.95)),
-        BorderColor::all(Color::srgb(0.45, 0.42, 0.36)),
-    ));
-    pill(
-        c,
-        &fonts.sans,
-        if club { "COLLECT" } else { "GAMES MENU" },
-        1828.0,
-        METER_Y - 70.0,
-        166.0,
-        tab_face,
-        tab_ink,
-    );
-    c.spawn((
-        CabMeter::Denom,
-        label("1¢", font, 78.0, gold, 1828.0, METER_Y - 2.0, 166.0),
-    ));
-    if !club {
-        // The tab and the box under it are one touch target: the GAMES MENU.
+        pill(
+            c,
+            fonts,
+            "GAMES MENU",
+            1819.0,
+            896.0,
+            162.0,
+            42.0,
+            20.0,
+            TabLook::CasinoKhaki,
+        );
         c.spawn((
-            rect(1745.0, METER_Y - 92.0, 166.0, 156.0),
+            rect(1738.0, 875.0, 164.0, 150.0),
             BackgroundColor(Color::NONE),
             GlobalZIndex(1),
         ))
@@ -806,16 +952,97 @@ fn spawn_meter_band(
             },
         );
     }
+
+    // CREDIT / BET / WIN and their values (Impact, drawn a little narrow as
+    // the cabinet's is); CREDIT stays above the GAMES MENU's splash.
+    let (labels, values) = if club {
+        (
+            [("CREDIT", 310.0), ("BET", 850.0), ("WIN", 1217.0)],
+            [
+                (CabMeter::Credit, 602.0),
+                (CabMeter::Bet, 1009.0),
+                (CabMeter::Win, 1484.0),
+            ],
+        )
+    } else {
+        (
+            [("CREDIT", 311.0), ("BET", 805.0), ("WIN", 1240.0)],
+            [
+                (CabMeter::Credit, 568.0),
+                (CabMeter::Bet, 1005.0),
+                (CabMeter::Win, 1496.0),
+            ],
+        )
+    };
+    let narrow = UiTransform {
+        scale: Vec2::new(0.9, 1.0),
+        ..UiTransform::IDENTITY
+    };
+    for (i, (text, x)) in labels.into_iter().enumerate() {
+        let mut e = c.spawn((label(text, font, 68.0, gold, x, my, 260.0), narrow));
+        if i == 0 {
+            e.insert(GlobalZIndex(14));
+        }
+    }
+    for (meter, x) in values {
+        let mut e = c.spawn((meter, label("-", font, 68.0, pale, x, my, 420.0), narrow));
+        if matches!(meter, CabMeter::Credit) {
+            e.insert(GlobalZIndex(14));
+        }
+    }
+
+    // The denomination box at the right, under COLLECT (club) or GAMES MENU
+    // (casino); its small line is the credit conversion or MIN BET.
+    let (bx, by, bw, bh, dx, dy, dsize, note_y, note_colour, denom_colour) = if club {
+        (
+            1726.0,
+            941.0,
+            178.0,
+            97.0,
+            1815.0,
+            978.0,
+            78.0,
+            1022.0,
+            Color::srgb_u8(240, 170, 60),
+            gold,
+        )
+    } else {
+        (
+            1740.0,
+            926.0,
+            162.0,
+            98.0,
+            1821.0,
+            967.0,
+            76.0,
+            1010.0,
+            Color::srgb_u8(215, 225, 250),
+            Color::srgb_u8(245, 235, 140),
+        )
+    };
+    c.spawn((
+        Node {
+            border: UiRect::all(Val::Px(2.0)),
+            border_radius: BorderRadius::all(Val::Px(12.0)),
+            ..rect(bx, by, bw, bh)
+        },
+        BackgroundColor(Color::srgba_u8(12, 10, 12, 242)),
+        BorderColor::all(Color::srgb_u8(60, 58, 60)),
+    ));
+    c.spawn((
+        CabMeter::Denom,
+        label("1¢", font, dsize, denom_colour, dx, dy, bw),
+    ));
     c.spawn((
         CabMeter::MinBet,
         label(
             "MIN BET 50",
             &fonts.sans,
-            18.0,
-            white,
-            1828.0,
-            METER_Y + 46.0,
-            166.0,
+            if club { 19.0 } else { 18.0 },
+            note_colour,
+            dx,
+            note_y,
+            bw,
         ),
     ));
 
@@ -1526,7 +1753,12 @@ pub fn update_meters(
     gamble: Res<GambleShow>,
     menu: Res<GamesMenu>,
     deck: Res<DeckState>,
-    mut meters: Query<(&CabMeter, &mut Text)>,
+    mut meters: Query<(
+        &CabMeter,
+        &mut Text,
+        &mut TextColor,
+        Option<&mut LetterSpacing>,
+    )>,
 ) {
     if !fidelity.0 {
         return;
@@ -1547,7 +1779,7 @@ pub fn update_meters(
             money(credits, cents)
         }
     };
-    for (meter, mut text) in &mut meters {
+    for (meter, mut text, mut colour, spacing) in &mut meters {
         let value = match meter {
             // A feature under way, from its trigger spin on (the game is in it
             // before the screen shows it): CREDIT holds still while the
@@ -1578,7 +1810,7 @@ pub fn update_meters(
                 Some(c) if !in_credits => money(c, 1),
                 _ => amount(sim.game.total_bet(), cents),
             },
-            CabMeter::Win if gamble.active => amount(gamble.stake, cents),
+            CabMeter::Win if gamble.active => amount(gamble.shown_stake(), cents),
             CabMeter::Win => match (gamble.result, show.grand_win()) {
                 (Some(w), _) => amount(w, cents),
                 (None, Some(g)) => amount(g, cents),
@@ -1633,6 +1865,24 @@ pub fn update_meters(
         };
         if text.0 != value {
             text.0 = value;
+        }
+        // The club machines write the bet line ("3 credits per line") in
+        // yellow, widely spaced; every other status text is pale blue-white
+        // (footage).
+        let (CabMeter::Multiplier, Some(mut spacing)) = (meter, spacing) else {
+            continue;
+        };
+        let bet_line = deck.profile == Profile::Club && text.0.ends_with("per line");
+        let (want, gap) = match (bet_line, deck.profile) {
+            (true, _) => (Color::srgb_u8(225, 225, 80), 4.8),
+            (false, Profile::Club) => (Color::srgb_u8(210, 220, 245), 0.0),
+            (false, Profile::Casino) => (Color::srgb_u8(210, 220, 245), 1.5),
+        };
+        if colour.0 != want {
+            colour.0 = want;
+        }
+        if *spacing != LetterSpacing::Px(gap) {
+            *spacing = LetterSpacing::Px(gap);
         }
     }
 }
@@ -1908,6 +2158,21 @@ pub fn spawn_strips(c: &mut ChildSpawnerCommands, reels: u8) {
             Visibility::Hidden,
         ))
         .with_children(|col| {
+            // The black tiles under passing coins, behind everything.
+            for index in 0..STRIP_SLOTS as u8 {
+                col.spawn((
+                    StripTile { reel, index },
+                    Node {
+                        position_type: PositionType::Absolute,
+                        left: Val::Px(1.0),
+                        width: Val::Px(cw - 8.0),
+                        height: Val::Px(pitch()),
+                        ..default()
+                    },
+                    BackgroundColor(Color::BLACK),
+                    Visibility::Hidden,
+                ));
+            }
             // Faint copies above and below each symbol: the smear of a reel
             // at full speed (cabinet footage), drawn behind the symbols.
             for index in 0..STRIP_SLOTS as u8 {
@@ -2005,6 +2270,14 @@ pub fn spin_reels(
         (Without<StripColumn>, Without<StripSlot>),
     >,
     images: Res<Assets<Image>>,
+    mut tiles: Query<
+        (&StripTile, &mut Node, &mut Visibility),
+        (
+            Without<StripColumn>,
+            Without<StripSlot>,
+            Without<StripGhost>,
+        ),
+    >,
 ) {
     if !fidelity.0 || reels.states.is_empty() {
         return;
@@ -2168,6 +2441,23 @@ pub fn spin_reels(
         node.width = Val::Px(w);
         node.left = Val::Px((column_width() - w) / 2.0);
     }
+    for (tile, mut node, mut vis) in &mut tiles {
+        let reel = tile.reel as usize;
+        let (n, raw) = reels.slot_entry(reel, tile.index);
+        let coin = reels.moving(tile.reel) && symbol_of(raw) == "orb";
+        let want = if coin {
+            Visibility::Inherited
+        } else {
+            Visibility::Hidden
+        };
+        if *vis != want {
+            *vis = want;
+        }
+        if coin {
+            let cy = p / 2.0 + (n as f32 - reels.states[reel].pos) * p;
+            node.top = Val::Px(cy - p / 2.0);
+        }
+    }
     for (g, mut image, mut node, mut vis) in &mut ghosts {
         let reel = g.reel as usize;
         // Only at full speed: spinning, or running on to its stop.
@@ -2293,6 +2583,27 @@ impl Sounds {
                 .spawn((AudioPlayer::new(clip.clone()), PlaybackSettings::DESPAWN))
                 .id(),
         )
+    }
+
+    /// Play a clip once at `volume` (scaled by the global volume, which a
+    /// muted run sets to 0).
+    pub fn play_at(&self, commands: &mut Commands, name: &str, volume: f32) -> Option<Entity> {
+        let (clip, _) = self.clips.get(name)?;
+        Some(
+            commands
+                .spawn((
+                    AudioPlayer::new(clip.clone()),
+                    PlaybackSettings::DESPAWN.with_volume(bevy::audio::Volume::Linear(volume)),
+                ))
+                .id(),
+        )
+    }
+
+    /// Play a cue from a table: a clip and its volume.
+    pub fn cue(&self, commands: &mut Commands, cue: Option<(&str, f32)>) {
+        if let Some((name, volume)) = cue {
+            self.play_at(commands, name, volume);
+        }
     }
 
     /// A clip's length in seconds.
@@ -2527,6 +2838,20 @@ pub fn rollup_skip(
 // Orb prizes
 // ---------------------------------------------------------------------------
 
+/// The black tile under a landed coin.
+#[derive(Component)]
+pub struct CoinTile {
+    reel: u8,
+    row: u8,
+}
+
+/// The black tile under a coin passing on a moving strip.
+#[derive(Component)]
+pub struct StripTile {
+    reel: u8,
+    index: u8,
+}
+
 /// One digit slot of the prize lettered on an orb.
 #[derive(Component)]
 pub struct CoinGlyph {
@@ -2545,9 +2870,30 @@ pub struct OrbTier {
 /// Digit slots per orb.
 const COIN_SLOTS: u8 = 6;
 /// Digit image height as a share of the reel cell's height (cabinet footage:
-/// a coin's digits stand about 0.29 of a row tall; the glyph images carry a
-/// little padding around the ink).
-const COIN_DIGIT_SHARE: f32 = 0.33;
+/// the ink stands about 0.276 of a row tall; the glyph images are tight
+/// crops), and the digits drawn a little wider than their images, as the
+/// cabinet's are.
+const COIN_DIGIT_SHARE: f32 = 0.295;
+const COIN_DIGIT_XSTRETCH: f32 = 1.04;
+/// "$" stands 0.69 of a digit's height and sits a little low: its centre
+/// about 0.045 of the digit height below theirs (cabinet footage, $5 / $10 /
+/// $100 coins).
+const COIN_DOLLAR_SHARE: f32 = 0.69;
+const COIN_DOLLAR_DROP: f32 = 0.09;
+
+/// A coin character's drawn size at `scale`, and its drop below the line's
+/// centre (the "$" only).
+fn coin_glyph(c: char, w: f32, h: f32, scale: f32) -> (f32, f32, f32) {
+    if c == '$' {
+        (
+            w * scale * COIN_DIGIT_XSTRETCH * COIN_DOLLAR_SHARE,
+            h * scale * COIN_DOLLAR_SHARE,
+            73.0 * scale * COIN_DOLLAR_DROP,
+        )
+    } else {
+        (w * scale * COIN_DIGIT_XSTRETCH, h * scale, 0.0)
+    }
+}
 
 /// The scale for a prize's digit images: their own height to `digit_h`, or
 /// smaller so the whole prize fits across the coin.
@@ -2555,8 +2901,8 @@ fn coin_digit_scale(text: &str, art: &ArtPack, digit_h: f32) -> f32 {
     let scale = digit_h / 73.0;
     let width: f32 = text
         .chars()
-        .filter_map(|c| art.sizes.get(&coin_key(c)))
-        .map(|(w, _)| w * scale)
+        .filter_map(|c| art.sizes.get(&coin_key(c)).map(|s| (c, s)))
+        .map(|(c, (w, h))| coin_glyph(c, *w, *h, scale).0)
         .sum();
     let (cw, ch) = cell_size();
     let coin_w = art
@@ -2652,6 +2998,7 @@ pub fn orb_overlay(
     labels: Query<(&CellLabel, &Text)>,
     mut glyphs: Query<(&CoinGlyph, &mut ImageNode, &mut Visibility, &mut Node), Without<OrbTier>>,
     mut tiers: Query<(&OrbTier, &mut ImageNode, &mut Visibility, &mut Node), Without<CoinGlyph>>,
+    mut tiles: Query<(&CoinTile, &mut Visibility), (Without<CoinGlyph>, Without<OrbTier>)>,
 ) {
     if !fidelity.0 {
         return;
@@ -2691,15 +3038,17 @@ pub fn orb_overlay(
             .and_then(|t| t.chars().nth(g.index as usize))
             .and_then(|c| {
                 let key = coin_key(c);
-                art.ui.get(&key).zip(art.sizes.get(&key))
+                art.ui.get(&key).zip(art.sizes.get(&key)).map(|g| (c, g))
             });
         match glyph {
-            Some((handle, (w, h))) => {
+            Some((c, (handle, (w, h)))) => {
                 if image.image != *handle {
                     image.image = handle.clone();
                 }
-                node.width = Val::Px(w * scale);
-                node.height = Val::Px(h * scale);
+                let (gw, gh, drop) = coin_glyph(c, *w, *h, scale);
+                node.width = Val::Px(gw);
+                node.height = Val::Px(gh);
+                node.margin.top = Val::Px(drop);
                 node.display = Display::Flex;
                 *vis = Visibility::Visible;
             }
@@ -2710,9 +3059,23 @@ pub fn orb_overlay(
             }
         }
     }
-    // The tier plate sits on the coin at the coin's own scale.
+    for (t, mut vis) in &mut tiles {
+        let coin = !reels.moving(t.reel)
+            && labels
+                .iter()
+                .any(|(l, text)| l.reel == t.reel && l.row == t.row && symbol_of(&text.0) == "orb");
+        let want = if coin {
+            Visibility::Inherited
+        } else {
+            Visibility::Hidden
+        };
+        if *vis != want {
+            *vis = want;
+        }
+    }
+    // The tier plate sits on the coin a little below its centre, at the
+    // size measured on cabinet footage (TIER_PLATE).
     let (cw, ch) = cell_size();
-    let k = art.sizes.get("orb").map_or(1.0, |s| orb_scale(*s));
     for (o, mut image, mut vis, mut node) in &mut tiers {
         let Some((key, h)) = face(o.reel, o.row)
             .as_deref()
@@ -2725,11 +3088,12 @@ pub fn orb_overlay(
         if image.image != *h {
             image.image = h.clone();
         }
-        let (pw, ph) = art.sizes.get(key).map_or((cw, ch), |s| (s.0 * k, s.1 * k));
+        let _ = key;
+        let (pw, ph) = TIER_PLATE;
         node.width = Val::Px(pw);
         node.height = Val::Px(ph);
         node.left = Val::Px((cw - pw) / 2.0);
-        node.top = Val::Px((ch - ph) / 2.0);
+        node.top = Val::Px((ch - ph) / 2.0 + TIER_DROP);
         *vis = Visibility::Visible;
     }
 }
@@ -2784,6 +3148,13 @@ fn strip_face(raw: &str, reel: u8, n: i64) -> Option<&str> {
     }
 }
 
+/// A MINI / MINOR / MAJOR plate's drawn size, and how far below the coin's
+/// centre it sits (cabinet footage: the MINI word 0.62 of the reel's width
+/// and 0.23 of a row tall). The same on a landed coin and a moving one, so a
+/// plate keeps its size as its reel lands.
+const TIER_PLATE: (f32, f32) = (280.0, 219.0);
+const TIER_DROP: f32 = 8.0;
+
 /// The tier plate on an orb passing on a moving reel strip.
 #[derive(Component)]
 pub struct StripTier {
@@ -2796,12 +3167,23 @@ pub fn strip_tiers(
     fidelity: Res<Fidelity>,
     art: Res<ArtPack>,
     reels: Res<Reels>,
-    mut plates: Query<(&StripTier, &mut ImageNode, &mut Visibility)>,
+    mut plates: Query<(&StripTier, &mut ImageNode, &mut Visibility, &mut Node)>,
 ) {
     if !fidelity.0 {
         return;
     }
-    for (p, mut image, mut vis) in &mut plates {
+    // Centred in the coin's slot (the coin image's rect), at the plate's
+    // own size.
+    let (sw, sh) = art
+        .sizes
+        .get("orb")
+        .map_or(cell_size(), |s| symbol_size("orb", *s));
+    let (pw, ph) = TIER_PLATE;
+    for (p, mut image, mut vis, mut node) in &mut plates {
+        node.width = Val::Px(pw);
+        node.height = Val::Px(ph);
+        node.left = Val::Px((sw - pw) / 2.0);
+        node.top = Val::Px((sh - ph) / 2.0 + TIER_DROP);
         let plate = reels
             .moving(p.reel)
             .then(|| {
@@ -2854,15 +3236,21 @@ pub fn strip_coins(
             .and_then(|t| t.chars().nth(d.index as usize))
             .and_then(|c| {
                 let key = coin_key(c);
-                art.ui.get(&key).cloned().zip(art.sizes.get(&key).copied())
+                art.ui
+                    .get(&key)
+                    .cloned()
+                    .zip(art.sizes.get(&key).copied())
+                    .map(|g| (c, g))
             });
         match glyph {
-            Some((handle, (w, h))) => {
+            Some((c, (handle, (w, h)))) => {
                 if image.image != handle {
                     image.image = handle;
                 }
-                node.width = Val::Px(w * scale);
-                node.height = Val::Px(h * scale);
+                let (gw, gh, drop) = coin_glyph(c, w, h, scale);
+                node.width = Val::Px(gw);
+                node.height = Val::Px(gh);
+                node.margin.top = Val::Px(drop);
                 node.display = Display::Flex;
                 *vis = Visibility::Inherited;
             }
@@ -4097,15 +4485,21 @@ fn letter(
             .and_then(|t| t.chars().nth(d.index as usize))
             .and_then(|c| {
                 let key = coin_key(c);
-                art.ui.get(&key).cloned().zip(art.sizes.get(&key).copied())
+                art.ui
+                    .get(&key)
+                    .cloned()
+                    .zip(art.sizes.get(&key).copied())
+                    .map(|g| (c, g))
             });
         match glyph {
-            Some((h, (w, gh))) => {
+            Some((c, (h, (w, gh)))) => {
                 if image.image != h {
                     image.image = h;
                 }
-                node.width = Val::Px(w * scale);
-                node.height = Val::Px(gh * scale);
+                let (gw, ghh, drop) = coin_glyph(c, w, gh, scale);
+                node.width = Val::Px(gw);
+                node.height = Val::Px(ghh);
+                node.margin.top = Val::Px(drop);
                 node.display = Display::Flex;
             }
             None => node.display = Display::None,
@@ -5271,9 +5665,9 @@ pub struct ChooserRoot;
 pub struct ChooserPanel;
 #[derive(Component)]
 pub struct ChooserHeader;
-/// Covers BET, WIN and the tabs on the meter band while the chooser shows.
+/// The rounded panel that keeps CREDIT on screen over the chooser's splash.
 #[derive(Component)]
-pub struct ChooserCover;
+pub struct ChooserCredit;
 /// Club: the ARE YOU SURE? panel, and its question.
 #[derive(Component)]
 pub struct ChooserConfirm;
@@ -5297,7 +5691,9 @@ fn spawn_games_menu(
     profile: Profile,
 ) {
     let top = JACKPOT_BAR_TOP + JACKPOT_BAR_W * 104.0 / 1225.0 + 4.0;
-    let h = BAND_TOP - top;
+    // The title and panel are placed on the screen above the band; the
+    // splash itself runs down over the band to the screen's foot (footage).
+    let h = band_top(profile) - top;
     c.spawn((
         ChooserRoot,
         Node {
@@ -5305,7 +5701,7 @@ fn spawn_games_menu(
             left: Val::Px(0.0),
             top: Val::Px(top),
             width: Val::Px(CANVAS_W),
-            height: Val::Px(h),
+            height: Val::Px(SCREEN_BOTTOM - top),
             overflow: Overflow::clip(),
             ..default()
         },
@@ -5517,25 +5913,21 @@ fn spawn_games_menu(
             });
         });
     });
-    // BET, WIN and the tabs give way; CREDIT stays, and on the club machines
-    // COLLECT too.
-    let cover_right = if profile == Profile::Club {
-        1740.0
-    } else {
-        CANVAS_W
-    };
+    // Over the splash only a rounded panel holding CREDIT stays (footage:
+    // BET, WIN, the tabs and the denomination box give way).
     c.spawn((
-        ChooserCover,
+        ChooserCredit,
         Node {
             position_type: PositionType::Absolute,
-            left: Val::Px(780.0),
-            top: Val::Px(BAND_TOP),
-            width: Val::Px(cover_right - 780.0),
-            height: Val::Px(SCREEN_BOTTOM - BAND_TOP),
+            left: Val::Px(200.0),
+            top: Val::Px(band_top(profile)),
+            width: Val::Px(545.0),
+            height: Val::Px(100.0),
+            border_radius: BorderRadius::all(Val::Px(16.0)),
             ..default()
         },
-        BackgroundColor(Color::srgb(0.015, 0.01, 0.03)),
-        GlobalZIndex(12),
+        BackgroundColor(Color::srgba_u8(18, 18, 34, 245)),
+        GlobalZIndex(13),
         Visibility::Hidden,
     ));
 }
@@ -5564,17 +5956,17 @@ pub fn games_menu(
         (
             With<ChooserConfirm>,
             Without<ChooserRoot>,
-            Without<ChooserCover>,
+            Without<ChooserCredit>,
             Without<ChooserPanel>,
         ),
     >,
-    mut covers: Query<&mut Visibility, Or<(With<ChooserRoot>, With<ChooserCover>)>>,
+    mut covers: Query<&mut Visibility, Or<(With<ChooserRoot>, With<ChooserCredit>)>>,
     mut panel: Query<
         &mut Visibility,
         (
             With<ChooserPanel>,
             Without<ChooserRoot>,
-            Without<ChooserCover>,
+            Without<ChooserCredit>,
         ),
     >,
 ) {
@@ -5693,6 +6085,9 @@ pub struct GambleShow {
     since: f32,
     /// The last gamble win, kept over the card into the next round.
     last_win: Option<u64>,
+    /// What was at stake before the card now showing: WIN shows it until the
+    /// card turns.
+    before: u64,
     /// How the last gamble ended (lost or not), shown until the next game.
     pub ended: Option<bool>,
     /// The win the gamble ended on, shown on the WIN meter until the next
@@ -5705,6 +6100,15 @@ pub struct GambleShow {
 }
 
 impl GambleShow {
+    /// What WIN shows in the gamble: the stake, or before the card has
+    /// turned what was at stake when it was chosen.
+    pub fn shown_stake(&self) -> u64 {
+        match self.card {
+            Some((_, _, t)) if t < GAMBLE_FACE_DELAY => self.before,
+            _ => self.stake,
+        }
+    }
+
     /// A gamble with a full history from the start: the cabinet always shows
     /// five past cards (from play before this session), then the real ones.
     /// The starting cards are drawn for display only, from `seed` by a
@@ -5769,6 +6173,8 @@ pub fn gamble_control(
     show: Res<FeatureShow>,
     rollup: Res<Rollup>,
     denom: Res<Denom>,
+    sounds: Res<Sounds>,
+    mut commands: Commands,
 ) {
     if !fidelity.0 {
         return;
@@ -5845,6 +6251,7 @@ pub fn gamble_control(
             gamble.ended = None;
             gamble.stake = sim.game.state().gamble_stake;
             input.skip_spin = true;
+            sounds.cue(&mut commands, gamble_cue(GambleCue::Open));
         }
         return;
     }
@@ -5852,6 +6259,7 @@ pub fn gamble_control(
     // GAMBLE again chooses between the full and the half gamble.
     if input.gamble && gamble.card.is_none() && gamble.stake >= 2 {
         gamble.half = !gamble.half;
+        sounds.cue(&mut commands, gamble_cue(GambleCue::Toggle));
     }
     // Every press while gambling belongs to the gamble.
     let take = input.take_win
@@ -5859,14 +6267,20 @@ pub fn gamble_control(
         || keys.just_pressed(KeyCode::Space)
         || keys.just_pressed(KeyCode::Enter);
     input.skip_spin = true;
-    if let Some((card, won, t)) = gamble.card {
-        let t = t + dt;
+    if let Some((card, won, t0)) = gamble.card {
+        let t = t0 + dt;
         gamble.card = Some((card, won, t));
-        let done = if won {
-            GAMBLE_SHOW_WIN
-        } else {
-            GAMBLE_SHOW_LOSS
-        };
+        // The card turns a moment after the choice, the win's sting with it.
+        if t0 < GAMBLE_FACE_DELAY && t >= GAMBLE_FACE_DELAY {
+            let cue = if won { GambleCue::Won } else { GambleCue::Lost };
+            sounds.cue(&mut commands, gamble_cue(cue));
+        }
+        let done = GAMBLE_FACE_DELAY
+            + if won {
+                GAMBLE_SHOW_WIN
+            } else {
+                GAMBLE_SHOW_LOSS
+            };
         if t >= done {
             // The history takes the card as the next round opens (footage).
             gamble.card = None;
@@ -5916,7 +6330,9 @@ pub fn gamble_control(
                     } => {
                         gamble.last = Some((*pick, *stake));
                         gamble.card = Some((*card, *won, 0.0));
+                        gamble.before = gamble.stake;
                         gamble.stake = *award;
+                        sounds.cue(&mut commands, gamble_cue(GambleCue::Pick));
                         if *won {
                             gamble.last_win = Some(*award);
                         }
@@ -5931,6 +6347,7 @@ pub fn gamble_control(
         gamble.active = false;
         gamble.result = Some(gamble.stake);
         gamble.ended = Some(false);
+        sounds.cue(&mut commands, gamble_cue(GambleCue::TakeWin));
     }
 }
 
@@ -5941,13 +6358,17 @@ pub struct GambleRoot;
 pub enum GambleText {
     /// "Full Gamble Selected" or "Half Gamble Selected".
     Selected,
-    /// "Red/Black Gamble / Gamble Amount / n / $x".
-    Amount,
-    /// "Red/Black Gamble / to win ..." alternating with the suit gamble.
-    ToWin,
-    /// "Gamble Win / n / $x" over a winning card.
-    GambleWin,
-    /// "Select a SUIT, RED/BLACK or TAKE WIN".
+    /// "Red/Black Gamble" / "Gamble Amount" over the amount.
+    AmountCaption,
+    AmountValue,
+    /// "Red/Black Gamble" / "to win" over what it would win.
+    ToWinCaption,
+    ToWinValue,
+    /// "Gamble Win" over the last win, from the card's turn into the next
+    /// round.
+    WinCaption,
+    WinValue,
+    /// "Select a SUIT, RED/BLACK or TAKE WIN", in the status line.
     Prompt,
 }
 /// A choice button on the gamble screen.
@@ -5963,13 +6384,33 @@ pub struct GambleStamp;
 #[derive(Component)]
 pub struct GambleHistory(usize);
 
-/// The text style of the gamble screen: bold italic white with a dark
-/// shadow (cabinet footage).
-fn gamble_text(
-    s: &str,
-    font: &Handle<Font>,
-    size: f32,
-) -> (Text, TextFont, TextColor, TextLayout, TextShadow) {
+/// The gamble screen's layout on the canvas, measured on cabinet footage by
+/// homography from the Hold & Spin coins just before each gamble
+/// (_XHUzg4qDXI, iHDxUc1dlKs; GOLDEN_CENTURY_CABINET_DECK.md): the columns'
+/// centres, then each part's centre and size.
+const GAMBLE_LX: f32 = 519.0;
+const GAMBLE_RX: f32 = 1401.0;
+const GAMBLE_PILL: (f32, f32, f32) = (351.0, 510.0, 55.0);
+const GAMBLE_COLOUR: (f32, f32, f32) = (600.0, 502.0, 80.0);
+const GAMBLE_SUIT: (f32, f32, f32) = (720.0, 198.0, 100.0);
+/// The suit buttons' centres either side of their column.
+const GAMBLE_SUIT_DX: f32 = 116.0;
+const GAMBLE_CARD: (f32, f32, f32) = (655.0, 303.0, 361.0);
+const GAMBLE_STAMP: (f32, f32, f32) = (731.0, 415.0, 125.0);
+/// The side blocks' caption and value line pairs, and the Gamble Win
+/// header's caption and values (line centres, 35 px apart).
+const GAMBLE_CAPTION_Y: f32 = 431.5;
+const GAMBLE_VALUE_Y: f32 = 501.5;
+const GAMBLE_WIN_CAPTION_Y: f32 = 363.0;
+const GAMBLE_WIN_VALUE_Y: f32 = 417.5;
+const GAMBLE_LINE: f32 = 35.0;
+/// Seconds from a choice to the card turning (footage: 0.36-0.40 s from the
+/// touch; a press here registers at once).
+pub const GAMBLE_FACE_DELAY: f32 = 0.35;
+
+/// The gamble screen's captions: upright bold, pale blue-white, with a dark
+/// navy edge (cabinet footage).
+fn gamble_caption(s: &str, font: &Handle<Font>, size: f32, colour: Color) -> impl Bundle {
     (
         Text::new(s),
         TextFont {
@@ -5977,40 +6418,53 @@ fn gamble_text(
             font_size: FontSize::Px(size),
             ..default()
         },
-        TextColor(Color::srgb(0.98, 0.97, 0.94)),
+        TextColor(colour),
         TextLayout::justify(Justify::Center),
+        LineHeight::Px(GAMBLE_LINE),
         TextShadow {
-            offset: Vec2::new(2.0, 3.0),
-            color: Color::srgba(0.0, 0.0, 0.0, 0.85),
+            offset: Vec2::new(2.0, 2.0),
+            color: Color::srgba(0.06, 0.08, 0.2, 0.9),
         },
     )
 }
 
-/// Build the gamble screen (hidden until a gamble): the game's feature
-/// backdrop, the panels either side of the card, the card, the history.
-pub fn spawn_gamble_screen(c: &mut ChildSpawnerCommands, art: &ArtPack, fonts: &CabFonts) {
+/// The gamble's amounts: a heavier, wider face in cream.
+fn gamble_value(font: &Handle<Font>) -> impl Bundle {
+    gamble_caption("", font, 39.0, Color::srgb(0.98, 0.965, 0.784))
+}
+
+/// Build the gamble screen (hidden until a gamble): the game's backdrop, the
+/// banners, the two columns either side of the card, the history.
+pub fn spawn_gamble_screen(
+    c: &mut ChildSpawnerCommands,
+    art: &ArtPack,
+    fonts: &CabFonts,
+    profile: Profile,
+) {
     let ui = |k: &str| art.ui.get(k).cloned().unwrap_or_default();
-    // The whole screen between the jackpots and the meter band.
+    // The whole screen between the jackpots and the meter band; every y
+    // below is a canvas y, made relative to this top.
     let top = JACKPOT_BAR_TOP + JACKPOT_BAR_W * 104.0 / 1225.0 + 4.0;
-    let (w, h) = (CANVAS_W, BAND_TOP - top);
+    let h = band_top(profile) - top;
     let at = |cx: f32, cy: f32, bw: f32, bh: f32| Node {
         position_type: PositionType::Absolute,
         left: Val::Px(cx - bw / 2.0),
-        top: Val::Px(cy - bh / 2.0),
+        top: Val::Px(cy - top - bh / 2.0),
         width: Val::Px(bw),
         height: Val::Px(bh),
         justify_content: JustifyContent::Center,
         align_items: AlignItems::Center,
         ..default()
     };
-    let italic = &fonts.italic;
+    let caption = Color::srgb(0.91, 0.957, 1.0);
+    let banner = Color::srgb(0.843, 0.929, 1.0);
     c.spawn((
         GambleRoot,
         Node {
             position_type: PositionType::Absolute,
             left: Val::Px(0.0),
             top: Val::Px(top),
-            width: Val::Px(w),
+            width: Val::Px(CANVAS_W),
             height: Val::Px(h),
             overflow: Overflow::clip(),
             ..default()
@@ -6019,40 +6473,40 @@ pub fn spawn_gamble_screen(c: &mut ChildSpawnerCommands, art: &ArtPack, fonts: &
         Visibility::Hidden,
     ))
     .with_children(|g| {
-        // The game's own sunset over the Great Wall, as the gamble shows it.
+        // The game's own backdrop, undimmed and placed as in the base game.
         g.spawn((
             Node {
                 position_type: PositionType::Absolute,
                 left: Val::Px(0.0),
-                top: Val::Px(0.0),
-                width: Val::Percent(100.0),
-                height: Val::Percent(100.0),
+                top: Val::Px(-30.0 - top),
+                width: Val::Px(1920.0),
+                height: Val::Px(1242.0),
                 ..default()
             },
             ImageNode {
-                image: ui("feature_background"),
+                image: ui("background"),
                 image_mode: NodeImageMode::Stretch,
-                // Dusk, as the cabinet shows it.
-                color: Color::srgb(0.55, 0.5, 0.52),
                 ..default()
             },
         ));
-        // The gold rule joining the two tabs.
+        // The thin silver rule between the two banners, at their top edge.
         g.spawn((
             Node {
                 position_type: PositionType::Absolute,
-                left: Val::Px(w * 0.5 - 490.0),
-                top: Val::Px(173.0),
-                width: Val::Px(980.0),
-                height: Val::Px(4.0),
+                left: Val::Px(764.0),
+                top: Val::Px(324.0 - top - 2.5),
+                width: Val::Px(392.0),
+                height: Val::Px(5.0),
+                border: UiRect::vertical(Val::Px(1.0)),
                 ..default()
             },
-            BackgroundColor(Color::srgb(0.92, 0.7, 0.25)),
+            BackgroundColor(Color::srgb(0.96, 0.98, 1.0)),
+            BorderColor::all(Color::srgb(0.1, 0.13, 0.19)),
         ));
-        let (lx, cx, rx) = (w * 0.5 - 490.0, w * 0.5, w * 0.5 + 490.0);
-        // Left: the tab, the amount, RED and the red suits.
+        let (py, pw, ph) = GAMBLE_PILL;
+        // Left banner: "Full Gamble Selected".
         g.spawn((
-            at(lx, 175.0, 400.0, 50.0),
+            at(GAMBLE_LX, py, pw, ph),
             ImageNode {
                 image: ui("pill"),
                 image_mode: NodeImageMode::Stretch,
@@ -6062,32 +6516,104 @@ pub fn spawn_gamble_screen(c: &mut ChildSpawnerCommands, art: &ArtPack, fonts: &
         .with_children(|p| {
             p.spawn((
                 GambleText::Selected,
-                gamble_text("Full Gamble Selected", italic, 25.0),
+                gamble_caption("Full Gamble Selected", &fonts.sans, 36.0, banner),
             ));
         });
-        g.spawn((at(lx, 290.0, 460.0, 170.0),)).with_children(|t| {
-            t.spawn((GambleText::Amount, gamble_text("", italic, 30.0)));
-        });
-        gamble_button(g, art, GamblePick::Red, lx, 440.0, 420.0, 88.0);
-        gamble_button(g, art, GamblePick::Hearts, lx - 106.0, 548.0, 190.0, 96.0);
-        gamble_button(g, art, GamblePick::Diamonds, lx + 106.0, 548.0, 190.0, 96.0);
-
+        // Right banner: HISTORY and the last five cards' suits, newest left.
+        g.spawn((
+            at(GAMBLE_RX, py, pw, ph),
+            ImageNode {
+                image: ui("pill"),
+                image_mode: NodeImageMode::Stretch,
+                ..default()
+            },
+        ));
+        g.spawn((
+            Node {
+                position_type: PositionType::Absolute,
+                left: Val::Px(1212.0),
+                top: Val::Px(py - top - GAMBLE_LINE / 2.0),
+                ..default()
+            },
+            gamble_caption("HISTORY", &fonts.sans, 36.0, banner),
+        ));
+        for i in 0..HISTORY {
+            g.spawn((
+                GambleHistory(i),
+                Text::new(""),
+                TextFont {
+                    font: bevy::text::FontSource::Handle(fonts.symbols.clone()),
+                    font_size: FontSize::Px(31.0),
+                    ..default()
+                },
+                TextColor(Color::BLACK),
+                TextLayout::justify(Justify::Center),
+                Node {
+                    position_type: PositionType::Absolute,
+                    left: Val::Px(1404.0 + 44.0 * i as f32 - 20.0),
+                    top: Val::Px(py + 2.0 - top - 20.0),
+                    width: Val::Px(40.0),
+                    ..default()
+                },
+            ));
+        }
+        // The two columns: caption, amount, colour button, suit buttons.
+        for (cx, caption_kind, value_kind, colour, suits) in [
+            (
+                GAMBLE_LX,
+                GambleText::AmountCaption,
+                GambleText::AmountValue,
+                GamblePick::Red,
+                [GamblePick::Hearts, GamblePick::Diamonds],
+            ),
+            (
+                GAMBLE_RX,
+                GambleText::ToWinCaption,
+                GambleText::ToWinValue,
+                GamblePick::Black,
+                [GamblePick::Clubs, GamblePick::Spades],
+            ),
+        ] {
+            g.spawn(at(cx, GAMBLE_CAPTION_Y, 520.0, 2.0 * GAMBLE_LINE))
+                .with_children(|t| {
+                    t.spawn((caption_kind, gamble_caption("", &fonts.sans, 36.0, caption)));
+                });
+            g.spawn(at(cx, GAMBLE_VALUE_Y, 520.0, 2.0 * GAMBLE_LINE))
+                .with_children(|t| {
+                    t.spawn((value_kind, gamble_value(&fonts.heavy)));
+                });
+            let (y, w, bh) = GAMBLE_COLOUR;
+            gamble_button(g, art, colour, cx, y - top, w, bh);
+            let (y, w, bh) = GAMBLE_SUIT;
+            gamble_button(g, art, suits[0], cx - GAMBLE_SUIT_DX, y - top, w, bh);
+            gamble_button(g, art, suits[1], cx + GAMBLE_SUIT_DX, y - top, w, bh);
+        }
         // Middle: "Gamble Win" over the card, "WIN" across it.
-        g.spawn((at(cx, 118.0, 400.0, 130.0),)).with_children(|t| {
-            t.spawn((GambleText::GambleWin, gamble_text("", italic, 30.0)));
-        });
+        g.spawn(at(960.0, GAMBLE_WIN_CAPTION_Y, 400.0, GAMBLE_LINE))
+            .with_children(|t| {
+                t.spawn((
+                    GambleText::WinCaption,
+                    gamble_caption("", &fonts.sans, 36.0, caption),
+                ));
+            });
+        g.spawn(at(960.0, GAMBLE_WIN_VALUE_Y, 400.0, 2.0 * GAMBLE_LINE))
+            .with_children(|t| {
+                t.spawn((GambleText::WinValue, gamble_value(&fonts.heavy)));
+            });
+        let (y, w, ch) = GAMBLE_CARD;
         g.spawn((
             GambleCard,
-            at(cx, 435.0, 300.0, 420.0),
+            at(960.0, y, w, ch),
             ImageNode {
                 image: ui("card_back"),
                 image_mode: NodeImageMode::Stretch,
                 ..default()
             },
         ));
+        let (y, w, sh) = GAMBLE_STAMP;
         g.spawn((
             GambleStamp,
-            at(cx, 500.0, 420.0, 170.0),
+            at(960.0, y, w, sh),
             ImageNode {
                 image: ui("win_stamp"),
                 image_mode: NodeImageMode::Stretch,
@@ -6096,54 +6622,23 @@ pub fn spawn_gamble_screen(c: &mut ChildSpawnerCommands, art: &ArtPack, fonts: &
             GlobalZIndex(13),
             Visibility::Hidden,
         ));
-
-        // Right: HISTORY, the amount to win, BLACK and the black suits.
+        // The prompt takes the status line's place and style.
         g.spawn((
+            GambleText::Prompt,
+            status_text("", fonts, profile, Justify::Center),
             Node {
-                column_gap: Val::Px(6.0),
-                padding: UiRect::horizontal(Val::Px(56.0)),
-                justify_content: JustifyContent::FlexStart,
-                ..at(rx, 175.0, 440.0, 50.0)
-            },
-            ImageNode {
-                image: ui("pill"),
-                image_mode: NodeImageMode::Stretch,
+                position_type: PositionType::Absolute,
+                left: Val::Px(STATUS_X - 600.0),
+                top: Val::Px(status_y(profile) - top - 14.0),
+                width: Val::Px(1200.0),
                 ..default()
             },
-        ))
-        .with_children(|t| {
-            t.spawn(gamble_text("HISTORY", italic, 25.0));
-            for i in 0..HISTORY {
-                t.spawn((
-                    GambleHistory(i),
-                    Text::new(""),
-                    TextFont {
-                        font: bevy::text::FontSource::Handle(fonts.symbols.clone()),
-                        font_size: FontSize::Px(28.0),
-                        ..default()
-                    },
-                    TextColor(Color::BLACK),
-                ));
-            }
-        });
-        g.spawn((at(rx, 290.0, 460.0, 170.0),)).with_children(|t| {
-            t.spawn((GambleText::ToWin, gamble_text("", italic, 30.0)));
-        });
-        gamble_button(g, art, GamblePick::Black, rx, 440.0, 420.0, 88.0);
-        gamble_button(g, art, GamblePick::Clubs, rx - 106.0, 548.0, 190.0, 96.0);
-        gamble_button(g, art, GamblePick::Spades, rx + 106.0, 548.0, 190.0, 96.0);
-
-        g.spawn((at(cx, 690.0, 900.0, 50.0),)).with_children(|t| {
-            t.spawn((
-                GambleText::Prompt,
-                gamble_text("Select a SUIT, RED/BLACK or TAKE WIN", italic, 26.0),
-            ));
-        });
+        ));
     });
 }
 
-/// A gamble button on the screen: the gold-rimmed chrome RED / BLACK
-/// lozenges and the gold suit ovals.
+/// A gamble button on the screen: the silver RED / BLACK capsules and the
+/// suit ovals, gold-capped (`cy` is relative to the gamble screen's top).
 fn gamble_button(
     g: &mut ChildSpawnerCommands,
     art: &ArtPack,
@@ -6153,14 +6648,6 @@ fn gamble_button(
     w: f32,
     h: f32,
 ) {
-    let key = match pick {
-        GamblePick::Red => "btn_red",
-        GamblePick::Black => "btn_black",
-        GamblePick::Hearts => "suit_hearts",
-        GamblePick::Diamonds => "suit_diamonds",
-        GamblePick::Clubs => "suit_clubs",
-        GamblePick::Spades => "suit_spades",
-    };
     g.spawn((
         GambleButton(pick),
         Node {
@@ -6172,7 +6659,7 @@ fn gamble_button(
             ..default()
         },
         ImageNode {
-            image: art.ui.get(key).cloned().unwrap_or_default(),
+            image: art.ui.get(button_art(pick)).cloned().unwrap_or_default(),
             image_mode: NodeImageMode::Stretch,
             ..default()
         },
@@ -6182,6 +6669,27 @@ fn gamble_button(
             input.pick = Some(pick);
         },
     );
+}
+
+/// A gamble button's art.
+fn button_art(pick: GamblePick) -> &'static str {
+    match pick {
+        GamblePick::Red => "btn_red",
+        GamblePick::Black => "btn_black",
+        GamblePick::Hearts => "suit_hearts",
+        GamblePick::Diamonds => "suit_diamonds",
+        GamblePick::Clubs => "suit_clubs",
+        GamblePick::Spades => "suit_spades",
+    }
+}
+
+/// A suit button with no suit, for when suits are not offered: the gold cap
+/// at its outer end (hearts and clubs at the left).
+fn blank_suit_art(pick: GamblePick) -> &'static str {
+    match pick {
+        GamblePick::Hearts | GamblePick::Clubs => "suit_blank_left",
+        _ => "suit_blank_right",
+    }
 }
 
 /// The suit of a card (0..52) and whether it is red.
@@ -6203,7 +6711,6 @@ fn gamble_kind(pick: Option<GamblePick>) -> &'static str {
 #[allow(clippy::too_many_arguments, clippy::type_complexity)]
 pub fn gamble_screen(
     fidelity: Res<Fidelity>,
-    time: Res<Time>,
     gamble: Res<GambleShow>,
     denom: Res<Denom>,
     art: Res<ArtPack>,
@@ -6238,7 +6745,9 @@ pub fn gamble_screen(
     }
     let cents = denom.cents();
     let shown = gamble.card;
-    let key = shown.map_or("card_back".to_string(), |(c, _, _)| format!("card_{c}"));
+    // The card turns a moment after the choice; until then its back shows.
+    let turned = shown.filter(|(_, _, t)| *t >= GAMBLE_FACE_DELAY);
+    let key = turned.map_or("card_back".to_string(), |(c, _, _)| format!("card_{c}"));
     if let Some(h) = art.ui.get(&key) {
         for mut image in &mut card {
             if image.image != *h {
@@ -6246,7 +6755,7 @@ pub fn gamble_screen(
             }
         }
     }
-    let won = shown.is_some_and(|(_, w, _)| w);
+    let won = turned.is_some_and(|(_, w, _)| w);
     for mut v in &mut stamp {
         set(&mut v, won);
     }
@@ -6256,19 +6765,18 @@ pub fn gamble_screen(
         if t.0 != txt {
             t.0 = txt;
         }
-        c.0 = if s.is_some_and(|(_, red)| red) {
-            Color::srgb(0.95, 0.12, 0.12)
+        let want = if s.is_some_and(|(_, red)| red) {
+            Color::srgb(0.88, 0.08, 0.1)
         } else {
-            Color::srgb(0.05, 0.05, 0.08)
+            Color::srgb(0.06, 0.06, 0.08)
         };
+        if c.0 != want {
+            c.0 = want;
+        }
     }
-    // While a card is up the screen shows the gamble just made: its kind,
-    // what was staked, what it won. Otherwise the stake now, and what each
-    // kind of gamble would win.
-    let amount = |credits: u64| format!("{credits}\n{}", money(credits, cents));
-    let _ = &time;
     // Both boxes name the same kind: Suit, then Red/Black, 2 s each from the
     // gamble's opening; only Red/Black when a suit would pass the limit.
+    // While a card is up the screen shows the gamble just made.
     let suits_open = within_gamble_limit(gamble.stake, 4, cents);
     let suit_turn = suits_open && ((gamble.since / GAMBLE_KIND_TURN) as u32).is_multiple_of(2);
     let (kind, staked, mult) = match (shown, gamble.last) {
@@ -6286,30 +6794,60 @@ pub fn gamble_screen(
             }
         }
     };
+    // The chosen button fills pale yellow while its card shows; suits not
+    // offered show their blank capsule.
+    let chosen = shown.and(gamble.last.map(|(p, _)| p));
     for (b, mut image) in &mut buttons {
-        let tint = if is_colour(b.0) || suits_open {
-            Color::WHITE
+        let base = button_art(b.0);
+        let want = if !is_colour(b.0) && !suits_open {
+            art.ui.get(blank_suit_art(b.0))
+        } else if chosen == Some(b.0) {
+            art.ui.get(&format!("{base}_picked"))
         } else {
+            None
+        }
+        .or_else(|| art.ui.get(base));
+        if let Some(h) = want
+            && image.image != *h
+        {
+            image.image = h.clone();
+        }
+        let tint = if !is_colour(b.0) && !suits_open && !art.ui.contains_key(blank_suit_art(b.0)) {
             Color::srgba(1.0, 1.0, 1.0, 0.35)
+        } else {
+            Color::WHITE
         };
         if image.color != tint {
             image.color = tint;
         }
     }
+    let amount = |credits: u64| format!("{credits}\n{}", money(credits, cents));
+    let last_win = if won {
+        Some(gamble.stake)
+    } else {
+        gamble.last_win
+    };
     for (which, mut t) in &mut texts {
         let s = match which {
             GambleText::Selected if gamble.half => "Half Gamble Selected".to_string(),
             GambleText::Selected => "Full Gamble Selected".to_string(),
-            GambleText::Amount => format!("{kind}\nGamble Amount\n{}", amount(staked)),
-            GambleText::ToWin => {
-                format!("{kind}\nto win\n{}", amount(staked.saturating_mul(mult)))
+            GambleText::AmountCaption => format!("{kind}\nGamble Amount"),
+            GambleText::AmountValue => amount(staked),
+            GambleText::ToWinCaption => format!("{kind}\nto win"),
+            GambleText::ToWinValue => amount(staked.saturating_mul(mult)),
+            // The last win's header stays into the next round (footage); it
+            // waits for the card to turn.
+            GambleText::WinCaption
+                if last_win.is_some() && (won || turned.is_none() && shown.is_none()) =>
+            {
+                "Gamble Win".to_string()
             }
-            // The last win's header stays into the next round (footage).
-            GambleText::GambleWin => match (won, gamble.last_win) {
-                (true, _) => format!("Gamble Win\n{}", amount(gamble.stake)),
-                (false, Some(w)) if shown.is_none() => format!("Gamble Win\n{}", amount(w)),
-                _ => String::new(),
-            },
+            GambleText::WinValue
+                if last_win.is_some() && (won || turned.is_none() && shown.is_none()) =>
+            {
+                amount(last_win.unwrap_or(0))
+            }
+            GambleText::WinCaption | GambleText::WinValue => String::new(),
             GambleText::Prompt if suits_open => "Select a SUIT, RED/BLACK or TAKE WIN".to_string(),
             GambleText::Prompt => "Select RED/BLACK or TAKE WIN".to_string(),
         };

@@ -1051,7 +1051,8 @@ fn input(
         if let Some((m, index)) = bet_press {
             // The beep marks a new bet (repeat games carry none).
             if index != game.state().bet_index || first_here {
-                sounds.play(&mut commands, cabinet::bet_beep(m));
+                let (clip, volume) = cabinet::bet_beep(m);
+                sounds.play_at(&mut commands, clip, volume);
             }
             if index != game.state().bet_index
                 && let Ok(events) = game.apply(Command::SetBet { index }, rng)
@@ -2167,6 +2168,48 @@ mod tests {
 
     fn args(list: &[&str]) -> Vec<String> {
         list.iter().map(|s| (*s).to_string()).collect()
+    }
+
+    #[test]
+    fn the_gamble_sounds_only_where_chosen() {
+        use cabinet::{GambleCue, gamble_cue};
+        assert_eq!(gamble_cue(GambleCue::Open), Some(("betbeep3_reduced", 1.0)));
+        assert_eq!(
+            gamble_cue(GambleCue::Toggle),
+            Some(("betbeep3_reduced", 1.0))
+        );
+        assert_eq!(gamble_cue(GambleCue::Pick), Some(("bank_betbeep3", 0.32)));
+        assert_eq!(gamble_cue(GambleCue::Won), Some(("wintune01", 1.0)));
+        // Nothing on a loss or a take win (footage), and no loop.
+        assert_eq!(gamble_cue(GambleCue::Lost), None);
+        assert_eq!(gamble_cue(GambleCue::TakeWin), None);
+    }
+
+    /// Every clip the gamble and the bet keys name is in the local pack
+    /// (skipped when no pack is configured; plays nothing).
+    #[test]
+    fn the_named_clips_are_in_the_pack() {
+        let Ok(dir) = std::env::var("DRAGONLINK_ART") else {
+            return;
+        };
+        use cabinet::{GambleCue, bet_beep, gamble_cue};
+        let cues = [
+            GambleCue::Open,
+            GambleCue::Toggle,
+            GambleCue::Pick,
+            GambleCue::Won,
+            GambleCue::Lost,
+            GambleCue::TakeWin,
+        ];
+        let names = cues
+            .into_iter()
+            .filter_map(gamble_cue)
+            .chain([1, 2, 3, 5, 10].map(bet_beep))
+            .map(|(name, _)| name);
+        for name in names {
+            let path = std::path::Path::new(&dir).join(format!("audio/{name}.ogg"));
+            assert!(path.is_file(), "{} is missing", path.display());
+        }
     }
 
     #[test]
