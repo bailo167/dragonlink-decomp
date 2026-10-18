@@ -97,24 +97,27 @@ pub enum GambleCue {
     TakeWin,
 }
 
-/// What the gamble plays. No bank holds the cabinet's gamble sounds (the
-/// mobile game has no gamble); GOLDEN_CENTURY_CABINET_DECK.md and
-/// golden-century-sound-cues.md record the evidence:
-/// - Open: a C4 beep as the screen opens, HYPOTHESIS (weak: one NSW event,
-///   iHDxUc1dlKs 0:08.79; not heard at the $1 machine's opening).
-/// - Toggle (full / half), Pick (the card's turn), Won: SUBSTITUTES from the
-///   game's own banks, chosen to sit with the deck's beeps; not the
-///   cabinet's.
-/// - Lost, TakeWin: none (the on-camera take win at _XHUzg4qDXI 1:19 is
-///   silent, PARTIAL; loss UNKNOWN). No loop while waiting.
+/// What the gamble plays, from public recordings of the gamble with sound on
+/// about 20 Aristocrat machines (golden-century-sound-cues.md):
+/// - Won: the platform's gamble-win tune, a short arpeggio into a chord, on
+///   every win of every title with usable sound, Golden Century included
+///   (VERIFIED). Lost: a low square-wave buzz, on four titles including
+///   Golden Century (VERIFIED). Neither is in any bank we hold, so the pack
+///   carries our own synthesis of each from the measured pitches and timing.
+/// - Open, Toggle, Pick, TakeWin: nothing (STRONG: no cabinet sound at any of
+///   13 openings, at any choice beyond the deck key's own click, at the
+///   on-camera take wins). No loop while waiting.
 pub fn gamble_cue(cue: GambleCue) -> Option<(&'static str, f32)> {
     match cue {
-        GambleCue::Open | GambleCue::Toggle => Some(("betbeep3_reduced", 1.0)),
-        GambleCue::Pick => Some(("bank_betbeep3", 0.32)),
-        GambleCue::Won => Some(("wintune01", 1.0)),
-        GambleCue::Lost | GambleCue::TakeWin => None,
+        GambleCue::Won => Some(("gamble_win", 1.0)),
+        GambleCue::Lost => Some(("gamble_loss", 1.0)),
+        GambleCue::Open | GambleCue::Toggle | GambleCue::Pick | GambleCue::TakeWin => None,
     }
 }
+
+/// Seconds after the card turns that its outcome sounds (footage: the win
+/// tune 0.13-0.28 s, the loss buzz 0.15-0.30 s after the face).
+const GAMBLE_SOUND_AFTER_FACE: f32 = 0.2;
 
 /// UI images the cabinet screen needs from the pack (`ui/<name>.png`).
 pub const REQUIRED_UI: [&str; 23] = [
@@ -6360,8 +6363,10 @@ pub fn gamble_control(
     if let Some((card, won, t0)) = gamble.card {
         let t = t0 + dt;
         gamble.card = Some((card, won, t));
-        // The card turns a moment after the choice, the win's sting with it.
-        if t0 < GAMBLE_FACE_DELAY && t >= GAMBLE_FACE_DELAY {
+        // The card turns a moment after the choice; its outcome sounds a
+        // moment after that.
+        let at = GAMBLE_FACE_DELAY + GAMBLE_SOUND_AFTER_FACE;
+        if t0 < at && t >= at {
             let cue = if won { GambleCue::Won } else { GambleCue::Lost };
             sounds.cue(&mut commands, gamble_cue(cue));
         }

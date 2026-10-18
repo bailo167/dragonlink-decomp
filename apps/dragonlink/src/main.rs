@@ -2173,15 +2173,13 @@ mod tests {
     #[test]
     fn the_gamble_sounds_only_where_chosen() {
         use cabinet::{GambleCue, gamble_cue};
-        assert_eq!(gamble_cue(GambleCue::Open), Some(("betbeep3_reduced", 1.0)));
-        assert_eq!(
-            gamble_cue(GambleCue::Toggle),
-            Some(("betbeep3_reduced", 1.0))
-        );
-        assert_eq!(gamble_cue(GambleCue::Pick), Some(("bank_betbeep3", 0.32)));
-        assert_eq!(gamble_cue(GambleCue::Won), Some(("wintune01", 1.0)));
-        // Nothing on a loss or a take win (footage), and no loop.
-        assert_eq!(gamble_cue(GambleCue::Lost), None);
+        // A win and a loss sound (footage); opening, switching, choosing and
+        // taking the win are silent, and nothing loops.
+        assert_eq!(gamble_cue(GambleCue::Won), Some(("gamble_win", 1.0)));
+        assert_eq!(gamble_cue(GambleCue::Lost), Some(("gamble_loss", 1.0)));
+        assert_eq!(gamble_cue(GambleCue::Open), None);
+        assert_eq!(gamble_cue(GambleCue::Toggle), None);
+        assert_eq!(gamble_cue(GambleCue::Pick), None);
         assert_eq!(gamble_cue(GambleCue::TakeWin), None);
     }
 
