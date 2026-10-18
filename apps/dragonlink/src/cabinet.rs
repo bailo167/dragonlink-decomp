@@ -317,6 +317,67 @@ fn sprite(img: Handle<Image>, cx: f32, cy: f32, w: f32, h: f32) -> impl Bundle {
     )
 }
 
+/// The jackpot bar's four boxes: the left and right edges of each box's dark
+/// panel, in the bar image's pixels (measured on `jackpot_bar`).
+const JACKPOT_BOXES: [(JackpotTier, (f32, f32)); 4] = [
+    (JackpotTier::Grand, (14.0, 351.0)),
+    (JackpotTier::Major, (365.0, 667.0)),
+    (JackpotTier::Minor, (681.0, 961.0)),
+    (JackpotTier::Mini, (975.0, 1209.0)),
+];
+
+/// The jackpot values' type size, and the share of its box a value may fill
+/// before it is set smaller.
+const JACKPOT_VALUE_SIZE: f32 = 56.0;
+const JACKPOT_VALUE_FILL: f32 = 0.9;
+
+/// A jackpot value's box width, in canvas pixels.
+#[derive(Component)]
+pub struct JackpotFit {
+    width: f32,
+}
+
+/// A value's width in ems in the meter face: figures and "$" about 0.46,
+/// "," and "." about 0.25 (measured on the bar's "$5,434.05").
+fn meter_ems(text: &str) -> f32 {
+    text.chars()
+        .map(|c| if matches!(c, ',' | '.') { 0.25 } else { 0.46 })
+        .sum()
+}
+
+/// The type size that keeps `text` inside a box `width` wide.
+fn jackpot_value_size(text: &str, width: f32) -> f32 {
+    let ems = meter_ems(text);
+    if ems <= 0.0 {
+        return JACKPOT_VALUE_SIZE;
+    }
+    JACKPOT_VALUE_SIZE.min(width * JACKPOT_VALUE_FILL / ems)
+}
+
+/// Set each jackpot value small enough to stay inside its box.
+pub fn fit_jackpots(
+    fidelity: Res<Fidelity>,
+    mut values: Query<(&JackpotFit, &Text, &mut TextFont, &mut Node), Changed<Text>>,
+) {
+    if !fidelity.0 {
+        return;
+    }
+    for (fit, text, mut font, mut node) in &mut values {
+        let size = jackpot_value_size(&text.0, fit.width);
+        if font.font_size != FontSize::Px(size) {
+            let old = match font.font_size {
+                FontSize::Px(px) => px,
+                _ => JACKPOT_VALUE_SIZE,
+            };
+            font.font_size = FontSize::Px(size);
+            // Keep the value on the same middle line.
+            if let Val::Px(top) = node.top {
+                node.top = Val::Px(top + (old - size) * 0.62);
+            }
+        }
+    }
+}
+
 /// A text block of width `w` centred at `(cx, cy)`.
 fn label(
     text: impl Into<String>,
@@ -489,22 +550,20 @@ pub fn spawn(
                 bar_h,
             ));
             let k = bar_w / 1225.0;
-            for (tier, bar_x) in [
-                (JackpotTier::Grand, 171.0),
-                (JackpotTier::Major, 487.0),
-                (JackpotTier::Minor, 776.0),
-                (JackpotTier::Mini, 1034.0),
-            ] {
+            // Each value centred in its box's dark panel.
+            for (tier, (left, right)) in JACKPOT_BOXES {
+                let width = (right - left) * k;
                 c.spawn((
                     JackpotMeter { tier },
+                    JackpotFit { width },
                     label(
                         "-",
                         font,
-                        56.0,
+                        JACKPOT_VALUE_SIZE,
                         Color::srgb(1.0, 1.0, 0.96),
-                        960.0 - bar_w / 2.0 + bar_x * k,
+                        960.0 - bar_w / 2.0 + (left + right) / 2.0 * k,
                         bar_top + 70.0 * k,
-                        420.0,
+                        width,
                     ),
                 ));
             }
@@ -8079,5 +8138,42 @@ pub fn payout_effects(
         sink.set_volume(bevy::audio::Volume::Linear(
             (1.0 - k) * global.volume.to_linear(),
         ));
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn every_jackpot_value_fits_its_box() {
+        let k = JACKPOT_BAR_W / 1225.0;
+        for (tier, (left, right)) in JACKPOT_BOXES {
+            let width = (right - left) * k;
+            for text in [
+                "$10.00",
+                "$250.00",
+                "$1,250.00",
+                "$1,500.00",
+                "$15,000.00",
+                "$150,000.00",
+            ] {
+                let size = jackpot_value_size(text, width);
+                assert!(size <= JACKPOT_VALUE_SIZE);
+                assert!(
+                    meter_ems(text) * size <= width * JACKPOT_VALUE_FILL + 0.01,
+                    "{tier:?} {text}"
+                );
+            }
+        }
+        // The values the bar shows today keep the full size.
+        assert_eq!(
+            jackpot_value_size("$250.00", (1209.0 - 975.0) * k),
+            JACKPOT_VALUE_SIZE
+        );
+        assert_eq!(
+            jackpot_value_size("$15,000.00", (351.0 - 14.0) * k),
+            JACKPOT_VALUE_SIZE
+        );
     }
 }

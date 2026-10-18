@@ -2497,6 +2497,7 @@ fn main() -> AppExit {
                 cabinet::start_prompts,
                 cabinet::clear_cells,
                 cabinet::update_meters,
+                cabinet::fit_jackpots,
                 cabinet::fit,
             )
                 .chain(),
