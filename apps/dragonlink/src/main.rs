@@ -1087,6 +1087,11 @@ impl Default for Timing {
 
 fn schedule_with(events: Vec<Event>, timing: &Timing) -> Vec<(f32, Event)> {
     let mut first_reel = true;
+    // The free games a Hold & Spin's spin also won start an event interval
+    // after its award, as before: in the same frame the award would be
+    // presented with the Hold & Spin's total already cleared, and the win
+    // meter would count the whole total again.
+    let mut after_hold_and_spin = false;
     // The reels under a free game's BIG symbol are one reel: they stop
     // together, with the first of them.
     let mut together = vec![false; events.len()];
@@ -1106,8 +1111,12 @@ fn schedule_with(events: Vec<Event>, timing: &Timing) -> Vec<(f32, Event)> {
         .into_iter()
         .enumerate()
         .map(|(i, event)| {
+            if matches!(event, Event::HoldAndSpinCompleted { .. }) {
+                after_hold_and_spin = true;
+            }
             let delay = match &event {
                 Event::ReelStopped { .. } if together[i] => 0.0,
+                Event::FreeGamesStarted { .. } if after_hold_and_spin => timing.event_interval,
                 Event::BetPlaced { .. } | Event::SpinStarted { .. } | Event::BetChanged { .. } => {
                     0.0
                 }
@@ -3650,6 +3659,46 @@ mod tests {
                 _ => {}
             }
         }
+    }
+
+    #[test]
+    fn free_games_after_a_hold_and_spin_wait_for_its_award() {
+        let delay_of_free_games = |events: Vec<Event>| {
+            schedule(events)
+                .into_iter()
+                .find_map(|(d, e)| matches!(e, Event::FreeGamesStarted { .. }).then_some(d))
+                .unwrap()
+        };
+        // A base trigger's prompt comes with the scatter win's count.
+        let base = vec![
+            Event::ScatterWin {
+                symbol: "pennant".into(),
+                count: 3,
+                award: 100,
+            },
+            Event::FeatureTriggered {
+                feature: dragonlink_core::Feature::FreeGames,
+                count: 3,
+            },
+            Event::FreeGamesStarted { games: 6 },
+        ];
+        assert_eq!(delay_of_free_games(base), 0.0);
+        // After a Hold & Spin the award is presented a frame of its own
+        // before the free games clear the Hold & Spin's total, so the win
+        // meter does not count the total a second time.
+        let after = vec![
+            Event::HoldAndSpinCompleted {
+                total_award: 668_780,
+                full_grid: true,
+            },
+            Event::CreditsChanged {
+                from: 9_950,
+                to: 678_730,
+                reason: CreditReason::FeatureAward,
+            },
+            Event::FreeGamesStarted { games: 6 },
+        ];
+        assert_eq!(delay_of_free_games(after), EVENT_INTERVAL);
     }
 
     #[test]

@@ -7688,8 +7688,18 @@ pub fn hold_and_spin_motion(
         }
     }
     if let Some(total) = done {
-        show.winner_hold = show.winner.take().map(|w| (clock + WINNER_HOLD, w));
-        show.collected = Some(total);
+        show.hold_winner(total);
+    }
+}
+
+impl FeatureShow {
+    /// The count's total has been paid (`PAY_AFTER` after the count was
+    /// complete): the WINNER box stays until `WINNER_HOLD` after the count
+    /// was complete.
+    fn hold_winner(&mut self, total: u64) {
+        let until = self.clock + (WINNER_HOLD - PAY_AFTER).max(0.0);
+        self.winner_hold = self.winner.take().map(|w| (until, w));
+        self.collected = Some(total);
     }
 }
 
@@ -11641,13 +11651,17 @@ mod tests {
         assert_eq!(show.pay_banner(), Some(25));
         assert_eq!(show.grand_win(), Some(1_025));
         assert_eq!(show.winner_amount(), Some(100));
-        // Complete: the banner and WIN keep the total; the box gives way to
-        // the meters 0.55 s later.
+        // Complete: the count's total is paid PAY_AFTER after it completed;
+        // the banner and WIN keep the total, and the box gives way to the
+        // meters WINNER_HOLD after the count completed (not after the
+        // payment).
+        let completed = show.clock;
+        show.clock += PAY_AFTER;
         show.pay = None;
         show.paid = total;
-        show.winner = None;
-        show.collected = Some(total);
-        show.winner_hold = Some((show.clock + WINNER_HOLD, total));
+        show.hold_winner(total);
+        assert_eq!(show.winner, None);
+        assert_eq!(show.collected, Some(total));
         assert_eq!(show.pay_banner(), Some(100));
         assert_eq!(show.grand_win(), Some(1_100));
         assert!(show.winner_showing());
@@ -11656,7 +11670,9 @@ mod tests {
         show.on_event(&Event::FreeGamesStarted { games: 6 });
         assert!(show.winner_showing());
         assert_eq!(show.winner_amount(), Some(100));
-        show.clock += 0.6;
+        show.clock = completed + WINNER_HOLD - 0.02;
+        assert!(show.winner_showing());
+        show.clock = completed + WINNER_HOLD + 0.02;
         assert!(!show.winner_showing());
         assert_eq!(show.winner_amount(), None);
         // The next game clears it all.

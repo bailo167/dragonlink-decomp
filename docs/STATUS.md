@@ -109,6 +109,13 @@ owner; docs/DECISIONS.md). Every run muted. Progress, newest last:
   game, the clock counting from the YES (VERIFIED on five cases; the phase PARTIAL), and BET then
   shows the last bet in credits of the new denomination. Unit tests cover the rules; checked on
   muted captures (a choice of 5c, the base game with wins, a Hold & Spin, the casino profile).
+- **Audit fixes verified.** Muted captures of Golden Century (both, doors and a plain base run)
+  and of Golden Gong and Spring Festival with frequent features were checked against each fix.
+  Two slips were mended: free games won on a Hold & Spin's spin started in the frame of its
+  award, so the WIN meter counted the whole Hold & Spin total a second time, coin shower and all,
+  under their prompt (the free games now start an event interval later, as before); and the
+  WINNER plate stayed 0.95 s after the count, not 0.55 s (it counted from the payment, 0.4 s
+  after the count). Golden Gong's monk and Spring Festival's BIG reel still play as before.
 
 ## Project interpretation (owner reset, 2026-10-14)
 
