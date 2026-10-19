@@ -120,7 +120,9 @@ pub fn gamble_cue(cue: GambleCue) -> Option<(&'static str, f32)> {
 const GAMBLE_SOUND_AFTER_FACE: f32 = 0.2;
 
 /// UI images the cabinet screen needs from the pack (`ui/<name>.png`).
-pub const REQUIRED_UI: [&str; 23] = [
+/// (A title whose lines tabs are part of its reel art, Golden Gong, has no
+/// `payline_tab`; it is not needed.)
+pub const REQUIRED_UI: [&str; 22] = [
     "deck_panel",
     "key_blue",
     "key_red",
@@ -131,7 +133,6 @@ pub const REQUIRED_UI: [&str; 23] = [
     "spin_dim",
     "background",
     "reel_background",
-    "payline_tab",
     "jackpot_bar",
     "btn_spin_normal",
     "orb_mini",
@@ -1391,6 +1392,7 @@ pub fn spawn(
             // The moving reels, drawn over the landed cells while they spin.
             spawn_strips(c, model.grid.reels);
             spawn_wild_talls(c, model.grid.reels);
+            spawn_big_art(c, &fonts.meter);
             spawn_feature_layer(c, art, &fonts.meter);
             spawn_hs_overlays(c, &fonts.meter);
             spawn_win_lines(c, &fonts.sans);
@@ -4103,6 +4105,7 @@ pub fn spawn_orb_overlay(cell: &mut ChildSpawnerCommands, reel: u8, row: u8) {
 #[allow(clippy::type_complexity, clippy::too_many_arguments)]
 pub fn orb_overlay(
     fidelity: Res<Fidelity>,
+    show: Res<FeatureShow>,
     sim: Res<Sim>,
     denom: Res<Denom>,
     art: Res<ArtPack>,
@@ -4123,7 +4126,7 @@ pub fn orb_overlay(
     // drawn prize; it carries the same cosmetic face it shows on the moving
     // strip, so every coin on screen is lettered, as on the machine.
     let face = |reel: u8, row: u8| -> Option<String> {
-        if reels.moving(reel) {
+        if reels.moving(reel) || show.big_covers(reel) {
             return None;
         }
         let state = reels.states.get(reel as usize)?;
@@ -4173,6 +4176,7 @@ pub fn orb_overlay(
     }
     for (t, mut vis) in &mut tiles {
         let coin = !reels.moving(t.reel)
+            && !show.big_covers(t.reel)
             && labels
                 .iter()
                 .any(|(l, text)| l.reel == t.reel && l.row == t.row && symbol_of(&text.0) == "orb");
@@ -4243,10 +4247,12 @@ fn tier_image(face: &str) -> Option<&'static str> {
     }
 }
 
-/// The face's prize in credits, for a bet-multiple face ("x5").
+/// The face's prize in credits, for a bet-multiple face ("x5"). A
+/// position under a BIG coin has no prize of its own ("x0") and shows none.
 fn face_credits(face: &str, total_bet: u64) -> Option<u64> {
     face.strip_prefix('x')
         .and_then(|m| m.parse::<u64>().ok())
+        .filter(|m| *m > 0)
         .map(|m| m.saturating_mul(total_bet))
 }
 
@@ -4489,6 +4495,9 @@ pub struct FeatureShow {
     drum: Option<Entity>,
     /// When the Grand's bell rings (`clock`), once the grid is full.
     grand_bell_at: Option<f32>,
+    /// This free game's BIG symbol and the reels it covers (key, first,
+    /// width), from the game's start: Spring Festival's BIG reel.
+    pub big: Option<(String, u8, u8)>,
     /// The bolt in flight (its coin, its start on `clock`), and the last
     /// splash on the WINNER box.
     bolt: Option<(u8, u8, f32)>,
@@ -4527,6 +4536,7 @@ impl FeatureShow {
     pub fn on_event(&mut self, event: &Event) {
         match event {
             Event::SpinStarted { .. } => {
+                self.big = None;
                 self.pic_sounded = false;
                 self.grand_bell_at = None;
                 self.flares_at = None;
@@ -4708,6 +4718,13 @@ impl FeatureShow {
             || matches!(self.stage, Stage::FreeGames { .. } | Stage::HoldSpin { .. })
             || self.collect_start
             || self.collect.is_some()
+    }
+
+    /// Whether this free game's BIG symbol covers `reel`.
+    pub fn big_covers(&self, reel: u8) -> bool {
+        self.big
+            .as_ref()
+            .is_some_and(|(_, first, width)| (*first..first + width).contains(&reel))
     }
 
     /// A picture's own sound for a win of four or five of it, with no wild on
@@ -6624,6 +6641,7 @@ pub fn hold_and_spin_draw(
     let hs = show.hold_and_spin() && (show.grid || show.since_burst(0.2));
     for (r, mut image, mut vis) in &mut rings {
         let held = hs
+            && !show.big_covers(r.reel)
             && !show.fire_taken(r.reel, r.row)
             && !open(label(r.reel, r.row))
             && spinning(r.reel, r.row).is_none()
@@ -8483,6 +8501,11 @@ pub struct WildStacks {
 pub const WILD_HOLD: f32 = 2.5;
 
 impl WildStacks {
+    /// Look for the stacks again (a wild has filled its reel).
+    pub fn refind(&mut self) {
+        *self = WildStacks::default();
+    }
+
     /// This spin's stacks have been found.
     pub fn found(&self) -> bool {
         self.found
@@ -8537,6 +8560,115 @@ pub fn spawn_wild_talls(c: &mut ChildSpawnerCommands, reels: u8) {
             GlobalZIndex(2),
             Visibility::Hidden,
         ));
+    }
+}
+
+/// A free game's BIG symbol, drawn once over the reels it covers.
+#[derive(Component)]
+pub struct BigArt;
+/// A BIG coin's prize.
+#[derive(Component)]
+pub struct BigValue;
+
+/// The BIG symbol (hidden until one lands).
+pub fn spawn_big_art(c: &mut ChildSpawnerCommands, font: &Handle<Font>) {
+    c.spawn((
+        BigArt,
+        Node {
+            position_type: PositionType::Absolute,
+            justify_content: JustifyContent::Center,
+            align_items: AlignItems::Center,
+            ..default()
+        },
+        ImageNode {
+            image_mode: NodeImageMode::Stretch,
+            ..default()
+        },
+        GlobalZIndex(3),
+        Visibility::Hidden,
+    ))
+    .with_children(|b| {
+        b.spawn((
+            BigValue,
+            Text::new(""),
+            TextFont {
+                font: bevy::text::FontSource::Handle(font.clone()),
+                font_size: FontSize::Px(110.0),
+                ..default()
+            },
+            TextColor(Color::srgb(0.55, 0.05, 0.02)),
+            TextLayout::justify(Justify::Center),
+        ));
+    });
+}
+
+/// Show the free game's BIG symbol once the reels it covers are still: one
+/// 3x3 picture (the title's own Mega art, `big_<key>`), a BIG coin with its
+/// prize on it, through any Hold & Spin it starts.
+#[allow(clippy::type_complexity, clippy::too_many_arguments)]
+pub fn big_art(
+    fidelity: Res<Fidelity>,
+    show: Res<FeatureShow>,
+    reels: Res<Reels>,
+    art: Res<ArtPack>,
+    sim: Res<Sim>,
+    denom: Res<Denom>,
+    labels: Query<(&CellLabel, &Text), Without<BigValue>>,
+    mut big: Query<(&mut Node, &mut ImageNode, &mut Visibility), With<BigArt>>,
+    mut value: Query<&mut Text, With<BigValue>>,
+) {
+    if !fidelity.0 {
+        return;
+    }
+    let shown = show
+        .big
+        .as_ref()
+        .filter(|(_, first, width)| !(*first..first + width).any(|reel| reels.moving(reel)));
+    let image = shown.and_then(|(key, _, _)| art.symbols.get(&format!("big_{key}")));
+    for (mut node, mut img, mut vis) in &mut big {
+        let (Some((key, first, width)), Some(handle)) = (shown, image) else {
+            if *vis != Visibility::Hidden {
+                *vis = Visibility::Hidden;
+            }
+            continue;
+        };
+        if img.image != *handle {
+            img.image = handle.clone();
+        }
+        let (left, _) = cell_center(*first, 0);
+        let (right, _) = cell_center(first + width - 1, 0);
+        let (_, top) = cell_center(*first, 0);
+        let w = right - left + PITCH.0;
+        // The BIG coin stands a little over the block, as in the scene
+        // (718 against 660).
+        let h = 3.0 * PITCH.1 * if key == "orb" { 718.0 / 660.0 } else { 1.0 };
+        node.left = Val::Px(left - PITCH.0 / 2.0);
+        node.top = Val::Px(top - PITCH.1 / 2.0 - (h - 3.0 * PITCH.1) / 2.0);
+        node.width = Val::Px(w);
+        node.height = Val::Px(h);
+        if *vis != Visibility::Inherited {
+            *vis = Visibility::Inherited;
+        }
+    }
+    // A BIG coin's prize: its centre position's label.
+    let prize = shown
+        .filter(|(key, _, _)| key == "orb")
+        .and_then(|(_, first, width)| {
+            let centre = first + width / 2;
+            labels
+                .iter()
+                .find(|(l, _)| l.reel == centre && l.row == 1)
+                .and_then(|(_, t)| t.0.strip_prefix("ORB\n").map(str::to_string))
+        })
+        .map(|face| match face_credits(&face, sim.game.total_bet()) {
+            Some(credits) => coin_text(credits, denom.cents()),
+            None => face.to_uppercase(),
+        })
+        .unwrap_or_default();
+    for mut text in &mut value {
+        if text.0 != prize {
+            text.0.clone_from(&prize);
+        }
     }
 }
 

@@ -302,6 +302,19 @@ fn feature_test(mut model: MathModel, orb_every: usize, scatter_every: usize) ->
         }
         *strip = spaced(padded, scatter);
     }
+    // A BIG reel (Spring Festival) stops on a BIG coin or ingot often.
+    if let Some(big) = model
+        .free_games
+        .as_mut()
+        .and_then(|fg| fg.big_reel.as_mut())
+    {
+        // `DRAGONLINK_FEATURE_TEST=big`: nothing else.
+        if std::env::var("DRAGONLINK_FEATURE_TEST").is_ok_and(|v| v == "big") {
+            big.strip = vec![orb, orb, scatter];
+        } else {
+            big.strip.extend([orb, scatter, orb, orb]);
+        }
+    }
     model
 }
 
@@ -1074,10 +1087,27 @@ impl Default for Timing {
 
 fn schedule_with(events: Vec<Event>, timing: &Timing) -> Vec<(f32, Event)> {
     let mut first_reel = true;
+    // The reels under a free game's BIG symbol are one reel: they stop
+    // together, with the first of them.
+    let mut together = vec![false; events.len()];
+    let mut big: Option<(u8, u8)> = None;
+    for (i, e) in events.iter().enumerate().rev() {
+        match e {
+            Event::BigSymbol { first, width, .. } => big = Some((*first, *width)),
+            Event::FreeGameStarted { .. } | Event::SpinStarted { .. } => big = None,
+            Event::ReelStopped { reel, .. } => {
+                together[i] =
+                    big.is_some_and(|(first, width)| *reel > first && *reel < first + width);
+            }
+            _ => {}
+        }
+    }
     events
         .into_iter()
-        .map(|event| {
+        .enumerate()
+        .map(|(i, event)| {
             let delay = match &event {
+                Event::ReelStopped { .. } if together[i] => 0.0,
                 Event::BetPlaced { .. } | Event::SpinStarted { .. } | Event::BetChanged { .. } => {
                     0.0
                 }
@@ -1833,7 +1863,7 @@ fn present(
     mut reels_spin: ResMut<ReelAnim>,
     reels_motion: Res<cabinet::Reels>,
     rollup: Res<cabinet::Rollup>,
-    stacks: Res<cabinet::WildStacks>,
+    mut stacks: ResMut<cabinet::WildStacks>,
     art: Res<ArtPack>,
     mut cells: Query<(&Cell, &mut BackgroundColor)>,
     mut labels: Query<(&CellLabel, &mut Text)>,
@@ -1928,7 +1958,9 @@ fn present(
         // and settles after that.
         // The doors open sooner than a result shows (real game).
         let after_rest = match presentation.queue.front() {
-            Some((_, Event::MysteryRevealed { .. })) => cabinet::REVEAL_AFTER_REST,
+            Some((_, Event::MysteryRevealed { .. } | Event::WildExpanded { .. })) => {
+                cabinet::REVEAL_AFTER_REST
+            }
             _ => cabinet::RESULT_AFTER_REST,
         };
         if fidelity.0
@@ -2086,7 +2118,51 @@ fn present(
                 }
                 reels_spin.free = true;
                 reels_spin.coming = coming_windows(&presentation.queue, reels);
+                // A BIG symbol is drawn as its reels land.
+                feature.big = presentation
+                    .queue
+                    .iter()
+                    .map_while(|(_, e)| match e {
+                        Event::FreeGameStarted { .. } | Event::SpinStarted { .. } => None,
+                        e => Some(e),
+                    })
+                    .find_map(|e| match e {
+                        Event::BigSymbol {
+                            symbol,
+                            first,
+                            width,
+                        } => Some((symbol.clone(), *first, *width)),
+                        _ => None,
+                    });
                 presentation.status = format!("FREE GAME {number}  ({remaining} to come)");
+            }
+            Event::WildExpanded { reel } => {
+                // The wild fills its reel: every position shows it, and the
+                // stacks are found again (a winning full reel stands tall).
+                let wild_key = labels
+                    .iter()
+                    .filter(|(l, _)| l.reel == *reel)
+                    .map(|(_, t)| t.0.clone())
+                    .find(|k| {
+                        model
+                            .symbols
+                            .iter()
+                            .any(|s| &s.key == k && s.kind == SymbolKind::Wild)
+                    });
+                if let Some(key) = wild_key {
+                    for (l, mut t) in &mut labels {
+                        if l.reel == *reel {
+                            t.0.clone_from(&key);
+                        }
+                    }
+                    for (c, mut background) in &mut cells {
+                        if c.reel == *reel {
+                            background.0 = cell_color(Some(SymbolKind::Wild), &key);
+                        }
+                    }
+                }
+                stacks.refind();
+                presentation.status = format!("Wild fills reel {}", reel + 1);
             }
             Event::MysteryRevealed { symbol, count } => {
                 // The coins the doors open onto, each with its prize (the
@@ -2463,6 +2539,7 @@ fn render_symbols(
     art: Res<ArtPack>,
     fidelity: Res<cabinet::Fidelity>,
     reels: Res<cabinet::Reels>,
+    show: Res<cabinet::FeatureShow>,
     labels: Query<(&CellLabel, &Text)>,
     mut images: Query<(&CellImage, &mut ImageNode, &mut Visibility, &mut Node)>,
 ) {
@@ -2471,7 +2548,7 @@ fn render_symbols(
     }
     let (cw, ch) = cabinet::cell_size();
     for (cell, mut image, mut visibility, mut node) in &mut images {
-        if fidelity.0 && reels.moving(cell.reel) {
+        if fidelity.0 && (reels.moving(cell.reel) || show.big_covers(cell.reel)) {
             *visibility = Visibility::Hidden;
             continue;
         }
@@ -2883,6 +2960,7 @@ fn main() -> AppExit {
                 cabinet::win_lines,
                 cabinet::wild_stacks,
                 cabinet::wild_talls,
+                cabinet::big_art,
                 cabinet::feature_music,
                 cabinet::feature_cues,
                 cabinet::coin_shower,
