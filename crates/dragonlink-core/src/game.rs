@@ -1069,18 +1069,46 @@ impl Game {
         // Coins: each one in the window carries its own prize (revealed
         // coins draw one each, as the mobile build does). Enough of them
         // start Hold & Spin once this game's pays are made.
+        // A BIG coin is one prize, lettered on its centre position; the
+        // other positions it covers hold no prize of their own.
         let mut orbs: Vec<Option<OrbValue>> = vec![None; self.model.grid.cells()];
+        let mut big_coin = false;
         if let Some(hs) = &self.model.hold_and_spin {
             let stake = Stake {
                 credits: state.total_bet,
                 unit: next.unit,
             };
+            let big_coin_reel = big
+                .zip(big_symbol)
+                .filter(|(_, s)| *s == hs.orb)
+                .map(|(b, _)| b);
+            let big_table =
+                big_coin_reel
+                    .filter(|b| !b.orb_values.is_empty())
+                    .map(|b| HoldAndSpinModel {
+                        orb_values: b.orb_values.clone(),
+                        ..hs.clone()
+                    });
             for (index, (reel, row, symbol)) in grid.iter().enumerate() {
-                if self.model.kind(symbol) == Some(SymbolKind::Orb) {
-                    let value = draw_orb_value(hs, stake, major_shown(&orbs), rng)?;
-                    orbs[index] = Some(value);
-                    events.push(Event::OrbValueShown { reel, row, value });
+                if self.model.kind(symbol) != Some(SymbolKind::Orb) {
+                    continue;
                 }
+                let covering =
+                    big_coin_reel.filter(|b| (b.first..b.first + b.width).contains(&reel));
+                let value = match covering {
+                    Some(b) => {
+                        big_coin = true;
+                        if reel == b.first + b.width / 2 && usize::from(row) == rows / 2 {
+                            let table = big_table.as_ref().unwrap_or(hs);
+                            draw_orb_value(table, stake, major_shown(&orbs), rng)?
+                        } else {
+                            OrbValue::BetMultiple(0)
+                        }
+                    }
+                    None => draw_orb_value(hs, stake, major_shown(&orbs), rng)?,
+                };
+                orbs[index] = Some(value);
+                events.push(Event::OrbValueShown { reel, row, value });
             }
         }
 
@@ -1210,12 +1238,9 @@ impl Game {
 
         // Hold & Spin from the free game's coins; the free games wait for it.
         let orb_count = orbs.iter().flatten().count();
-        if let Some(hs) = self
-            .model
-            .hold_and_spin
-            .as_ref()
-            .filter(|hs| orb_count >= hs.trigger_count as usize)
-        {
+        if let Some(hs) = self.model.hold_and_spin.as_ref().filter(|hs| {
+            big_coin || (!fg.no_hold_and_spin && orb_count >= hs.trigger_count as usize)
+        }) {
             events.push(Event::FeatureTriggered {
                 feature: Feature::HoldAndSpin,
                 count: orb_count as u8,
@@ -2383,6 +2408,7 @@ mod tests {
                 wild_multiplier: None,
                 expanding_wilds: false,
                 big_reel: None,
+                no_hold_and_spin: false,
             }),
         }
     }
@@ -2479,6 +2505,7 @@ mod tests {
             strip: vec![SymbolId(2), SymbolId(1)],
             scatter_pay: 1,
             scatter_games: 3,
+            orb_values: Vec::new(),
         });
         // Reel 1 draws once for reels 2 and 3 together: the BIG scatter pays
         // once, the total bet, and adds three games.
@@ -2500,6 +2527,98 @@ mod tests {
         // A BIG wild covers both reels: A, W, W on the top line.
         let events = one_free_game(model, vec![d(4, 0), d(2, 1)]);
         assert_eq!(line_awards(&events), vec![(3, 20)]);
+    }
+
+    /// [`tiny_free`] with coins (O): two start Hold & Spin, each worth the
+    /// total bet.
+    fn tiny_free_with_coins() -> MathModel {
+        let mut model = tiny_free();
+        let coin = SymbolId(4);
+        model.symbols.push(SymbolDef {
+            id: coin,
+            key: "O".into(),
+            kind: SymbolKind::Orb,
+        });
+        model.hold_and_spin = Some(HoldAndSpinModel {
+            orb: coin,
+            trigger_count: 2,
+            initial_respins: 3,
+            reset_respins_on_new_orb: true,
+            orb_land_chance: Ratio { num: 1, den: 4 },
+            orb_values: vec![WeightedOrbValue {
+                weight: 1,
+                value: OrbValue::BetMultiple(1),
+            }],
+            full_grid_award: None,
+            jackpots: vec![],
+        });
+        model
+    }
+
+    #[test]
+    fn coins_in_the_free_games_start_no_hold_and_spin_when_the_model_says_so() {
+        let mut model = tiny_free_with_coins();
+        let coin = SymbolId(4);
+        model.free_games.as_mut().unwrap().free_reel_strips[0] =
+            vec![coin, coin, SymbolId(3), SymbolId(3)];
+        // Two coins on reel 1, each drawing its prize.
+        let draws = vec![d(4, 0), d(4, 1), d(4, 1), d(1, 0), d(1, 0)];
+        let started = |events: &[Event]| {
+            events
+                .iter()
+                .any(|e| matches!(e, Event::HoldAndSpinStarted { .. }))
+        };
+        assert!(started(&one_free_game(model.clone(), draws.clone())));
+        model.free_games.as_mut().unwrap().no_hold_and_spin = true;
+        let events = one_free_game(model, draws);
+        assert!(!started(&events));
+        assert_eq!(
+            events
+                .iter()
+                .filter(|e| matches!(e, Event::OrbValueShown { .. }))
+                .count(),
+            2
+        );
+    }
+
+    #[test]
+    fn a_big_coin_is_one_prize_and_starts_hold_and_spin() {
+        let mut model = tiny_free_with_coins();
+        {
+            let fg = model.free_games.as_mut().unwrap();
+            fg.no_hold_and_spin = true;
+            fg.big_reel = Some(BigReel {
+                first: 1,
+                width: 2,
+                strip: vec![SymbolId(2), SymbolId(1), SymbolId(4)],
+                scatter_pay: 1,
+                scatter_games: 3,
+                orb_values: vec![WeightedOrbValue {
+                    weight: 1,
+                    value: OrbValue::BetMultiple(7),
+                }],
+            });
+        }
+        // Reel 1 shows A over X; the BIG reel stops on the coin, whose one
+        // prize is drawn from its own table for its centre position.
+        let events = one_free_game(model, vec![d(4, 0), d(3, 2), d(1, 0)]);
+        let shown: Vec<(u8, u8, OrbValue)> = events
+            .iter()
+            .filter_map(|e| match e {
+                Event::OrbValueShown { reel, row, value } => Some((*reel, *row, *value)),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(shown.len(), 4);
+        for (reel, row, value) in shown {
+            let want = if (reel, row) == (2, 1) { 7 } else { 0 };
+            assert_eq!(value, OrbValue::BetMultiple(want));
+        }
+        assert!(
+            events
+                .iter()
+                .any(|e| matches!(e, Event::HoldAndSpinStarted { .. }))
+        );
     }
 
     #[test]

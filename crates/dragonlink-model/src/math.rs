@@ -246,12 +246,18 @@ pub struct FreeGamesModel {
     /// a single symbol covering them all.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub big_reel: Option<BigReel>,
+    /// Coins land in the free games and show their prizes, but start no Hold
+    /// & Spin there (a BIG coin still does).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub no_hold_and_spin: bool,
 }
 
 /// Free-game reels joined into one BIG reel (see [`FreeGamesModel::big_reel`]).
 /// Each covered position counts as one of its symbol, except a BIG scatter,
 /// which counts once, pays `scatter_pay` times the total bet and adds
-/// `scatter_games` free games; a BIG coin fills its positions with coins.
+/// `scatter_games` free games; a BIG coin is one prize over all its
+/// positions (drawn from `orb_values`, or the coins' own table when that is
+/// empty) and starts Hold & Spin with them held.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct BigReel {
     /// The first reel it covers (0-based) and how many reels.
@@ -261,6 +267,8 @@ pub struct BigReel {
     pub strip: Vec<SymbolId>,
     pub scatter_pay: u32,
     pub scatter_games: u8,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub orb_values: Vec<WeightedOrbValue>,
 }
 
 /// A complete, runnable game configuration.
@@ -588,6 +596,38 @@ impl MathModel {
                 }
                 for id in strip {
                     defined("a free-game strip", *id)?;
+                }
+            }
+            for pay in &fg.line_pays {
+                defined("a free-game line pay", pay.symbol)?;
+                if pay.count == 0 || pay.count > self.grid.reels {
+                    return Err(ModelError::BadFreeGames(
+                        "a free-game line pay's count is outside the reels",
+                    ));
+                }
+            }
+            if let Some(big) = &fg.big_reel {
+                if big.width == 0
+                    || usize::from(big.first) + usize::from(big.width)
+                        > usize::from(self.grid.reels)
+                    || big.strip.is_empty()
+                {
+                    return Err(ModelError::BadFreeGames(
+                        "the BIG reel must cover reels of the window and have a strip",
+                    ));
+                }
+                for id in &big.strip {
+                    defined("the BIG reel strip", *id)?;
+                }
+                if !big.orb_values.is_empty()
+                    && big
+                        .orb_values
+                        .iter()
+                        .map(|v| u64::from(v.weight))
+                        .sum::<u64>()
+                        == 0
+                {
+                    return Err(ModelError::NoOrbValues);
                 }
             }
             match (fg.mystery, fg.reveal_values.is_empty()) {

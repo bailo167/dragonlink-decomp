@@ -71,6 +71,25 @@ const STAKES: [(&str, u32, usize, u16); 8] = [
     ("$1 10x5", 100, 5, 5),
 ];
 
+/// Every title the app plays, by its slug.
+fn all_titles() -> [(&'static str, fn() -> dragonlink_model::MathModel); 8] {
+    use dragonlink_model::fixtures::{
+        autumn_moon_synthetic, genghis_khan_synthetic, golden_gong_synthetic,
+        happy_prosperous_synthetic, panda_magic_synthetic, peace_long_life_synthetic,
+        spring_festival_synthetic,
+    };
+    [
+        ("golden-century", golden_century_synthetic),
+        ("autumn-moon", autumn_moon_synthetic),
+        ("happy-prosperous", happy_prosperous_synthetic),
+        ("panda-magic", panda_magic_synthetic),
+        ("genghis-khan", genghis_khan_synthetic),
+        ("golden-gong", golden_gong_synthetic),
+        ("peace-long-life", peace_long_life_synthetic),
+        ("spring-festival", spring_festival_synthetic),
+    ]
+}
+
 /// The played return of each configuration over `spins`, the meters held at
 /// `meters` (Major, Grand), as a list of (label, return).
 #[cfg(test)]
@@ -114,18 +133,9 @@ fn returns_at(
 /// (synthetic, not Dragon Link's) and they agree within the run's noise.
 #[test]
 fn the_return_is_flat_across_stakes_and_denominations() {
-    use dragonlink_model::fixtures::{
-        autumn_moon_synthetic, happy_prosperous_synthetic, panda_magic_synthetic,
-    };
-    let titles: [fn() -> dragonlink_model::MathModel; 4] = [
-        golden_century_synthetic,
-        autumn_moon_synthetic,
-        happy_prosperous_synthetic,
-        panda_magic_synthetic,
-    ];
-    for (title, meters) in titles
+    for (title, meters) in all_titles()
         .iter()
-        .flat_map(|t| [(50_000, 500_000), (120_000, 1_200_000)].map(|m| (*t, m)))
+        .flat_map(|(_, t)| [(50_000, 500_000), (120_000, 1_200_000)].map(|m| (*t, m)))
     {
         let r = returns_at(title, 150_000, meters, 7);
         for (label, x) in &r {
@@ -150,7 +160,13 @@ fn measure_the_return_across_stakes() {
             .ok()
             .and_then(|n| n.parse().ok())
             .unwrap_or(2_000_000);
-        let r = returns_at(golden_century_synthetic, spins, meters, 11);
+        // RTP_TITLE picks another title by its slug.
+        let title = std::env::var("RTP_TITLE").unwrap_or_default();
+        let model = all_titles()
+            .into_iter()
+            .find(|(slug, _)| *slug == title)
+            .map_or(golden_century_synthetic as fn() -> _, |(_, m)| m);
+        let r = returns_at(model, spins, meters, 11);
         let (lo, hi) = r.iter().fold((f64::MAX, f64::MIN), |(lo, hi), (_, x)| {
             (lo.min(*x), hi.max(*x))
         });

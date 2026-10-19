@@ -39,8 +39,9 @@ use bevy::render::view::screenshot::{Screenshot, save_to_disk};
 use dragonlink_core::{Command, CreditReason, DevRng, Event, Game, OutcomeRng};
 use dragonlink_model::MathModel;
 use dragonlink_model::fixtures::{
-    autumn_moon_synthetic, golden_century_synthetic, happy_prosperous_synthetic,
-    panda_magic_synthetic, synthetic_dev_fixture,
+    autumn_moon_synthetic, genghis_khan_synthetic, golden_century_synthetic, golden_gong_synthetic,
+    happy_prosperous_synthetic, panda_magic_synthetic, peace_long_life_synthetic,
+    spring_festival_synthetic, synthetic_dev_fixture,
 };
 use dragonlink_model::{JackpotTier, OrbValue, SymbolKind};
 
@@ -371,6 +372,10 @@ enum GameChoice {
     AutumnMoon,
     HappyProsperous,
     PandaMagic,
+    GenghisKhan,
+    GoldenGong,
+    PeaceLongLife,
+    SpringFestival,
     Synthetic,
 }
 
@@ -395,6 +400,10 @@ impl GameChoice {
             GameChoice::AutumnMoon => autumn_moon_synthetic(),
             GameChoice::HappyProsperous => happy_prosperous_synthetic(),
             GameChoice::PandaMagic => panda_magic_synthetic(),
+            GameChoice::GenghisKhan => genghis_khan_synthetic(),
+            GameChoice::GoldenGong => golden_gong_synthetic(),
+            GameChoice::PeaceLongLife => peace_long_life_synthetic(),
+            GameChoice::SpringFestival => spring_festival_synthetic(),
             GameChoice::Synthetic => synthetic_dev_fixture(),
         }
     }
@@ -406,6 +415,10 @@ impl GameChoice {
             GameChoice::AutumnMoon => "autumn-moon",
             GameChoice::HappyProsperous => "happy-prosperous",
             GameChoice::PandaMagic => "panda-magic",
+            GameChoice::GenghisKhan => "genghis-khan",
+            GameChoice::GoldenGong => "golden-gong",
+            GameChoice::PeaceLongLife => "peace-long-life",
+            GameChoice::SpringFestival => "spring-festival",
             GameChoice::Synthetic => "synthetic",
         }
     }
@@ -417,6 +430,10 @@ impl GameChoice {
             GameChoice::HappyProsperous => "HAPPY & PROSPEROUS",
             GameChoice::PandaMagic => "PANDA MAGIC",
             GameChoice::AutumnMoon => "AUTUMN MOON",
+            GameChoice::GenghisKhan => "GENGHIS KHAN",
+            GameChoice::GoldenGong => "GOLDEN GONG",
+            GameChoice::PeaceLongLife => "PEACE & LONG LIFE",
+            GameChoice::SpringFestival => "SPRING FESTIVAL",
             GameChoice::Synthetic => "DRAGONLINK (synthetic fixture)",
         }
     }
@@ -505,17 +522,21 @@ struct PackDir(Option<String>);
 
 /// The four titles in scope, in the order the launcher menu lists them. The
 /// synthetic development fixture is not a title and is offered only by flag.
-const MENU_GAMES: [GameChoice; 4] = [
+const MENU_GAMES: [GameChoice; 8] = [
     GameChoice::GoldenCentury,
     GameChoice::HappyProsperous,
     GameChoice::PandaMagic,
     GameChoice::AutumnMoon,
+    GameChoice::GenghisKhan,
+    GameChoice::GoldenGong,
+    GameChoice::PeaceLongLife,
+    GameChoice::SpringFestival,
 ];
 
 /// Which screen the application is on: the title launcher, or a game.
 #[derive(States, Default, Debug, Clone, PartialEq, Eq, Hash)]
 enum Screen {
-    /// The four-title launcher. Shown when the application starts with no
+    /// The title launcher. Shown when the application starts with no
     /// `--game` and no smoke run; the player picks a title to play.
     #[default]
     Menu,
@@ -650,9 +671,15 @@ fn parse_args(args: &[String]) -> Result<Cli, String> {
                     Some("autumn-moon") => GameChoice::AutumnMoon,
                     Some("happy-prosperous") => GameChoice::HappyProsperous,
                     Some("panda-magic") => GameChoice::PandaMagic,
+                    Some("genghis-khan") => GameChoice::GenghisKhan,
+                    Some("golden-gong") => GameChoice::GoldenGong,
+                    Some("peace-long-life") => GameChoice::PeaceLongLife,
+                    Some("spring-festival") => GameChoice::SpringFestival,
                     Some("synthetic") => GameChoice::Synthetic,
                     _ => {
-                        return Err("--game is golden-century, autumn-moon, \nhappy-prosperous, panda-magic or synthetic"
+                        return Err("--game is golden-century, autumn-moon, happy-prosperous, \
+                                    panda-magic, genghis-khan, golden-gong, peace-long-life, \
+                                    spring-festival or synthetic"
                             .to_string());
                     }
                 };
@@ -1132,6 +1159,14 @@ fn setup(
         "HAPPY & PROSPEROUS"
     } else if model.id.starts_with("panda-magic") {
         "PANDA MAGIC"
+    } else if model.id.starts_with("genghis-khan") {
+        "GENGHIS KHAN"
+    } else if model.id.starts_with("golden-gong") {
+        "GOLDEN GONG"
+    } else if model.id.starts_with("peace-long-life") {
+        "PEACE & LONG LIFE"
+    } else if model.id.starts_with("spring-festival") {
+        "SPRING FESTIVAL"
     } else {
         "DRAGONLINK (synthetic fixture)"
     };
@@ -3237,6 +3272,10 @@ mod tests {
             ("autumn-moon", GameChoice::AutumnMoon),
             ("happy-prosperous", GameChoice::HappyProsperous),
             ("panda-magic", GameChoice::PandaMagic),
+            ("genghis-khan", GameChoice::GenghisKhan),
+            ("golden-gong", GameChoice::GoldenGong),
+            ("peace-long-life", GameChoice::PeaceLongLife),
+            ("spring-festival", GameChoice::SpringFestival),
             ("synthetic", GameChoice::Synthetic),
         ] {
             assert_eq!(
@@ -3401,7 +3440,7 @@ mod tests {
     #[test]
     fn every_launcher_game_builds_and_has_a_distinct_title() {
         use std::collections::HashSet;
-        assert_eq!(MENU_GAMES.len(), 4, "the launcher offers the four titles");
+        assert_eq!(MENU_GAMES.len(), 8, "the launcher offers the eight titles");
         let mut titles = HashSet::new();
         for game in MENU_GAMES {
             assert!(

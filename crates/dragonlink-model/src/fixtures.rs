@@ -14,8 +14,9 @@
 
 use crate::layout::{GridShape, Payline};
 use crate::math::{
-    BetModel, FixedPrize, FreeGamesModel, HoldAndSpinModel, JackpotDef, JackpotTier, LinePay,
-    MathModel, MathProvenance, OrbValue, Ratio, ScatterPay, WeightedOrbValue, WeightedSymbol,
+    BetModel, BigReel, FixedPrize, FreeGamesModel, HoldAndSpinModel, JackpotDef, JackpotTier,
+    LinePay, MathModel, MathProvenance, OrbValue, Ratio, ScatterPay, WeightedOrbValue,
+    WeightedSymbol,
 };
 use crate::symbol::{SymbolDef, SymbolId, SymbolKind};
 
@@ -745,6 +746,7 @@ pub fn golden_century_synthetic() -> MathModel {
             wild_multiplier: None,
             expanding_wilds: false,
             big_reel: None,
+            no_hold_and_spin: false,
         }),
     }
 }
@@ -1012,6 +1014,441 @@ pub fn panda_magic_synthetic() -> MathModel {
     )
 }
 
+/// The fifty win lines on Genghis Khan's and Golden Gong's help pages, read
+/// from each and identical (rows 0 top to 2 bottom, reels 1 to 5). Their
+/// first 25 are Peace & Long Life's and Spring Festival's 25 lines and their
+/// first five Golden Century's five. VERIFIED (official mobile) for those
+/// titles; that a cabinet playing more lines than its mobile build has uses
+/// these is HYPOTHESIS.
+const FAMILY_LINES: [[u8; 5]; 50] = [
+    [1, 1, 1, 1, 1],
+    [0, 0, 0, 0, 0],
+    [2, 2, 2, 2, 2],
+    [0, 1, 2, 1, 0],
+    [2, 1, 0, 1, 2],
+    [0, 0, 1, 0, 0],
+    [2, 2, 1, 2, 2],
+    [1, 2, 2, 2, 1],
+    [1, 0, 0, 0, 1],
+    [0, 1, 1, 1, 0],
+    [2, 1, 1, 1, 2],
+    [0, 1, 0, 1, 0],
+    [2, 1, 2, 1, 2],
+    [1, 0, 1, 0, 1],
+    [1, 2, 1, 2, 1],
+    [1, 1, 0, 1, 1],
+    [1, 1, 2, 1, 1],
+    [0, 2, 0, 2, 0],
+    [2, 0, 2, 0, 2],
+    [1, 0, 2, 0, 1],
+    [1, 2, 0, 2, 1],
+    [0, 0, 2, 0, 0],
+    [2, 2, 0, 2, 2],
+    [0, 2, 2, 2, 0],
+    [2, 0, 0, 0, 2],
+    [0, 2, 1, 2, 0],
+    [2, 0, 1, 0, 2],
+    [1, 1, 1, 1, 2],
+    [0, 0, 1, 2, 2],
+    [2, 2, 1, 0, 0],
+    [0, 1, 1, 1, 2],
+    [2, 1, 1, 1, 0],
+    [0, 1, 2, 1, 2],
+    [2, 1, 0, 1, 0],
+    [0, 0, 0, 0, 1],
+    [2, 2, 2, 2, 1],
+    [0, 1, 0, 1, 2],
+    [2, 1, 2, 1, 0],
+    [1, 0, 1, 2, 1],
+    [1, 2, 1, 0, 1],
+    [1, 1, 0, 0, 0],
+    [1, 1, 2, 2, 2],
+    [1, 0, 0, 1, 2],
+    [1, 2, 2, 1, 0],
+    [1, 0, 1, 2, 2],
+    [1, 2, 1, 0, 0],
+    [2, 1, 0, 0, 1],
+    [0, 1, 2, 2, 1],
+    [0, 0, 1, 2, 1],
+    [2, 2, 1, 0, 1],
+];
+
+/// The later titles' pay table for 2, 3, 4 and 5 of a kind, the pictures
+/// highest first, then K, Q, J, 10 and 9: the same on Genghis Khan's, Golden
+/// Gong's, Peace & Long Life's and Spring Festival's help pages (official
+/// mobile, VERIFIED); only the top picture pays two of a kind and the wild
+/// pays nothing of its own.
+const LATER_PAYS: [[u32; 4]; 9] = [
+    [2, 10, 50, 150],
+    [0, 5, 30, 100],
+    [0, 5, 25, 100],
+    [0, 5, 25, 100],
+    [0, 5, 20, 75],
+    [0, 5, 10, 50],
+    [0, 5, 10, 50],
+    [0, 5, 10, 50],
+    [0, 5, 10, 50],
+];
+
+/// A symbol's id in `model` by its key.
+fn id_of(model: &MathModel, key: &str) -> SymbolId {
+    model
+        .symbols
+        .iter()
+        .position(|s| s.key == key)
+        .and_then(|i| u16::try_from(i).ok())
+        .map(SymbolId)
+        .unwrap_or(SymbolId(0))
+}
+
+/// Line pays for the title's pictures (highest first) and the royals, from
+/// rows of 2, 3, 4 and 5 of a kind.
+fn pays_for(model: &MathModel, pictures: [&str; 4], rows: &[[u32; 4]; 9]) -> Vec<LinePay> {
+    let keys = [
+        pictures[0],
+        pictures[1],
+        pictures[2],
+        pictures[3],
+        "K",
+        "Q",
+        "J",
+        "10",
+        "9",
+    ];
+    let mut out = Vec::new();
+    for (key, row) in keys.into_iter().zip(rows) {
+        let symbol = id_of(model, key);
+        for (count, pay) in (2u8..=5).zip(row) {
+            if *pay > 0 {
+                out.push(LinePay {
+                    symbol,
+                    count,
+                    pay: *pay,
+                });
+            }
+        }
+    }
+    out
+}
+
+/// The base game the later Dragon Link titles share (Genghis Khan, Golden
+/// Gong, Peace & Long Life, Spring Festival; research notes 2026-10-19, each
+/// title's help pages): Golden Century's 5x3 window, wild on reels 2 to 5,
+/// scattered trigger and Hold & Spin, with the family's fifty lines, a wild
+/// that pays nothing itself, the later pay table and a scatter paying 2, 15
+/// and 100 times the total bet. Their free games are six and none has a
+/// mystery symbol; three of them say Hold & Spin starts in bought games only
+/// (STRONG), so coins landing in their free games start none here. Built on
+/// [`golden_century_synthetic`]'s strips, renamed (women, chest, vase and
+/// warriors as the pictures highest first, emperor as the wild, the flag as
+/// the scatter), the doors taken out; plain free reels (the base reels' make-
+/// up with a pair of coins) for each title to give its own feature, and three
+/// more games on three scatters (HYPOTHESIS: the help allows a retrigger
+/// without a number; three is the family's count elsewhere and one
+/// third-party lead's for Genghis Khan). Strips and weights synthetic.
+fn golden_century_fifty(
+    id: &str,
+    description: &str,
+    pictures: [&str; 4],
+    wild: &str,
+    scatter: &str,
+) -> MathModel {
+    let mut model = golden_century_synthetic();
+    let gc = |key: &str| id_of(&model, key).0;
+    let (nine, ten, jack, queen, king) = (gc("9"), gc("10"), gc("J"), gc("Q"), gc("K"));
+    let (p1, p2, p3, p4) = (gc("women"), gc("chest"), gc("vase"), gc("warriors"));
+    let (w, sc, orb, doors) = (gc("emperor"), gc("pennant"), gc("orb"), gc("doors"));
+    let free_reel_strips = (0..5u8)
+        .map(|reel| {
+            let mut parts = vec![
+                (nine, 6),
+                (ten, 5),
+                (jack, 5),
+                (queen, 4),
+                (king, 4),
+                (p1, 1),
+                (p2, 1),
+                (p3, 2),
+                (p4, 2),
+                (sc, 1),
+                (orb, 2),
+            ];
+            if reel > 0 {
+                parts.push((w, 2));
+            }
+            spread(&parts, &[orb, w, sc])
+        })
+        .collect();
+    if usize::from(doors) + 1 == model.symbols.len() {
+        model.symbols.pop();
+    }
+    for (from, to) in [
+        ("women", pictures[0]),
+        ("chest", pictures[1]),
+        ("vase", pictures[2]),
+        ("warriors", pictures[3]),
+        ("emperor", wild),
+        ("pennant", scatter),
+    ] {
+        if let Some(s) = model.symbols.iter_mut().find(|s| s.key == from) {
+            s.key = to.to_string();
+        }
+    }
+    model.paylines = FAMILY_LINES
+        .iter()
+        .map(|rows| Payline(rows.to_vec()))
+        .collect();
+    model.line_pays = pays_for(&model, pictures, &LATER_PAYS);
+    model.scatter_pays = [(3u8, 2u32), (4, 15), (5, 100)]
+        .into_iter()
+        .map(|(count, total_bet_multiple)| ScatterPay {
+            symbol: SymbolId(sc),
+            count,
+            total_bet_multiple,
+        })
+        .collect();
+    if let Some(fg) = model.free_games.as_mut() {
+        fg.free_reel_strips = free_reel_strips;
+        fg.mystery = None;
+        fg.reveal_values = Vec::new();
+        fg.retrigger_count = 3;
+        fg.retrigger_games = 3;
+        fg.no_hold_and_spin = true;
+    }
+    model.id = id.to_string();
+    model.description = description.to_string();
+    model
+}
+
+/// Give a title's free games a wild of their own, `key`, in place of the
+/// base wild, each one doubling any win it is in (two make x4; the help's
+/// "every x2 wild doubles", HYPOTHESIS for three or more).
+fn with_x2_wild(mut model: MathModel, key: &str) -> MathModel {
+    let base_wild = model
+        .symbols
+        .iter()
+        .position(|s| s.kind == SymbolKind::Wild)
+        .and_then(|i| u16::try_from(i).ok())
+        .map(SymbolId);
+    let x2 = SymbolId(model.symbols.len() as u16);
+    model.symbols.push(SymbolDef {
+        id: x2,
+        key: key.to_string(),
+        kind: SymbolKind::Wild,
+    });
+    if let Some(fg) = model.free_games.as_mut() {
+        for strip in &mut fg.free_reel_strips {
+            for s in strip.iter_mut() {
+                if Some(*s) == base_wild {
+                    *s = x2;
+                }
+            }
+        }
+        fg.wild_multiplier = Some(2);
+    }
+    model
+}
+
+/// Identifier of [`genghis_khan_synthetic`], written into trace headers.
+pub const GENGHIS_KHAN_SYNTHETIC_ID: &str = "genghis-khan-synthetic-1";
+
+/// A **synthetic** Genghis Khan configuration (see [`golden_century_fifty`]):
+/// the woman, fortress, pot and shield as the pictures, Khan as the wild, the
+/// archer as the scatter; in the free games Khan wears an x2 badge and every
+/// one in a win doubles it (help page, VERIFIED; two making x4 seen on club
+/// footage, STRONG). The royals stay in the free games (footage).
+pub fn genghis_khan_synthetic() -> MathModel {
+    with_x2_wild(
+        golden_century_fifty(
+            GENGHIS_KHAN_SYNTHETIC_ID,
+            "SYNTHETIC Genghis Khan: the family's evidenced structure (50 lines, pay table, \
+             scatter pays, six free games with an x2 wild, six-coin Hold & Spin, four jackpot \
+             tiers) on Golden Century's synthetic strips. Strips, weights, the retrigger count \
+             and jackpots INVENTED; never quote its numbers as Dragon Link's.",
+            ["woman", "fortress", "pot", "shield"],
+            "khan",
+            "archer",
+        ),
+        "khan_x2",
+    )
+}
+
+/// Identifier of [`peace_long_life_synthetic`], written into trace headers.
+pub const PEACE_LONG_LIFE_SYNTHETIC_ID: &str = "peace-long-life-synthetic-1";
+
+/// A **synthetic** Peace & Long Life configuration (see
+/// [`golden_century_fifty`]): the tortoise, deer, birdcage and bamboo as the
+/// pictures, the sage as the wild, the peach as the scatter; Genghis Khan's
+/// sibling in the mobile build, with the same x2 wild in the free games (help
+/// page, VERIFIED). Whether its free reels keep the royals is unknown; they
+/// do here.
+pub fn peace_long_life_synthetic() -> MathModel {
+    with_x2_wild(
+        golden_century_fifty(
+            PEACE_LONG_LIFE_SYNTHETIC_ID,
+            "SYNTHETIC Peace & Long Life: the family's evidenced structure (25 lines on mobile, \
+             up to 50 on club machines, pay table, scatter pays, six free games with an x2 wild, \
+             six-coin Hold & Spin, four jackpot tiers) on Golden Century's synthetic strips. \
+             Strips, weights, the retrigger count and jackpots INVENTED; never quote its numbers \
+             as Dragon Link's.",
+            ["tortoise", "deer", "birdcage", "bamboo"],
+            "sage",
+            "peach",
+        ),
+        "sage_x2",
+    )
+}
+
+/// Identifier of [`golden_gong_synthetic`], written into trace headers.
+pub const GOLDEN_GONG_SYNTHETIC_ID: &str = "golden-gong-synthetic-1";
+
+/// A **synthetic** Golden Gong configuration (see [`golden_century_fifty`]):
+/// the four disciples, rooster, scroll and bamboo as the pictures, the monk
+/// as the wild, the gong as the scatter. In the free games a monk fills its
+/// whole reel when it lands, and the free games pay their own table, the
+/// pictures more and the royals less (help pages, VERIFIED; the expansion on
+/// club footage, STRONG).
+pub fn golden_gong_synthetic() -> MathModel {
+    let mut model = golden_century_fifty(
+        GOLDEN_GONG_SYNTHETIC_ID,
+        "SYNTHETIC Golden Gong: the family's evidenced structure (50 lines, pay tables, scatter \
+         pays, six free games with an expanding wild and their own pay table, six-coin Hold & \
+         Spin, four jackpot tiers) on Golden Century's synthetic strips. Strips, weights, the \
+         retrigger count and jackpots INVENTED; never quote its numbers as Dragon Link's.",
+        ["disciples", "rooster", "scroll", "bamboo"],
+        "monk",
+        "gong",
+    );
+    let pictures = ["disciples", "rooster", "scroll", "bamboo"];
+    let free_pays = [
+        [2, 10, 50, 250],
+        [0, 5, 30, 150],
+        [0, 5, 25, 150],
+        [0, 5, 25, 150],
+        [0, 2, 10, 50],
+        [0, 2, 5, 25],
+        [0, 2, 5, 25],
+        [0, 2, 5, 25],
+        [0, 2, 5, 25],
+    ];
+    let line_pays = pays_for(&model, pictures, &free_pays);
+    if let Some(fg) = model.free_games.as_mut() {
+        fg.expanding_wilds = true;
+        fg.line_pays = line_pays;
+    }
+    model
+}
+
+/// Identifier of [`spring_festival_synthetic`], written into trace headers.
+pub const SPRING_FESTIVAL_SYNTHETIC_ID: &str = "spring-festival-synthetic-1";
+
+/// A **synthetic** Spring Festival configuration (see
+/// [`golden_century_fifty`]): the drum, lantern, envelopes and firecrackers
+/// as the pictures, the God of Wealth as the wild, the gold ingot as the
+/// scatter. In the free games reels 2 to 4 spin as one BIG reel whose every
+/// stop is a 3x3 symbol: a BIG ingot pays the total bet and adds three games,
+/// a BIG coin starts Hold & Spin with its nine positions held, and the free
+/// games pay their own table, four and five of a kind only (help pages,
+/// VERIFIED). The ingot and coin come only BIG there; the wild also lands on
+/// reel 5, never reel 1 (help, VERIFIED). The BIG coin's prizes are the help
+/// page's list; their weights, and the BIG reel, are synthetic.
+pub fn spring_festival_synthetic() -> MathModel {
+    let pictures = ["drum", "lantern", "envelopes", "firecrackers"];
+    let mut model = golden_century_fifty(
+        SPRING_FESTIVAL_SYNTHETIC_ID,
+        "SYNTHETIC Spring Festival: the family's evidenced structure (25 lines on mobile, up to \
+         50 on club machines, pay tables, scatter pays, six free games on a BIG 3x3 reel with \
+         BIG ingot retriggers and BIG coin Hold & Spin, six-coin Hold & Spin, four jackpot \
+         tiers) on Golden Century's synthetic strips. Strips, weights, the BIG reel and jackpots \
+         INVENTED; never quote its numbers as Dragon Link's.",
+        pictures,
+        "fortune_god",
+        "ingot",
+    );
+    let at = |key: &str| id_of(&model, key).0;
+    let (nine, ten, jack, queen, king) = (at("9"), at("10"), at("J"), at("Q"), at("K"));
+    let (p1, p2, p3, p4) = (
+        at(pictures[0]),
+        at(pictures[1]),
+        at(pictures[2]),
+        at(pictures[3]),
+    );
+    let (wild, ingot, orb) = (at("fortune_god"), at("ingot"), at("orb"));
+    let cards = [
+        (nine, 6),
+        (ten, 5),
+        (jack, 5),
+        (queen, 4),
+        (king, 4),
+        (p1, 1),
+        (p2, 1),
+        (p3, 2),
+        (p4, 2),
+    ];
+    // Reel 1 has no wild, ingot or coin in the free games; reel 5 has the
+    // wild; reels 2 to 4 are the BIG reel's (their own strips go unused).
+    let mut with_wild = cards.to_vec();
+    with_wild.push((wild, 2));
+    let free_reel_strips = vec![
+        spread(&cards, &[]),
+        spread(&with_wild, &[wild]),
+        spread(&with_wild, &[wild]),
+        spread(&with_wild, &[wild]),
+        spread(&with_wild, &[wild]),
+    ];
+    let mut big = cards.to_vec();
+    big.extend([(wild, 2), (ingot, 1), (orb, 1)]);
+    let big_strip = spread(&big, &[]);
+    let free_pays = [
+        [0, 0, 10, 100],
+        [0, 0, 10, 50],
+        [0, 0, 10, 25],
+        [0, 0, 10, 25],
+        [0, 0, 5, 20],
+        [0, 0, 5, 15],
+        [0, 0, 5, 15],
+        [0, 0, 5, 15],
+        [0, 0, 5, 15],
+    ];
+    let line_pays = pays_for(&model, pictures, &free_pays);
+    let big_orb_values = [
+        (200, OrbValue::BetMultiple(5)),
+        (160, OrbValue::BetMultiple(10)),
+        (120, OrbValue::BetMultiple(15)),
+        (100, OrbValue::BetMultiple(20)),
+        (80, OrbValue::BetMultiple(25)),
+        (60, OrbValue::BetMultiple(30)),
+        (40, OrbValue::BetMultiple(40)),
+        (30, OrbValue::BetMultiple(50)),
+        (20, OrbValue::BetMultiple(60)),
+        (12, OrbValue::BetMultiple(80)),
+        (8, OrbValue::BetMultiple(100)),
+        (3, OrbValue::BetMultiple(200)),
+        (2, OrbValue::BetMultiple(250)),
+        (60, OrbValue::Jackpot(JackpotTier::Mini)),
+        (20, OrbValue::Jackpot(JackpotTier::Minor)),
+        (6, OrbValue::Jackpot(JackpotTier::Major)),
+    ]
+    .into_iter()
+    .map(|(weight, value)| WeightedOrbValue { weight, value })
+    .collect();
+    if let Some(fg) = model.free_games.as_mut() {
+        fg.free_reel_strips = free_reel_strips;
+        fg.line_pays = line_pays;
+        fg.retrigger_count = 0;
+        fg.retrigger_games = 0;
+        fg.big_reel = Some(BigReel {
+            first: 1,
+            width: 3,
+            strip: big_strip,
+            scatter_pay: 1,
+            scatter_games: 3,
+            orb_values: big_orb_values,
+        });
+    }
+    model
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1027,6 +1464,10 @@ mod tests {
             autumn_moon_synthetic(),
             happy_prosperous_synthetic(),
             panda_magic_synthetic(),
+            genghis_khan_synthetic(),
+            golden_gong_synthetic(),
+            peace_long_life_synthetic(),
+            spring_festival_synthetic(),
         ] {
             let rows = model.grid.rows as usize;
             let free = model
@@ -1052,6 +1493,75 @@ mod tests {
                 }
             }
         }
+    }
+
+    /// The later titles: valid, labelled synthetic, on the family's fifty
+    /// lines and pay table, no mystery symbol, no Hold & Spin from free-game
+    /// coins, and each its own free games.
+    #[test]
+    fn the_later_titles_have_their_own_free_games() {
+        for model in [
+            genghis_khan_synthetic(),
+            golden_gong_synthetic(),
+            peace_long_life_synthetic(),
+            spring_festival_synthetic(),
+        ] {
+            assert_eq!(model.validate(), Ok(()), "{}", model.id);
+            assert_eq!(model.provenance, MathProvenance::SyntheticDevFixture);
+            assert!(model.description.contains("SYNTHETIC"));
+            assert_eq!(model.paylines.len(), 50);
+            assert!(
+                model
+                    .paylines
+                    .iter()
+                    .zip(FAMILY_LINES)
+                    .all(|(p, l)| p.0 == l)
+            );
+            let fg = model.free_games.as_ref().unwrap();
+            assert_eq!(fg.initial_games, 6);
+            assert!(fg.mystery.is_none() && fg.no_hold_and_spin);
+            // The wild pays nothing of its own.
+            assert!(
+                model
+                    .line_pays
+                    .iter()
+                    .all(|p| model.kind(p.symbol) == Some(SymbolKind::Regular))
+            );
+        }
+        // The x2 wilds only in the free games, never on reel 1.
+        for (model, x2) in [
+            (genghis_khan_synthetic(), "khan_x2"),
+            (peace_long_life_synthetic(), "sage_x2"),
+        ] {
+            let x2 = id_of(&model, x2);
+            let fg = model.free_games.as_ref().unwrap();
+            assert_eq!(fg.wild_multiplier, Some(2));
+            assert!(model.reel_strips.iter().flatten().all(|s| *s != x2));
+            assert!(!fg.free_reel_strips[0].contains(&x2));
+            assert!(fg.free_reel_strips[1..].iter().all(|r| r.contains(&x2)));
+        }
+        let gg = golden_gong_synthetic();
+        let fg = gg.free_games.as_ref().unwrap();
+        assert!(fg.expanding_wilds && !fg.line_pays.is_empty());
+        // Spring Festival: reels 2 to 4 one BIG reel, the ingot and coin
+        // only on it in the free games, the wild on it and reel 5.
+        let sf = spring_festival_synthetic();
+        let fg = sf.free_games.as_ref().unwrap();
+        let big = fg.big_reel.as_ref().unwrap();
+        assert_eq!((big.first, big.width), (1, 3));
+        let (ingot, orb, wild) = (
+            id_of(&sf, "ingot"),
+            id_of(&sf, "orb"),
+            id_of(&sf, "fortune_god"),
+        );
+        assert!(
+            big.strip.contains(&ingot) && big.strip.contains(&orb) && big.strip.contains(&wild)
+        );
+        for (reel, strip) in fg.free_reel_strips.iter().enumerate() {
+            assert!(!strip.contains(&ingot) && !strip.contains(&orb));
+            assert_eq!(strip.contains(&wild), reel > 0, "reel {reel}");
+        }
+        assert!(fg.line_pays.iter().all(|p| p.count >= 4));
     }
 
     #[test]

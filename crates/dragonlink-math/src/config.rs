@@ -367,6 +367,65 @@ impl GameConfiguration {
         }
     }
 
+    /// A **synthetic** Genghis Khan configuration (`dragonlink_model::fixtures`).
+    pub fn genghis_khan_synthetic() -> GameConfiguration {
+        Self::synthetic_title(
+            dragonlink_model::fixtures::genghis_khan_synthetic(),
+            "Genghis Khan",
+        )
+    }
+
+    /// A **synthetic** Golden Gong configuration (`dragonlink_model::fixtures`).
+    pub fn golden_gong_synthetic() -> GameConfiguration {
+        Self::synthetic_title(
+            dragonlink_model::fixtures::golden_gong_synthetic(),
+            "Golden Gong",
+        )
+    }
+
+    /// A **synthetic** Peace & Long Life configuration (`dragonlink_model::fixtures`).
+    pub fn peace_long_life_synthetic() -> GameConfiguration {
+        Self::synthetic_title(
+            dragonlink_model::fixtures::peace_long_life_synthetic(),
+            "Peace & Long Life",
+        )
+    }
+
+    /// A **synthetic** Spring Festival configuration (`dragonlink_model::fixtures`).
+    pub fn spring_festival_synthetic() -> GameConfiguration {
+        Self::synthetic_title(
+            dragonlink_model::fixtures::spring_festival_synthetic(),
+            "Spring Festival",
+        )
+    }
+
+    /// A synthetic title's configuration: every constant synthetic.
+    fn synthetic_title(model: MathModel, title: &str) -> GameConfiguration {
+        let constants = required_paths(&model)
+            .into_iter()
+            .map(|path| ConstantRecord {
+                path: path.to_string(),
+                provenance: ConstantProvenance::Synthetic,
+                source: String::new(),
+                note: String::new(),
+            })
+            .collect();
+        GameConfiguration {
+            schema: SCHEMA.to_string(),
+            identity: ConfigIdentity {
+                name: format!("{title} (synthetic)"),
+                notes: format!(
+                    "{title}'s evidenced structure with invented strips, weights and jackpot \
+                     amounts. Not recovered from any machine; its statistics are its own."
+                ),
+                ..ConfigIdentity::default()
+            },
+            model,
+            constants,
+            behaviour: Behaviour::default(),
+        }
+    }
+
     /// Parse and check a configuration.
     pub fn from_json(text: &str) -> Result<GameConfiguration, ConfigError> {
         let config: GameConfiguration = serde_json::from_str(text)?;

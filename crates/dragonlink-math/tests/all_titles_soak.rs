@@ -1,6 +1,6 @@
 //! Hardening: every playable synthetic title survives a long session.
 //!
-//! For each of the four titles this plays tens of thousands of spins through
+//! For each of the eight titles this plays tens of thousands of spins through
 //! `dragonlink-core`, varying the stake, and checks the engine's contract
 //! holds the whole way: a spin never fails, the game always returns to the
 //! base game, both features are reached, and the run is deterministic and
@@ -10,19 +10,24 @@
 use dragonlink_core::{Command, DevRng, Event, Game, RecordingRng, ScriptedRng};
 use dragonlink_model::MathModel;
 use dragonlink_model::fixtures::{
-    autumn_moon_synthetic, golden_century_synthetic, happy_prosperous_synthetic,
-    panda_magic_synthetic,
+    autumn_moon_synthetic, genghis_khan_synthetic, golden_century_synthetic, golden_gong_synthetic,
+    happy_prosperous_synthetic, panda_magic_synthetic, peace_long_life_synthetic,
+    spring_festival_synthetic,
 };
 
 /// A title's name and a constructor for a fresh model of it.
 type Title = (&'static str, fn() -> MathModel);
 
-/// The four titles the launcher offers, each as a fresh model.
-const TITLES: [Title; 4] = [
+/// The eight titles the launcher offers, each as a fresh model.
+const TITLES: [Title; 8] = [
     ("golden-century", golden_century_synthetic),
     ("happy-prosperous", happy_prosperous_synthetic),
     ("panda-magic", panda_magic_synthetic),
     ("autumn-moon", autumn_moon_synthetic),
+    ("genghis-khan", genghis_khan_synthetic),
+    ("golden-gong", golden_gong_synthetic),
+    ("peace-long-life", peace_long_life_synthetic),
+    ("spring-festival", spring_festival_synthetic),
 ];
 
 /// A whole session of one title: play `spins` games, varying the stake, and

@@ -157,6 +157,18 @@ fn load(spec: &str) -> Result<GameConfiguration> {
     if spec == "panda-magic" {
         return Ok(GameConfiguration::panda_magic_synthetic());
     }
+    if spec == "genghis-khan" {
+        return Ok(GameConfiguration::genghis_khan_synthetic());
+    }
+    if spec == "golden-gong" {
+        return Ok(GameConfiguration::golden_gong_synthetic());
+    }
+    if spec == "peace-long-life" {
+        return Ok(GameConfiguration::peace_long_life_synthetic());
+    }
+    if spec == "spring-festival" {
+        return Ok(GameConfiguration::spring_festival_synthetic());
+    }
     let text = fs::read_to_string(spec).with_context(|| format!("reading configuration {spec}"))?;
     GameConfiguration::from_json(&text).with_context(|| format!("configuration {spec}"))
 }
