@@ -150,6 +150,25 @@ owner; docs/DECISIONS.md). Every run muted. Progress, newest last:
   and Minor's values. Unit tests cover each; checked on muted captures (the jackpots and both runs,
   a base run for the roll).
 
+- **Audit fixes, second pass: base game and free games.** Checked frame by frame on club
+  recordings and followed (each label in [GOLDEN_CENTURY_PRESENTATION.md](reverse-engineering/GOLDEN_CENTURY_PRESENTATION.md)
+  and [GOLDEN_CENTURY_CABINET_DECK.md](reverse-engineering/GOLDEN_CENTURY_CABINET_DECK.md)): a
+  winning line blinks in two even 0.66 s cycles, its badges lit exactly while its symbols show
+  (STRONG; the app's uneven 1.45 s was the mobile app's); the first free game's banner counts from
+  "1 OF 0", a step every 5 frames, the status blank until a step after the total (VERIFIED); the
+  doors open 0.30 s after the rest and faster, the wins at the rest + 1.5 s, a no-win free game's
+  next reels at the rest + 2.0 s (STRONG; PARTIAL for the wins); FEATURE COMPLETED waits for the
+  last count, "Feature Completed" then the offer, CREDIT no longer flickering to the total
+  (STRONG); a free game's WIN banner no longer flashes the last game's amount (our glitch, fixed);
+  no start prompt from a denomination choice to the first game (STRONG). The club's meter labels
+  shade orange to yellow and its denomination yellow to orange (direction VERIFIED, tints PARTIAL),
+  the status and message texts have a dark rim all round (STRONG), and the club's tall pill has our
+  drawing of its signal-like icon on a yellow-to-orange pill (shapes VERIFIED). The prepared doors
+  run lands its doors in short vertical runs, the other prepared runs' free reels the model's own
+  (synthetic). Unit tests cover each; checked on muted captures (the doors run, Golden Gong, Spring
+  Festival, the casino profile) and an event trace (doors at the rest + 0.30 s, wins + 1.50 s,
+  no-win next game + 2.00 s).
+
 ## Project interpretation (owner reset, 2026-10-14)
 
 **The target is to recreate the actual Dragon Link gaming-machine experience as closely as

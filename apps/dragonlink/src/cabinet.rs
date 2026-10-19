@@ -1929,10 +1929,27 @@ fn meter_y(profile: Profile) -> f32 {
     }
 }
 
-/// The status and message rows' text: Verdana Bold 23, pale blue-white,
-/// with a dark edge (cabinet footage); the casino spaces its letters a
-/// little.
+/// The status and message rows' text: Verdana Bold 23, pale blue-white
+/// (cabinet footage); the casino spaces its letters a little. Its dark edge
+/// is drawn by copies (`spawn_edged_text`).
 fn status_text(s: &str, fonts: &CabFonts, profile: Profile, justify: Justify) -> impl Bundle {
+    status_text_in(
+        s,
+        fonts,
+        profile,
+        TextLayout::justify(justify),
+        Color::srgb_u8(210, 220, 245),
+    )
+}
+
+/// A status-row text in `colour`, laid out by `layout`.
+fn status_text_in(
+    s: &str,
+    fonts: &CabFonts,
+    profile: Profile,
+    layout: TextLayout,
+    colour: Color,
+) -> impl Bundle {
     (
         Text::new(s),
         TextFont {
@@ -1940,13 +1957,298 @@ fn status_text(s: &str, fonts: &CabFonts, profile: Profile, justify: Justify) ->
             font_size: FontSize::Px(23.0),
             ..default()
         },
-        TextColor(Color::srgb_u8(210, 220, 245)),
-        TextLayout::justify(justify),
+        TextColor(colour),
+        layout,
         LetterSpacing::Px(if profile == Profile::Casino { 1.5 } else { 0.0 }),
-        TextShadow {
-            offset: Vec2::new(2.0, 2.0),
-            color: Color::srgba(0.03, 0.03, 0.05, 0.9),
+    )
+}
+
+/// The status and message rows' dark edge, all round the letters (club
+/// footage, a straight-on zoom: T49m2COe0Ho; STRONG; an offset shadow left
+/// the letters' top and left edges light). Bevy draws one shadow a text and
+/// no stroke, so the edge is eight dark copies of the text, this far off
+/// each way, behind it.
+const EDGE_OFFSETS: [(f32, f32); 8] = [
+    (-1.5, -1.5),
+    (0.0, -1.5),
+    (1.5, -1.5),
+    (-1.5, 0.0),
+    (1.5, 0.0),
+    (-1.5, 1.5),
+    (0.0, 1.5),
+    (1.5, 1.5),
+];
+const EDGE_COLOUR: Color = Color::srgba(0.03, 0.03, 0.05, 0.9);
+
+/// A copy of another text (a dark edge, a shaded band) that follows its
+/// words, letter spacing and visibility (`echo_texts`).
+#[derive(Component)]
+pub struct Echo(Entity);
+
+/// Keep each copy's words, spacing and visibility those of its text.
+pub fn echo_texts(
+    owners: Query<(&Text, Option<&LetterSpacing>, &Visibility), Without<Echo>>,
+    mut echoes: Query<(
+        &Echo,
+        &mut Text,
+        Option<&mut LetterSpacing>,
+        &mut Visibility,
+    )>,
+) {
+    for (echo, mut text, spacing, mut vis) in &mut echoes {
+        let Ok((theirs, their_spacing, their_vis)) = owners.get(echo.0) else {
+            continue;
+        };
+        if text.0 != theirs.0 {
+            text.0.clone_from(&theirs.0);
+        }
+        if let (Some(mut mine), Some(their_spacing)) = (spacing, their_spacing)
+            && *mine != *their_spacing
+        {
+            *mine = *their_spacing;
+        }
+        if *vis != *their_vis {
+            *vis = *their_vis;
+        }
+    }
+}
+
+/// Move a length by `d` pixels, if it is in pixels.
+fn nudge(v: Val, d: f32) -> Val {
+    match v {
+        Val::Px(p) => Val::Px(p + d),
+        other => other,
+    }
+}
+
+/// Spawn a status-row text placed by `node`, with `extra` on it and its dark
+/// edge behind it (following it), all at `z` if given; returns the text.
+#[allow(clippy::too_many_arguments)]
+fn spawn_edged_text(
+    c: &mut ChildSpawnerCommands,
+    s: &str,
+    fonts: &CabFonts,
+    profile: Profile,
+    justify: Justify,
+    node: Node,
+    z: Option<GlobalZIndex>,
+    extra: impl Bundle,
+) -> Entity {
+    let mut copies = Vec::with_capacity(EDGE_OFFSETS.len());
+    for (dx, dy) in EDGE_OFFSETS {
+        let mut at = node.clone();
+        at.left = nudge(at.left, dx);
+        at.top = nudge(at.top, dy);
+        let mut copy = c.spawn((
+            status_text_in(s, fonts, profile, TextLayout::justify(justify), EDGE_COLOUR),
+            at,
+        ));
+        if let Some(z) = z {
+            copy.insert(z);
+        }
+        copies.push(copy.id());
+    }
+    let mut text = c.spawn((status_text(s, fonts, profile, justify), node, extra));
+    if let Some(z) = z {
+        text.insert(z);
+    }
+    let owner = text.id();
+    for copy in copies {
+        c.commands().entity(copy).insert(Echo(owner));
+    }
+    owner
+}
+
+/// A fixed status-row text in a row (the start prompts' words), with its
+/// dark edge behind it.
+fn spawn_edged_inline(c: &mut ChildSpawnerCommands, s: &str, fonts: &CabFonts, profile: Profile) {
+    c.spawn(Node::default()).with_children(|w| {
+        for (dx, dy) in EDGE_OFFSETS {
+            w.spawn((
+                status_text_in(s, fonts, profile, TextLayout::no_wrap(), EDGE_COLOUR),
+                Node {
+                    position_type: PositionType::Absolute,
+                    left: Val::Px(dx),
+                    top: Val::Px(dy),
+                    ..default()
+                },
+            ));
+        }
+        w.spawn(status_text(s, fonts, profile, Justify::Left));
+    });
+}
+
+/// The club meters' labels (CREDIT, BET, WIN) are orange at the top of their
+/// capitals and yellow in the lower half; the denomination is the other way
+/// up, yellow at the top and orange at the foot (club footage, row profiles
+/// of the label pixels on three machines: CAM8vranI9Y, T49m2COe0Ho,
+/// y8c8lEdPW8Y; the direction VERIFIED, the white digits beside them flat,
+/// so the shading is the art's; the tints from camera colour, PARTIAL). Bevy
+/// fills text with one colour, so a label is drawn in its lower colour with
+/// copies in steps of the shading over it, each clipped to the top of the
+/// capitals (`shade_bands`): (top colour, lower colour, the share of the
+/// capitals' height from their top where the lower colour is reached, steps).
+const LABEL_SHADE: ([u8; 3], [u8; 3], f32, u32) = ([245, 155, 45], [245, 214, 40], 0.6, 5);
+const DENOM_SHADE: ([u8; 3], [u8; 3], f32, u32) = ([245, 212, 62], [235, 125, 45], 0.85, 6);
+
+/// The shading's lower colour, the label's own.
+fn shade_base((_, lower, _, _): ([u8; 3], [u8; 3], f32, u32)) -> Color {
+    Color::srgb_u8(lower[0], lower[1], lower[2])
+}
+
+/// The copies that shade a label from `top` at the capitals' top to `lower`
+/// at `until` of their height, in `steps`: (colour, the share of the
+/// capitals' height each is clipped to), the largest first, so each smaller
+/// one lies over the last and each shows its colour over its own step.
+fn shade_bands((top, lower, until, steps): ([u8; 3], [u8; 3], f32, u32)) -> Vec<(Color, f32)> {
+    let steps = steps.max(1);
+    (0..steps)
+        .rev()
+        .map(|k| {
+            // Step k covers until * k / steps .. until * (k + 1) / steps, in
+            // the shading's colour at its middle.
+            let mid = (k as f32 + 0.5) / steps as f32;
+            let channel = |i: usize| {
+                let (a, b) = (f32::from(top[i]), f32::from(lower[i]));
+                (a + (b - a) * mid) / 255.0
+            };
+            (
+                Color::srgb(channel(0), channel(1), channel(2)),
+                until * (k + 1) as f32 / steps as f32,
+            )
+        })
+        .collect()
+}
+/// Where the meters' face (Impact) puts its capitals in a `label` box: their
+/// top below the box's top, and their height, as shares of the font size
+/// (from the face's metrics: cap height 0.79 of the size, the line box 1.2).
+const IMPACT_CAPS: (f32, f32) = (0.21, 0.79);
+
+/// Copies of a `label` in the colours of `bands`, each clipped to the top of
+/// its capitals, drawn over it (see `LABEL_SHADE`); `of` makes them follow a
+/// label whose words change.
+#[allow(clippy::too_many_arguments)]
+fn spawn_label_bands(
+    c: &mut ChildSpawnerCommands,
+    text: &str,
+    font: &Handle<Font>,
+    size: f32,
+    (cx, cy, w): (f32, f32, f32),
+    bands: &[(Color, f32)],
+    transform: UiTransform,
+    z: Option<GlobalZIndex>,
+    of: Option<Entity>,
+) {
+    for &(colour, share) in bands {
+        let mut clip = c.spawn((
+            Node {
+                position_type: PositionType::Absolute,
+                left: Val::Px(cx - w / 2.0),
+                top: Val::Px(cy - size * 0.62),
+                width: Val::Px(w),
+                height: Val::Px(size * (IMPACT_CAPS.0 + IMPACT_CAPS.1 * share)),
+                overflow: Overflow::clip(),
+                ..default()
+            },
+            transform,
+        ));
+        if let Some(z) = z {
+            clip.insert(z);
+        }
+        clip.with_children(|k| {
+            let mut copy = k.spawn((
+                Text::new(text),
+                TextFont {
+                    font: bevy::text::FontSource::Handle(font.clone()),
+                    font_size: FontSize::Px(size),
+                    ..default()
+                },
+                TextColor(colour),
+                TextLayout::justify(Justify::Center),
+                Node {
+                    position_type: PositionType::Absolute,
+                    left: Val::Px(0.0),
+                    top: Val::Px(0.0),
+                    width: Val::Px(w),
+                    ..default()
+                },
+            ));
+            if let Some(of) = of {
+                copy.insert(Echo(of));
+            }
+        });
+    }
+}
+
+/// The key under which the app's own drawing of the club tall pill's icon
+/// joins the pack's ui images (made by `club_pill_icon`, never from a pack).
+pub const PILL_ICON_KEY: &str = "_club_pill_icon";
+/// The club tall pill's icon on the canvas, width and height.
+const PILL_ICON: (f32, f32) = (36.0, 56.0);
+
+/// Whether the club tall pill's icon covers (`x`, `y`), in canvas pixels from
+/// its box's top left (`PILL_ICON`): from the top, two arcs and a half-disc
+/// about one centre, like a signal sign, then a trapezoid wider at its top
+/// and a short bar (club cabinets, straight on at 1080p: CAM8vranI9Y and
+/// T49m2COe0Ho at 13.0 s; the shapes VERIFIED, their sizes measured on the
+/// zoom and scaled to our pill, PARTIAL). Our own drawing.
+fn pill_icon_covers(x: f32, y: f32) -> bool {
+    const CX: f32 = PILL_ICON.0 / 2.0;
+    // The arcs' and the half-disc's centre, on the half-disc's flat foot.
+    const CY: f32 = 28.4;
+    // How far the arcs reach either side of upright, in degrees.
+    const ARC_HALF_ANGLE: f32 = 40.0;
+    let dx = x - CX;
+    let up = CY - y;
+    let r = dx.hypot(up);
+    let within = up > 0.0 && dx.abs().atan2(up).to_degrees() <= ARC_HALF_ANGLE;
+    let arc = |outer: f32, inner: f32| within && r <= outer && r >= inner;
+    let half_disc = up >= 0.0 && r <= 6.6;
+    // The trapezoid, 33 px across at its top and 20 at its foot.
+    let trapezoid = (32.0..=46.0).contains(&y) && {
+        let k = (y - 32.0) / 14.0;
+        dx.abs() <= 16.5 + (10.0 - 16.5) * k
+    };
+    let bar = (48.5..=56.0).contains(&y) && dx.abs() <= 9.5;
+    arc(28.4, 21.2) || arc(18.0, 10.6) || half_disc || trapezoid || bar
+}
+
+/// The club tall pill's icon as an image of ours, blue on clear, drawn at
+/// twice the canvas size and smoothed (4 x 4 samples a pixel).
+pub fn club_pill_icon() -> Image {
+    use bevy::asset::RenderAssetUsages;
+    use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};
+    const SCALE: u32 = 2;
+    const SAMPLES: u32 = 4;
+    let (w, h) = (PILL_ICON.0 as u32 * SCALE, PILL_ICON.1 as u32 * SCALE);
+    let mut data = Vec::with_capacity((w * h * 4) as usize);
+    for py in 0..h {
+        for px in 0..w {
+            let mut hits = 0u32;
+            for sy in 0..SAMPLES {
+                for sx in 0..SAMPLES {
+                    let x = (px as f32 + (sx as f32 + 0.5) / SAMPLES as f32) / SCALE as f32;
+                    let y = (py as f32 + (sy as f32 + 0.5) / SAMPLES as f32) / SCALE as f32;
+                    if pill_icon_covers(x, y) {
+                        hits += 1;
+                    }
+                }
+            }
+            let alpha = (hits * 255 / (SAMPLES * SAMPLES)) as u8;
+            // The cabinet's blue (camera colour about 25, 45, 160).
+            data.extend_from_slice(&[28, 42, 150, alpha]);
+        }
+    }
+    Image::new(
+        Extent3d {
+            width: w,
+            height: h,
+            depth_or_array_layers: 1,
         },
+        TextureDimension::D2,
+        data,
+        TextureFormat::Rgba8UnormSrgb,
+        RenderAssetUsages::all(),
     )
 }
 
@@ -2218,9 +2520,12 @@ fn spawn_meter_band(
     }
 
     // The status line under the reels.
-    c.spawn((
-        CabMeter::Multiplier,
-        status_text("", fonts, profile, Justify::Center),
+    spawn_edged_text(
+        c,
+        "",
+        fonts,
+        profile,
+        Justify::Center,
         Node {
             position_type: PositionType::Absolute,
             left: Val::Px(STATUS_X - 600.0),
@@ -2228,7 +2533,9 @@ fn spawn_meter_band(
             width: Val::Px(1200.0),
             ..default()
         },
-    ));
+        None,
+        CabMeter::Multiplier,
+    );
 
     // The message row: the start prompts at its right, right-aligned to
     // x 1685, wholly above the band.
@@ -2262,7 +2569,7 @@ fn spawn_meter_band(
             },
         ))
         .with_children(|row| {
-            row.spawn(status_text(count, fonts, profile, Justify::Left));
+            spawn_edged_inline(row, count, fonts, profile);
             // The symbol as a small tile, on its own background (a coin on
             // black).
             row.spawn((
@@ -2291,15 +2598,18 @@ fn spawn_meter_band(
                     },
                 ));
             });
-            row.spawn(status_text(text, fonts, profile, Justify::Left));
+            spawn_edged_inline(row, text, fonts, profile);
         });
     }
 
     // A feature's message ("Line 3 wins 20", "Scatter wins 100") takes the
     // prompts' place on the same row.
-    c.spawn((
-        FeatureMessage,
-        status_text("", fonts, profile, Justify::Right),
+    spawn_edged_text(
+        c,
+        "",
+        fonts,
+        profile,
+        Justify::Right,
         Node {
             position_type: PositionType::Absolute,
             left: Val::Px(1145.0),
@@ -2307,14 +2617,19 @@ fn spawn_meter_band(
             width: Val::Px(540.0),
             ..default()
         },
-    ));
+        None,
+        FeatureMessage,
+    );
 
     // The club's system message at the row's left (see `SystemMessage`),
     // over the chooser's splash and the gamble screen (12) as CREDIT is:
     // it stays on the chooser (VERIFIED). The longest text is 728 px.
-    c.spawn((
-        SystemMessage,
-        status_text("", fonts, profile, Justify::Left),
+    spawn_edged_text(
+        c,
+        "",
+        fonts,
+        profile,
+        Justify::Left,
         Node {
             position_type: PositionType::Absolute,
             left: Val::Px(SYSTEM_MESSAGE_X),
@@ -2322,14 +2637,20 @@ fn spawn_meter_band(
             width: Val::Px(800.0),
             ..default()
         },
-        GlobalZIndex(13),
-    ));
+        Some(GlobalZIndex(13)),
+        SystemMessage,
+    );
 
-    // The tall yellow pill at the far left, with its stacked bars (its
-    // function is not shown on footage). In this app it opens the machine
-    // chooser (MachineMenu), this app's own feature.
+    // The tall yellow pill at the far left (its function is not shown on
+    // footage). In this app it opens the machine chooser (MachineMenu), this
+    // app's own feature. The casino's has stacked bars on a flat yellow
+    // (GOLDEN_CENTURY_CABINET_DECK.md, "Casino left side"); the club's
+    // shades from pale yellow at the top to orange at the foot and carries
+    // our drawing of its icon (`club_pill_icon`), the bars where it is
+    // missing.
     let (pill_top, pill_h) = if club { (937.0, 92.0) } else { (945.0, 90.0) };
-    c.spawn((
+    let icon = art.ui.get(PILL_ICON_KEY).filter(|_| club).cloned();
+    let mut pill_node = c.spawn((
         Node {
             border: UiRect::all(Val::Px(2.0)),
             border_radius: BorderRadius::all(Val::Px(20.0)),
@@ -2342,23 +2663,53 @@ fn spawn_meter_band(
         BackgroundColor(Color::srgb(0.98, 0.8, 0.14)),
         BorderColor::all(Color::srgb(0.75, 0.45, 0.05)),
         GlobalZIndex(14),
-    ))
-    .with_children(|b| {
-        for w in [28.0, 22.0, 14.0] {
-            b.spawn((
-                Node {
-                    width: Val::Px(w),
-                    height: Val::Px(5.0),
-                    border_radius: BorderRadius::all(Val::Px(3.0)),
-                    ..default()
-                },
-                BackgroundColor(Color::srgb(0.12, 0.14, 0.4)),
-            ));
-        }
-    })
-    .observe(|_press: On<PointerPress>, mut menu: ResMut<MachineMenu>| {
-        menu.open = !menu.open;
-    });
+    ));
+    if club {
+        // Pale yellow at the top to orange at the foot (club cabinets; the
+        // tints from camera colour, PARTIAL).
+        let stop = |r: u8, g: u8, b: u8, at: f32| {
+            bevy::ui::ColorStop::new(Color::srgb_u8(r, g, b), Val::Percent(at))
+        };
+        pill_node.insert(bevy::ui::BackgroundGradient(vec![
+            bevy::ui::Gradient::Linear(bevy::ui::LinearGradient::to_bottom(vec![
+                stop(250, 228, 120, 0.0),
+                stop(246, 200, 50, 45.0),
+                stop(238, 150, 40, 100.0),
+            ])),
+        ]));
+    }
+    pill_node
+        .with_children(|b| {
+            if let Some(image) = icon {
+                b.spawn((
+                    Node {
+                        width: Val::Px(PILL_ICON.0),
+                        height: Val::Px(PILL_ICON.1),
+                        ..default()
+                    },
+                    ImageNode {
+                        image,
+                        image_mode: NodeImageMode::Stretch,
+                        ..default()
+                    },
+                ));
+                return;
+            }
+            for w in [28.0, 22.0, 14.0] {
+                b.spawn((
+                    Node {
+                        width: Val::Px(w),
+                        height: Val::Px(5.0),
+                        border_radius: BorderRadius::all(Val::Px(3.0)),
+                        ..default()
+                    },
+                    BackgroundColor(Color::srgb(0.12, 0.14, 0.4)),
+                ));
+            }
+        })
+        .observe(|_press: On<PointerPress>, mut menu: ResMut<MachineMenu>| {
+            menu.open = !menu.open;
+        });
     // The tabs. Club: GAMES MENU above the band at the far left, GAME RULES
     // on it; COLLECT over the denomination box. Casino: GAME RULES on the
     // band at the left, GAMES MENU over the denomination box.
@@ -2483,9 +2834,25 @@ fn spawn_meter_band(
         ..UiTransform::IDENTITY
     };
     for (i, (text, x)) in labels.into_iter().enumerate() {
-        let mut e = c.spawn((label(text, font, 68.0, gold, x, my, 260.0), narrow));
-        if i == 0 {
-            e.insert(GlobalZIndex(14));
+        let z = (i == 0).then_some(GlobalZIndex(14));
+        let base = if club { shade_base(LABEL_SHADE) } else { gold };
+        let mut e = c.spawn((label(text, font, 68.0, base, x, my, 260.0), narrow));
+        if let Some(z) = z {
+            e.insert(z);
+        }
+        // Club: orange at the top of the capitals (see `LABEL_SHADE`).
+        if club {
+            spawn_label_bands(
+                c,
+                text,
+                font,
+                68.0,
+                (x, my, 260.0),
+                &shade_bands(LABEL_SHADE),
+                narrow,
+                z,
+                None,
+            );
         }
     }
     for (meter, x) in values {
@@ -2533,10 +2900,38 @@ fn spawn_meter_band(
         BackgroundColor(Color::srgba_u8(12, 10, 12, 242)),
         BorderColor::all(Color::srgb_u8(60, 58, 60)),
     ));
-    c.spawn((
-        CabMeter::Denom,
-        label("1¢", font, dsize, denom_colour, dx, dy, bw),
-    ));
+    // Club: yellow at the top, orange at the foot (see `LABEL_SHADE`).
+    let denom = c
+        .spawn((
+            CabMeter::Denom,
+            label(
+                "1¢",
+                font,
+                dsize,
+                if club {
+                    shade_base(DENOM_SHADE)
+                } else {
+                    denom_colour
+                },
+                dx,
+                dy,
+                bw,
+            ),
+        ))
+        .id();
+    if club {
+        spawn_label_bands(
+            c,
+            "1¢",
+            font,
+            dsize,
+            (dx, dy, bw),
+            &shade_bands(DENOM_SHADE),
+            UiTransform::IDENTITY,
+            None,
+            Some(denom),
+        );
+    }
     c.spawn((
         CabMeter::MinBet,
         label(
@@ -2640,16 +3035,22 @@ pub fn start_prompts(
     fidelity: Res<Fidelity>,
     show: Res<FeatureShow>,
     gamble: Res<GambleShow>,
+    menu: Res<GamesMenu>,
     mut prompts: Query<(&StartPrompt, &mut Visibility)>,
 ) {
     if !fidelity.0 {
         return;
     }
-    // Blank from START FEATURE to the first free game too (club cabinet).
+    // Blank from START FEATURE to the first free game too (club cabinet),
+    // and from a denomination choice until the first game starts (club
+    // cabinets: y8c8lEdPW8Y 11.8-15.4 s, CAM8vranI9Y 11.4-13.8 s, the prompt
+    // back with the game's debit; STRONG; after a visit with no change
+    // UNKNOWN, treated alike).
     let quiet = show.message().is_some()
         || show.fg_cut.is_some()
         || show.stage != Stage::Base
-        || gamble.active;
+        || gamble.active
+        || menu.selecting;
     for (p, mut vis) in &mut prompts {
         let want = if p.which == show.prompt && !quiet {
             Visibility::Inherited
@@ -3725,8 +4126,16 @@ impl RestPhase {
 /// payment: on the last free game the engine is idle before they are
 /// shown): CREDIT holds still while the win counts on WIN (cabinet
 /// footage).
-fn credit_held(sim: &Sim, show: &FeatureShow) -> bool {
-    show.in_feature() || show.counting() || !sim.game.is_idle()
+fn credit_held(sim: &Sim, presentation: &Presentation, show: &FeatureShow) -> bool {
+    show.in_feature() || show.counting() || !sim.game.is_idle() || fg_end_queued(presentation, show)
+}
+
+/// FEATURE COMPLETED is showing and the free games' last events are still
+/// queued: CREDIT still holds the feature's total off (club cabinets: CREDIT
+/// rises only when the win is taken, y8c8lEdPW8Y 1045.933, 1bAevGz0K2k
+/// 368.300; STRONG), until the gamble's offer holds it.
+fn fg_end_queued(presentation: &Presentation, show: &FeatureShow) -> bool {
+    show.stage == Stage::FreeGamesDone && !presentation.queue.is_empty()
 }
 
 /// The credits CREDIT shows (before any cents a change to a larger
@@ -3740,7 +4149,7 @@ fn credit_shown(
     show: &FeatureShow,
     gamble: &GambleShow,
 ) -> u64 {
-    if credit_held(sim, show) {
+    if credit_held(sim, presentation, show) {
         return presentation
             .shown_credits
             .saturating_sub(presentation.shown_win);
@@ -3792,6 +4201,8 @@ fn hold_and_spin_end_line(offered: bool, stands: bool, first_turn: bool) -> Opti
 const PLAY_ON: &str = "PLAY ON, GAMBLE or TAKE WIN";
 /// The status line at Hold & Spin's end.
 const FREE_SPINS_COMPLETED: &str = "Free Spins Completed";
+/// The status line as the free games end.
+const FEATURE_COMPLETED: &str = "Feature Completed";
 
 /// The cabinet's credit, bet and win meters.
 #[allow(clippy::too_many_arguments)]
@@ -3852,15 +4263,22 @@ pub fn update_meters(
         })
         .flatten()
         .map(str::to_string);
+    // FEATURE COMPLETED: "Feature Completed" on the status line a moment,
+    // then the offer (club cabinets: one frame, y8c8lEdPW8Y 1044.267, then
+    // PLAY ON; a one-frame crossfade, 1bAevGz0K2k 367.567; VERIFIED on
+    // y8c8). Here while the free games' last events are queued (an event
+    // interval).
+    let fg_end = fg_end_queued(&presentation, &show).then(|| FEATURE_COMPLETED.to_string());
     let feature_caption = show
         .grand_caption(cents)
         .or(hs_end)
+        .or(fg_end)
         .or_else(|| show.caption());
     for (meter, mut text, mut colour, spacing) in &mut meters {
         let value = match meter {
             CabMeter::Credit => {
                 let credits = credit_shown(&sim, &presentation, &rollup, &show, &gamble);
-                if in_credits || residue == 0 || credit_held(&sim, &show) {
+                if in_credits || residue == 0 || credit_held(&sim, &presentation, &show) {
                     amount(credits, cents)
                 } else {
                     money(credits.saturating_mul(cents).saturating_add(residue), 1)
@@ -4860,6 +5278,20 @@ impl Rollup {
         self.to.saturating_sub(self.from)
     }
 
+    /// Done with the last count as a free game starts: it counts nothing
+    /// more (`win` is 0) until this game's win arrives, which then counts
+    /// from what WIN shows. Without it the banner showed the last game's
+    /// amount for the event interval between this game's line wins and its
+    /// credit
+    /// (our recording: "WIN $1.00 WIN" for 4 frames before $0.01), and the
+    /// first free game the scatter's; club cabinets never do (y8c8lEdPW8Y
+    /// 1027.4). What WIN shows and the total seen stay; no tune plays in
+    /// the free games, so nothing stops.
+    pub fn settle(&mut self) {
+        self.from = self.to;
+        self.t = self.t.max(self.duration);
+    }
+
     /// The win shown on the meter now.
     pub fn shown(&self) -> u64 {
         if self.duration <= 0.0 {
@@ -5786,11 +6218,12 @@ impl FeatureShow {
                     number: *number,
                     total: number + remaining,
                 };
-                // The first free game: the banner, its total counting up and
-                // the music come with the reels (club cabinet: the banner 2
-                // frames after the first motion).
+                // The first free game: the banner, its total counting up from
+                // 0 and the music come with the reels (club cabinet: the
+                // banner 2 frames after the first motion, "FREE GAME 1 OF 0"
+                // for 5 frames).
                 if *number == 1 {
-                    self.fg_count = Some((0.0, 1));
+                    self.fg_count = Some((0.0, 0));
                 }
                 self.fg_cut = None;
             }
@@ -6038,10 +6471,13 @@ impl FeatureShow {
                 Some("Press START FEATURE button".into())
             }
             (Some(Await::Respin), _) if self.respin.is_none() => Some("Press SPIN button".into()),
-            (_, Stage::FreeGames { number, total }) => Some(format!(
-                "Free Game {number} of {}",
-                self.counter_total(total)
-            )),
+            // Blank while the banner's total counts up, until one step after
+            // it reaches the total (club cabinets: y8c8lEdPW8Y 951.567,
+            // 1bAevGz0K2k 330.333; VERIFIED).
+            (_, Stage::FreeGames { .. }) if self.fg_count.is_some() => Some(String::new()),
+            (_, Stage::FreeGames { number, total }) => {
+                Some(format!("Free Game {number} of {total}"))
+            }
             // A Hold & Spin inside the free games keeps the free game on the
             // status line through its intro, count-up and respins (cabinet
             // footage: "Free Game 3 of 6" over its board, y8c8lEdPW8Y 962.0-
@@ -6144,10 +6580,13 @@ impl FeatureShow {
     }
 
     /// Whether `front`, the next event to show, waits for a win's count to
-    /// finish: a feature's trigger, the free games' prompt and their return
-    /// after a Hold & Spin do. Not the free games' own trigger once its
-    /// count has begun: the cabinet shows that prompt as the scatter win
-    /// starts counting, and the count goes on under it.
+    /// finish: a feature's trigger, the free games' prompt, their return
+    /// after a Hold & Spin and their end do. Not the free games' own trigger
+    /// once its count has begun: the cabinet shows that prompt as the
+    /// scatter win starts counting, and the count goes on under it. FEATURE
+    /// COMPLETED comes the frame after the last free game's count reaches
+    /// the feature's total (club cabinets: y8c8lEdPW8Y 1044.233-1044.267,
+    /// 1bAevGz0K2k 367.567; STRONG), not while it counts.
     pub fn waits_for_count(&self, front: Option<&Event>) -> bool {
         let waits = matches!(
             front,
@@ -6155,6 +6594,7 @@ impl FeatureShow {
                 Event::FeatureTriggered { .. }
                     | Event::FreeGamesStarted { .. }
                     | Event::FreeGamesResumed { .. }
+                    | Event::FreeGamesCompleted { .. }
             )
         );
         let prompt_now = self.trigger_counting()
@@ -6539,7 +6979,9 @@ const FG_WIN_HOLD: f32 = 1.0;
 
 /// What the WIN banner over the reels shows: a free game's big win while it
 /// counts and a moment after, or a Hold & Spin's payment (always shown:
-/// "WIN $0.29 WIN" at 1bAevGz0K2k 164.3).
+/// "WIN $0.29 WIN" at 1bAevGz0K2k 164.3). The count is this free game's win
+/// alone: each free game's start settles the last count (`Rollup::settle`)
+/// and its credit arrives in one step.
 fn banner_win(show: &FeatureShow, rollup: &Rollup, total_bet: u64) -> Option<u64> {
     let big = rollup.win() >= FG_WIN_BANNER_X.saturating_mul(total_bet.max(1));
     let held = rollup.active() || rollup.after < FG_WIN_HOLD;
@@ -9069,21 +9511,33 @@ const MAJOR_AMOUNT_GREEN: Color = Color::srgb(0.30, 0.95, 0.35);
 // Free games: the doors reveal and the win banner
 // ---------------------------------------------------------------------------
 //
-// Real game (all six free games of a recorded feature, frame by frame and
-// with sound): the doors land with the reels; 3 frames after the last reel is
-// still every door swings open together (the game's own 42-frame sequence at
-// 30 fps, 1.4 s) on the symbol they reveal, to SND_EndMask; the game's wins
-// show 47 frames after the doors begin to open (or FEATURE COMPLETED, after
-// the last game).
+// Club cabinets (motion per door cell at 30 fps, 4 fine and 6 coarse reveals
+// on 1bAevGz0K2k and y8c8lEdPW8Y): the doors land with the reels; about
+// 0.30 s after the last reel is still every door swings open together on the
+// symbol they reveal, to SND_EndMask (the sound placed from the app), their
+// motion visible for 0.60-0.73 s and over by the rest + 0.93-0.97 s (STRONG);
+// the game's wins show at the rest + 1.5 s (PARTIAL: 3 cases, one machine);
+// with no win the next free game spins at the rest + 2.0 s (STRONG: 4 cases,
+// two machines). The app follows the cabinet. The official app, recorded with
+// sound (all six free games of a feature), opens them 3 frames after the
+// rest, the 42-frame sequence at 30 fps (1.4 s), and shows the wins 47
+// frames after they begin to open (VERIFIED for the mobile app only).
 
 /// Seconds after the reveal is presented that the doors open (it is
-/// presented when they open), their frame rate, and the seconds from their
-/// opening to the game's wins.
+/// presented when they open), their frame rate (the game's own 42-frame
+/// sequence then lasts 1.0 s; its motion, frames 1-29, 0.69 s, over by the
+/// rest + 0.99 s as on the cabinet; frames 30-41 a faint fading remnant), and
+/// the seconds from their opening to the game's wins (the rest + 1.5 s).
 const REVEAL_OPEN: f32 = 0.0;
-const REVEAL_FPS: f32 = 30.0;
-const REVEAL_WINS: f32 = 47.0 / 30.0;
-/// The reveal is presented this long after the last reel is still.
-pub const REVEAL_AFTER_REST: f32 = 3.0 / 30.0;
+const REVEAL_FPS: f32 = 42.0;
+const REVEAL_WINS: f32 = 1.2;
+/// The doors' reveal is presented this long after the last reel is still
+/// (club cabinets: 0.22-0.37 s, three of four reveals about 0.30 s).
+pub const REVEAL_AFTER_REST: f32 = 0.30;
+/// A wild filling its reel (Golden Gong's monk) is presented this long after
+/// the last reel is still: the official app's door delay, kept for it (its
+/// cabinet timing was never measured).
+pub const EXPAND_AFTER_REST: f32 = 3.0 / 30.0;
 
 /// The doors opening on one position.
 #[derive(Component)]
@@ -10291,9 +10745,12 @@ pub fn spawn_gamble_screen(
             Visibility::Hidden,
         ));
         // The prompt takes the status line's place and style.
-        g.spawn((
-            GambleText::Prompt,
-            status_text("", fonts, profile, Justify::Center),
+        spawn_edged_text(
+            g,
+            "",
+            fonts,
+            profile,
+            Justify::Center,
             Node {
                 position_type: PositionType::Absolute,
                 left: Val::Px(STATUS_X - 600.0),
@@ -10301,7 +10758,9 @@ pub fn spawn_gamble_screen(
                 width: Val::Px(1200.0),
                 ..default()
             },
-        ));
+            None,
+            GambleText::Prompt,
+        );
     });
 }
 
@@ -10531,17 +10990,22 @@ pub fn gamble_screen(
 //
 // Cabinet footage of a line win: the line is drawn with the game's own
 // pieces, a numbered badge over the line tab at each end and a short dash in
-// each gap between the reels, at the line's rows; it blinks (on about three
-// quarters of a second in each second), each winning line in turn, and the
-// message at the right reads "Line 1 wins 2".
+// each gap between the reels, at the line's rows; it blinks with its winning
+// symbols in turn (each lit about a third of a second), each winning line
+// for two blinks in turn, and the message at the right reads "Line 1 wins 2".
 
-/// Seconds each winning line shows (real game: 43-45 frames, each line in
-/// turn, round and round until the next game). Within it the line's badges
-/// light twice, and its winning symbols that do not animate blink out twice,
-/// in between (measured frame by frame).
-const WIN_LINE_SECONDS: f32 = 1.45;
-const WIN_LINE_LIT: [(f32, f32); 2] = [(0.0, 0.33), (0.70, 0.93)];
-const WIN_LINE_BLINK: [(f32, f32); 2] = [(0.33, 0.63), (0.97, 1.37)];
+/// Seconds each winning line shows, each line in turn, round and round
+/// until the next game: two even cycles of about 0.66 s, each starting lit.
+/// The line's badges and dashes are lit exactly while its winning symbols
+/// show; the symbols that do not animate blink out exactly while the badges
+/// are off, with no gap and no overlap (club cabinets, frame by frame:
+/// y8c8lEdPW8Y 21.93-24.23 s, cycles of 19-20 frames; CAM8vranI9Y, a
+/// multi-line win, its message moving to the next line every 1.333 s;
+/// STRONG). The official app's lines are uneven, 43-45 frames each with
+/// gaps (VERIFIED for the mobile app only).
+const WIN_LINE_SECONDS: f32 = 1.32;
+const WIN_LINE_LIT: [(f32, f32); 2] = [(0.0, 0.34), (0.66, 0.99)];
+const WIN_LINE_BLINK: [(f32, f32); 2] = [(0.34, 0.66), (0.99, 1.32)];
 
 /// Whether `phase` (seconds into a line's showing) falls in one of `spans`.
 fn in_spans(phase: f32, spans: &[(f32, f32)]) -> bool {
@@ -11618,8 +12082,13 @@ const FG_FIRST_SPIN: f32 = 0.52;
 /// The cut: the first free game is played then, and its start is shown one
 /// event interval later, with its reels.
 const FG_CUT: f32 = FG_FIRST_SPIN - TIMING.event_interval;
-/// Seconds per step of the banner's total counting up after the cut.
-const FG_TICK: f32 = 4.0 / 30.0;
+/// Seconds per step of the banner's total counting up after the cut: it
+/// shows "FREE GAME 1 OF 0" for one step, then 1 to the total a step each,
+/// and the status line stays blank until one step after the total (club
+/// cabinets, frame by frame: y8c8lEdPW8Y 950.400-951.567, 1bAevGz0K2k
+/// 329.167-330.333, 5 video frames a step on both; VERIFIED). The official
+/// app counts from 1, 4 frames a step.
+const FG_TICK: f32 = 5.0 / 30.0;
 /// From the WIN plaque going to the next free game, after a Hold & Spin
 /// inside the free games: 0.37-0.43 s on a club cabinet (y8c8lEdPW8Y
 /// 1019.93-1020.37, 2562.93-2563.37, 3046.57-3046.93; VERIFIED, one
@@ -11627,10 +12096,22 @@ const FG_TICK: f32 = 4.0 / 30.0;
 /// the event interval the next free game's start waits.
 const FG_RESUME: f32 = 0.43 - TIMING.event_interval;
 
+/// A free game with no win: the pause before the next one, so that its reels
+/// start 0.5 s after the doors' reveal ends, at the rest + 2.0 s as on club
+/// cabinets (1bAevGz0K2k 333.67-335.63, 346.57-348.57, 359.60-361.60;
+/// y8c8lEdPW8Y 954.90-956.87; STRONG). The game's last event shows as the
+/// reveal ends (its interval runs out under the reveal), and the next
+/// game's start shows an event interval after the pause. With no doors the
+/// next game spins about 0.67 s after the rest (the cabinet's one case
+/// 0.5 s; HYPOTHESIS). The official app waited 0.85 s (about 2.5 s after
+/// its doors opened).
+const FG_NO_WIN_PAUSE: f32 = 0.5 - TIMING.event_interval;
+
 impl FeatureShow {
-    /// Seconds before a feature's next step (real game): a free game starts
-    /// 1.25 s after its win has counted, or, with no win, about 2.5 s after
-    /// its doors opened (0.85 s after the reveal's end); a respin's step 0.5 s.
+    /// Seconds before a feature's next step: a free game starts 1.25 s
+    /// after its win has counted (the official app), or, with no win, 0.5 s
+    /// after its doors' reveal ends (club cabinets, `FG_NO_WIN_PAUSE`); a
+    /// respin's step 0.5 s.
     pub fn step_pause(&self) -> f32 {
         match self.stage {
             // Back from a Hold & Spin inside the free games: the next free
@@ -11639,7 +12120,7 @@ impl FeatureShow {
             Stage::HoldSpinDone if self.fg_return.is_some() => FG_RESUME,
             Stage::FreeGames { .. } if self.resuming => FG_RESUME,
             Stage::FreeGames { .. } if self.game_won => 1.25,
-            Stage::FreeGames { .. } => 0.85,
+            Stage::FreeGames { .. } => FG_NO_WIN_PAUSE,
             _ => 0.5,
         }
     }
@@ -11722,6 +12203,18 @@ impl FeatureShow {
     }
 }
 
+/// The banner's total counting up to `total`, `t` seconds after it began
+/// from 0, having shown `n`: the count-up's state now (none once it is over,
+/// one step after the total) and how many steps it took since.
+fn fg_count_step(n: u32, total: u32, t: f32) -> (Option<(f32, u32)>, u32) {
+    let mut shown = n;
+    while shown < total && t >= (shown + 1) as f32 * FG_TICK {
+        shown += 1;
+    }
+    let next = (shown < total || t < (total + 1) as f32 * FG_TICK).then_some((t, shown));
+    (next, shown - n)
+}
+
 /// Run the free games' trigger sequence and the cut into the free games.
 pub fn free_games_trigger(
     fidelity: Res<Fidelity>,
@@ -11764,14 +12257,13 @@ pub fn free_games_trigger(
             Stage::FreeGames { total, .. } => total,
             _ => 0,
         };
-        let t = t0 + dt;
-        let mut n = n;
-        // One tick a step, just before the banner's digit changes.
-        while n < total && t >= n as f32 * FG_TICK {
-            n += 1;
+        let (next, ticks) = fg_count_step(n, total, t0 + dt);
+        for _ in 0..ticks {
+            // One tick a step, as the banner's digit changes (one a step is
+            // HYPOTHESIS: the cabinet's sound was not measured).
             sounds.play(&mut commands, "SND_Fea_Inc");
         }
-        show.fg_count = if n >= total { None } else { Some((t, n)) };
+        show.fg_count = next;
     }
 }
 
@@ -13166,8 +13658,226 @@ mod tests {
         assert_eq!(show.banner_key(None).as_deref(), Some("banner_free_game"));
         assert_eq!(
             show.counter_numbers(None),
-            Some(["1".to_string(), "1".to_string()])
+            Some(["1".to_string(), "0".to_string()])
         );
+    }
+
+    /// The first free game's banner counts its total up from "1 OF 0", one
+    /// step every 5 video frames, and the status line stays blank until one
+    /// step after the total (club cabinets, frame by frame: y8c8lEdPW8Y
+    /// 950.400-951.567, 1bAevGz0K2k 329.167-330.333).
+    #[test]
+    fn the_free_games_counter_counts_from_nought_and_the_status_waits() {
+        let mut show = FeatureShow::default();
+        show.on_event(&Event::FreeGameStarted {
+            number: 1,
+            remaining: 5,
+        });
+        assert_eq!(show.fg_count, Some((0.0, 0)));
+        let numbers = |show: &FeatureShow| show.counter_numbers(None).map(|[_, of]| of);
+        assert_eq!(numbers(&show).as_deref(), Some("0"));
+        assert_eq!(show.caption().as_deref(), Some(""));
+        let mut ticks = 0;
+        let mut at = |show: &mut FeatureShow, t: f32| {
+            let n = show.fg_count.map_or(6, |(_, n)| n);
+            let (next, steps) = fg_count_step(n, 6, t);
+            show.fg_count = next;
+            ticks += steps;
+        };
+        // "1 OF 0" for one step (0.167 s), then a step each 0.167 s.
+        for (t, want) in [
+            (0.15, "0"),
+            (0.17, "1"),
+            (0.34, "2"),
+            (0.99, "5"),
+            (1.01, "6"),
+        ] {
+            at(&mut show, t);
+            assert_eq!(numbers(&show).as_deref(), Some(want), "at {t} s");
+            assert_eq!(show.caption().as_deref(), Some(""), "status at {t} s");
+        }
+        // One step after the total the status shows the free game.
+        at(&mut show, 1.16);
+        assert!(show.fg_count.is_some());
+        assert_eq!(show.caption().as_deref(), Some(""));
+        at(&mut show, 1.17);
+        assert_eq!(show.fg_count, None);
+        assert_eq!(show.caption().as_deref(), Some("Free Game 1 of 6"));
+        assert_eq!(numbers(&show).as_deref(), Some("6"));
+        // One tick a step (HYPOTHESIS).
+        assert_eq!(ticks, 6);
+        assert!((FG_TICK - 5.0 / 30.0).abs() < 1e-6);
+    }
+
+    /// A free game's WIN banner never shows the last game's amount: as a
+    /// game starts the last count is settled, so nothing is counting until
+    /// this game's win arrives, which counts from what WIN shows (our
+    /// recording showed "WIN $1.00 WIN" for 4 frames; club cabinets never).
+    #[test]
+    fn a_free_game_starts_with_the_last_count_settled() {
+        let mut rollup = Rollup {
+            from: 100,
+            to: 2_000,
+            t: 2.0,
+            duration: 2.0,
+            seen: 2_000,
+            after: 0.5,
+            ..Rollup::default()
+        };
+        let mut show = FeatureShow::default();
+        show.on_event(&Event::FreeGameStarted {
+            number: 3,
+            remaining: 3,
+        });
+        // This game's lines are presented an event interval before its
+        // credit: the banner must not show the last game's 1,900.
+        show.on_event(&Event::LineWin {
+            line: 4,
+            count: 3,
+            symbol: "J".into(),
+            award: 60,
+        });
+        assert_eq!(banner_win(&show, &rollup, 50), Some(1_900), "unsettled");
+        rollup.settle();
+        assert_eq!(rollup.win(), 0);
+        assert_eq!(rollup.shown(), 2_000, "WIN keeps what it shows");
+        assert!(!rollup.active());
+        assert_eq!(banner_win(&show, &rollup, 50), None);
+        assert_eq!(show.banner_key(None).as_deref(), Some("banner_free_game"));
+        // The credit arrives: the count runs from what WIN shows (as
+        // `win_rollup` takes it) to the new total, this game's win alone.
+        let from = rollup.shown();
+        assert_eq!(from, 2_000);
+        rollup.from = from;
+        rollup.to = 2_060;
+        assert_eq!(rollup.win(), 60);
+    }
+
+    /// FEATURE COMPLETED waits for the last free game's count, and while the
+    /// free games' last events are queued CREDIT still holds their total
+    /// off and the status reads "Feature Completed" (club cabinets:
+    /// y8c8lEdPW8Y 1044.233-1044.300, 1bAevGz0K2k 367.567).
+    #[test]
+    fn feature_completed_follows_the_last_count() {
+        let completed = Event::FreeGamesCompleted {
+            games_played: 6,
+            total_award: 900,
+        };
+        let playing = FeatureShow {
+            stage: Stage::FreeGames {
+                number: 6,
+                total: 6,
+            },
+            ..FeatureShow::default()
+        };
+        assert!(playing.waits_for_count(Some(&completed)));
+        let mut done = FeatureShow::default();
+        done.on_event(&completed);
+        assert_eq!(done.stage, Stage::FreeGamesDone);
+        let mut presentation = Presentation::default();
+        presentation.queue.push_back((
+            TIMING.event_interval,
+            Event::SpinCompleted {
+                spin: 1,
+                total_award: 900,
+            },
+        ));
+        assert!(fg_end_queued(&presentation, &done));
+        assert!(!fg_end_queued(&presentation, &playing));
+        presentation.queue.clear();
+        assert!(!fg_end_queued(&presentation, &done), "then the offer");
+    }
+
+    /// The doors open 0.30 s after the reels rest, their 42 frames over a
+    /// second, the wins at the rest + 1.5 s; with no win the next free game
+    /// spins at the rest + 2.0 s (club cabinets: 1bAevGz0K2k, y8c8lEdPW8Y).
+    #[test]
+    fn the_doors_and_the_no_win_pace_follow_the_cabinet() {
+        assert!((REVEAL_AFTER_REST - 0.30).abs() < 1e-6);
+        assert!((REVEAL_AFTER_REST + 42.0 / REVEAL_FPS - 1.30).abs() < 1e-6);
+        // The doors' motion (frames 1-29) is over by the rest + 0.99 s.
+        assert!((REVEAL_AFTER_REST + 29.0 / REVEAL_FPS - 0.99).abs() < 0.01);
+        let wins_at = REVEAL_AFTER_REST + REVEAL_OPEN + REVEAL_WINS;
+        assert!((wins_at - 1.5).abs() < 1e-6);
+        let no_win = FeatureShow {
+            stage: Stage::FreeGames {
+                number: 2,
+                total: 6,
+            },
+            ..FeatureShow::default()
+        };
+        // The game's last event shows as the reveal ends; the pause; the
+        // next game's start an event interval later, with its reels.
+        let next_spin = wins_at + no_win.step_pause() + TIMING.event_interval;
+        assert!((next_spin - 2.0).abs() < 1e-6, "{next_spin}");
+        let won = FeatureShow {
+            game_won: true,
+            ..no_win
+        };
+        assert!((won.step_pause() - 1.25).abs() < 1e-6);
+        // Golden Gong's monk keeps its own (unmeasured) delay.
+        const { assert!(EXPAND_AFTER_REST < REVEAL_AFTER_REST) };
+    }
+
+    /// The winning line's badges and symbols take turns in two even cycles
+    /// of about 0.66 s, lit first, with no gap and no overlap (club
+    /// cabinets: y8c8lEdPW8Y 21.93-24.23 s, CAM8vranI9Y).
+    #[test]
+    fn a_winning_line_blinks_in_two_even_cycles() {
+        let mut t = 0.0;
+        let mut lit_frames = 0;
+        while t < WIN_LINE_SECONDS {
+            let lit = in_spans(t, &WIN_LINE_LIT);
+            let blink = in_spans(t, &WIN_LINE_BLINK);
+            assert!(lit != blink, "exactly one of lit and blanked at {t}");
+            if lit {
+                lit_frames += 1;
+            }
+            t += 1.0 / 300.0;
+        }
+        // Lit about half the time.
+        let share = lit_frames as f32 / (WIN_LINE_SECONDS * 300.0);
+        assert!((share - 0.5).abs() < 0.03, "{share}");
+        assert!(in_spans(0.0, &WIN_LINE_LIT), "each line starts lit");
+        let cycle = WIN_LINE_LIT[1].0 - WIN_LINE_LIT[0].0;
+        assert!((cycle - 0.66).abs() < 0.02, "{cycle}");
+        assert!((WIN_LINE_SECONDS - 2.0 * cycle).abs() < 0.02);
+    }
+
+    /// The club tall pill's icon: two arcs and a half-disc over a trapezoid
+    /// and a bar, each apart, symmetric about the middle.
+    #[test]
+    fn the_club_pill_icon_has_its_five_parts() {
+        let cx = PILL_ICON.0 / 2.0;
+        // Down the middle: the top arc, a gap, the second arc, a gap, the
+        // half-disc, a gap, the trapezoid, a gap, the bar.
+        let column: Vec<bool> = (0..56)
+            .map(|y| pill_icon_covers(cx, y as f32 + 0.5))
+            .collect();
+        let mut parts = 0;
+        let mut was = false;
+        for &on in &column {
+            if on && !was {
+                parts += 1;
+            }
+            was = on;
+        }
+        assert_eq!(parts, 5, "{column:?}");
+        for y in 0..56 {
+            for x in 0..18 {
+                let (x, y) = (x as f32 + 0.5, y as f32 + 0.5);
+                assert_eq!(
+                    pill_icon_covers(x, y),
+                    pill_icon_covers(PILL_ICON.0 - x, y),
+                    "{x},{y}"
+                );
+            }
+        }
+        // Outside its box nothing.
+        assert!(!pill_icon_covers(1.0, 40.0) && !pill_icon_covers(cx, 57.0));
+        let image = club_pill_icon();
+        assert_eq!(image.width(), PILL_ICON.0 as u32 * 2);
+        assert_eq!(image.height(), PILL_ICON.1 as u32 * 2);
     }
 
     /// The free games' prompt shows as the scatter win starts counting, the
@@ -13216,6 +13926,10 @@ mod tests {
         assert!(after.waits_for_count(Some(&started)));
         assert!(after.waits_for_count(Some(&hold_and_spin)));
         assert!(after.waits_for_count(Some(&Event::FreeGamesResumed { remaining: 3 })));
+        assert!(after.waits_for_count(Some(&Event::FreeGamesCompleted {
+            games_played: 6,
+            total_award: 10,
+        })));
         assert!(!after.waits_for_count(Some(&Event::SpinStarted { spin: 2 })));
         assert!(!after.waits_for_count(None));
     }
@@ -13365,6 +14079,94 @@ mod tests {
             Some(["4".to_string(), "6".to_string()])
         );
         assert_eq!(show.caption().as_deref(), Some("Free Game 4 of 6"));
+    }
+
+    /// After a denomination choice the message row shows no start prompt
+    /// until the first game starts (club cabinets: y8c8lEdPW8Y 11.8-15.4 s,
+    /// CAM8vranI9Y 11.4-13.8 s).
+    #[test]
+    fn no_start_prompt_from_a_denomination_choice_to_the_first_game() {
+        use bevy::ecs::system::RunSystemOnce;
+        let mut world = World::new();
+        world.insert_resource(Fidelity(true));
+        world.insert_resource(FeatureShow::default());
+        world.insert_resource(GambleShow::default());
+        world.insert_resource(GamesMenu {
+            selecting: true,
+            ..GamesMenu::default()
+        });
+        let prompt = world
+            .spawn((StartPrompt { which: 0 }, Visibility::Inherited))
+            .id();
+        world.run_system_once(start_prompts).unwrap();
+        assert_eq!(world.get::<Visibility>(prompt), Some(&Visibility::Hidden));
+        // The first game starts: the prompt is back.
+        world.resource_mut::<GamesMenu>().selecting = false;
+        world.run_system_once(start_prompts).unwrap();
+        assert_eq!(
+            world.get::<Visibility>(prompt),
+            Some(&Visibility::Inherited)
+        );
+    }
+
+    /// A text's copies (its dark edge, a shaded band) follow its words,
+    /// letter spacing and visibility, and keep their own colour.
+    #[test]
+    fn copies_follow_their_text() {
+        use bevy::ecs::system::RunSystemOnce;
+        let mut world = World::new();
+        let owner = world
+            .spawn((
+                Text::new("Free Game 1 of 6"),
+                LetterSpacing::Px(4.8),
+                Visibility::Hidden,
+                TextColor(Color::WHITE),
+            ))
+            .id();
+        let copy = world
+            .spawn((
+                Echo(owner),
+                Text::new(""),
+                LetterSpacing::Px(0.0),
+                Visibility::Inherited,
+                TextColor(EDGE_COLOUR),
+            ))
+            .id();
+        world.run_system_once(echo_texts).unwrap();
+        assert_eq!(
+            world.get::<Text>(copy).map(|t| t.0.as_str()),
+            Some("Free Game 1 of 6")
+        );
+        assert_eq!(
+            world.get::<LetterSpacing>(copy),
+            Some(&LetterSpacing::Px(4.8))
+        );
+        assert_eq!(world.get::<Visibility>(copy), Some(&Visibility::Hidden));
+        assert_eq!(world.get::<TextColor>(copy), Some(&TextColor(EDGE_COLOUR)));
+        // The edge goes all round the letters, evenly.
+        let (sx, sy) = EDGE_OFFSETS
+            .iter()
+            .fold((0.0, 0.0), |(x, y), (dx, dy)| (x + dx, y + dy));
+        assert!(sx == 0.0 && sy == 0.0);
+        // The labels' shading: smaller shares over larger, orange at the
+        // top of CREDIT, BET and WIN, yellow at the top of the denomination.
+        for shade in [LABEL_SHADE, DENOM_SHADE] {
+            let bands = shade_bands(shade);
+            assert_eq!(bands.len() as u32, shade.3);
+            assert!(bands.windows(2).all(|w| w[0].1 > w[1].1));
+            assert!((bands[0].1 - shade.2).abs() < 1e-6);
+        }
+        let green = |c: Color| c.to_srgba().green;
+        let top = shade_bands(LABEL_SHADE).last().map(|b| b.0).unwrap();
+        assert!(
+            green(top) < green(shade_base(LABEL_SHADE)),
+            "orange over yellow"
+        );
+        let top = shade_bands(DENOM_SHADE).last().map(|b| b.0).unwrap();
+        assert!(
+            green(top) > green(shade_base(DENOM_SHADE)),
+            "yellow over orange"
+        );
     }
 
     /// A reel starting scrolls the window on screen away, not its stale

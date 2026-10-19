@@ -488,7 +488,7 @@ id = "win-presentation"
 name = "Win presentation"
 status = "implemented"
 evidence = "apps/dragonlink/src/cabinet.rs (win_rollup, win_lines, symbol_fx); apps/dragonlink/src/main.rs (wins_play_the_real_games_tunes)"
-note = "Win tunes chosen by the win's size where measured, counts lasting the tune's audible length, lines in turn with their symbols blinking, symbol animations, a coin shower for big wins."
+note = "Win tunes chosen by the win's size where measured, counts lasting the tune's audible length, lines in turn with their symbols blinking (the club cabinet's two even 0.66 s cycles a line, STRONG), symbol animations, a coin shower for big wins."
 
 [[category.item]]
 id = "feature-trigger"
@@ -616,7 +616,7 @@ note = "Australia, from public footage: Grand and Major are running meters; Mini
 id = "free-games"
 name = "Free games feature"
 status = "partial"
-note = "Three scatters award six free games; mystery doors reveal one symbol, the emperor and the coin among them (help screen); revealed coins carry prizes and six or more start Hold & Spin inside the free games, which then carry on (cabinet footage, STRONG); retriggers add three (owner). Presentation follows the official app recording (trigger sequence, doors, pacing, end) and club cabinet footage where it differs (the trigger's status and message rows, the prompt with the scatter count, the 0.52 s start, the WIN banner only for big wins with a 10x limit that is HYPOTHESIS, the resume after a Hold & Spin inside: y8c8lEdPW8Y, 1bAevGz0K2k). Strips and weights are synthetic."
+note = "Three scatters award six free games; mystery doors reveal one symbol, the emperor and the coin among them (help screen); revealed coins carry prizes and six or more start Hold & Spin inside the free games, which then carry on (cabinet footage, STRONG); retriggers add three (owner). Presentation follows the official app recording (trigger sequence, a win's pace) and club cabinet footage where it differs (the trigger's status and message rows, the prompt with the scatter count, the 0.52 s start, the counter from 1 OF 0, the doors 0.30 s after the rest with the wins at + 1.5 s and a no-win game's next spin at + 2.0 s, the WIN banner only for big wins with a 10x limit that is HYPOTHESIS, the resume after a Hold & Spin inside, FEATURE COMPLETED after the last count with CREDIT held: y8c8lEdPW8Y, 1bAevGz0K2k). Strips and weights are synthetic."
 
 [[category.item]]
 id = "art-ui"

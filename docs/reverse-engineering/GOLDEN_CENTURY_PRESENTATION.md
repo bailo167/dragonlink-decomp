@@ -56,7 +56,7 @@ refused until then.
 | Win tune | A base win plays a win tune: 0.4x the bet wintune04, 0.6x wintune05, 1.6x wintune13, 2x wintune14 | VERIFIED (4 wins); rule between UNKNOWN |
 | Count | Linear, for exactly the tune's audible length (its file has a long quiet tail) | VERIFIED |
 | Free games | No tune; the count is silent under the music, same length rule | STRONG |
-| Lines | Each winning line 43-45 frames in turn; its badges light twice; its winning symbols that do not animate blink out twice | VERIFIED |
+| Lines | Each winning line 43-45 frames in turn; its badges light twice; its winning symbols that do not animate blink out twice (uneven, with gaps; the cabinet's differ, below) | VERIFIED (the mobile app only) |
 | Stacked wild | Two or three stacked emperors become the tall emperor only on a winning line, when the win would show, to SND_Wild_2 or SND_Wild_3 by height; the win waits 2.5 s; the animation runs at 20 fps. A stack on no winning line stays as heads | VERIFIED (2 cases) |
 
 **The cabinet's line pieces differ** (club footage rectified onto our canvas: `CAM8vranI9Y`,
@@ -68,6 +68,15 @@ The badge sits outside the reel frame touching it, with a stub of its colour acr
 app draws them so ([GOLDEN_CENTURY_CABINET_DECK.md](GOLDEN_CENTURY_CABINET_DECK.md), "Win line
 pieces"); the mobile app's two large badges per line are gone.
 
+**The cabinet's blink differs** (club footage, frame by frame: `y8c8lEdPW8Y` 21.93-24.23 s, one line,
+badge lit 9-10 frames then off 9-10 frames, cycles of 19-20 frames; `CAM8vranI9Y`, its 0:04-0:44
+section, a four-line win whose cells blank every 0.66 s on average and whose message moves to the
+next line every 1.333 s). Each line shows for two even cycles of about 0.66 s, each starting lit;
+its badge and dashes are lit exactly while its winning symbols show, and the symbols blink out
+exactly while the badge is off, with no gap and no overlap; a line lasts 1.29-1.33 s. STRONG (two
+Queensland club machines). **The app** follows the cabinet: 1.32 s a line, lit 0-0.34 s and
+0.66-0.99 s, the symbols out in between.
+
 ## Free games
 
 | Step | Real app | Label |
@@ -76,10 +85,39 @@ pieces"); the mobile app's two large badges per line are gone.
 | Flags | As the bell ends the flags wave (their animation from its first frame, at 20 fps) to SND_Scatter (4.75 s) | VERIFIED |
 | Scatter win | Counts when SND_Scatter ends, to its win tune | VERIFIED |
 | Prompt | SELECT SPIN TO START FEATURE after the count (the official app's wording and timing; the cabinet's differ, below); "Scatter wins N" only while it waits | VERIFIED |
-| Start | The press is silent; the flags wave on about 1 s; a hard cut to the free games: SND_Fea_BGM from its start, the first game spinning at once, the banner's total counting up from 1 with a SND_Fea_Inc tick a step (the cabinet is quicker and stiller, below) | VERIFIED |
-| Doors | Land with the reels, open together 3 frames after the reels are still (1.4 s), to SND_EndMask; wins 47 frames after they begin to open | VERIFIED (6 games) |
-| Pace | Next game 1.25 s after a win's count; about 2.5 s after the doors with no win | VERIFIED |
-| End | FEATURE COMPLETED in the win slot, SND_Fea_End as the music stops | VERIFIED |
+| Start | The press is silent; the flags wave on about 1 s; a hard cut to the free games: SND_Fea_BGM from its start, the first game spinning at once, the banner's total counting up from 1, 4 frames a step, with a SND_Fea_Inc tick a step (the cabinet is quicker and stiller, and counts from 0, below) | VERIFIED |
+| Doors | Land with the reels, open together 3 frames after the reels are still (1.4 s), to SND_EndMask; wins 47 frames after they begin to open (the cabinet's are quicker, below) | VERIFIED (6 games; the mobile app only) |
+| Pace | Next game 1.25 s after a win's count; about 2.5 s after the doors with no win (the cabinet's 2.0 s after the rest, below) | VERIFIED (the mobile app only for the no-win pace) |
+| End | FEATURE COMPLETED in the win slot, SND_Fea_End as the music stops (on the cabinet as the last count ends, below) | VERIFIED |
+
+**The cabinet's doors and pace differ** (motion per door cell at 30 fps, real-time recordings:
+`1bAevGz0K2k` free game 3, 346.57 s rest; `y8c8lEdPW8Y` free games 4-6, 1023.18, 1033.67 and
+1041.70 s rest; a coarser pass over `1bAevGz0K2k` free games 1, 2, 4, 5 and 6). The doors begin to
+open 0.22-0.37 s after the last reel rests (three of four about 0.30 s), their motion visible for
+0.60-0.73 s and over by the rest + 0.93-0.97 s: STRONG. The wins (the first badge and dashes) show
+at the rest + 1.47-1.53 s (`y8c8lEdPW8Y` 1024.67, 1035.2, 1043.2): PARTIAL (three cases, one
+machine). A free game with doors and no win is followed by the next game's reels at the rest +
+1.97-2.0 s, 1.03-1.07 s after the doors stop (`1bAevGz0K2k` 333.67-335.63, 346.57-348.57,
+359.60-361.60; `y8c8lEdPW8Y` 954.90-956.87, WIN unchanged in all four): STRONG; with no doors and
+no win 0.5 s after the rest (`y8c8lEdPW8Y` 959.63-960.13): HYPOTHESIS, one case. **The app** follows
+the cabinet: the doors 0.30 s after the rest, the pack's 42-frame sequence at 42 fps (its motion,
+frames 1-29, over by the rest + 0.99 s), the wins at the rest + 1.5 s, and a no-win free game's
+next reels 0.5 s after the reveal ends (rest + 2.0 s, measured on a muted capture of the doors run:
+2.00 s, 2.14 s when a landed coin's value follows the reveal); with no doors about 0.67 s. Golden
+Gong's monk keeps the app's 3-frame delay (its cabinet timing unmeasured). A win's pace (1.25 s
+after its count) stays the app's.
+
+**The cabinet's end differs** (club footage, every frame: `y8c8lEdPW8Y` 1044.0-1047.1;
+`1bAevGz0K2k` 366.9-370.1 at 15 fps). FEATURE COMPLETED comes the frame after WIN reaches the
+feature's total (the last game's count reaches $320.20 at 1044.233, the banner 1044.267; WIN and the
+banner together at 367.567); the status reads "Feature Completed" for one frame, then "PLAY ON,
+GAMBLE or TAKE WIN" with the meters switching every second; CREDIT rises only when the win is taken
+(1045.933; 368.300), with a 2-frame "Feature Completed" then the bet line; the banner stays until the
+next spin. STRONG (two Queensland club recordings); the one-frame status VERIFIED at 30 fps. **The
+app** follows it: FEATURE COMPLETED waits for the last count, the status reads "Feature Completed"
+while the feature's last event is still queued (one event interval, 0.14 s, longer than the
+cabinet's frame) and then the offer, and CREDIT holds the total off until the win is taken (it
+flickered to the total for 0.13 s before). The 2-frame flash after the take is not drawn.
 
 **The cabinet's prompt differs** (club footage, both features): the banner reads PRESS START
 FEATURE BUTTON on one line, PRESS and BUTTON small caps (0.81 of START FEATURE's cap height) on the
@@ -114,6 +152,11 @@ machines):
   950.33, `1bAevGz0K2k` 328.60 to 329.10), with "FREE GAME 1 OF" and its counting total 2 frames
   after the first motion. The status and message rows are blank from the press; the status shows
   "Free Game 1 of 6" about 1.2-1.3 s after the reels start.
+- **The counter.** The banner reads "FREE GAME 1 OF 0" for 5 frames, then its total steps 1 to 6,
+  one step every 5 video frames (0.167 s); the status line stays blank until 5 frames after the 6,
+  then reads "Free Game 1 of 6" (`y8c8lEdPW8Y` 950.400-951.567, `1bAevGz0K2k` 329.167-330.333,
+  the cadence identical; "1 OF 0" also on `BMavaGxuOD0`, a US casino). VERIFIED. The official app
+  counts from 1, 4 frames a step.
 - **A free game's WIN banner only for big wins.** "WIN $x WIN" replaces "FREE GAME n OF 6" only
   for a win of 11x the bet or more (seen at 11.0x, 12.8x, 16x, 20x, 22x twice, 40x and 44x); 18
   wins from 0.1x to 6.0x counted on the WIN meter under "FREE GAME n OF 6" and its counter
@@ -132,8 +175,12 @@ prompt at the count's first step with the count going on under it, the 2.0 s alt
 prompt's start (Press first) and the blink restarting as the count completes, the flags still at
 the press and the first free game 0.52 s after it with its banner and total, the WIN banner for a
 free game's win from **10x the bet (our choice inside the evidenced range: HYPOTHESIS)** held 1.0 s
-after the count, and the dark 0.43 s return. Its status shows "Free Game 1 of 6" as the reels
-start, not 1.2 s later. A Hold & Spin's payment always shows its banner, however small (`WIN $0.29
+after the count, and the dark 0.43 s return. The banner's total counts from "1 OF 0", a step every
+0.167 s, and the status stays blank until one step after the total (1.17 s after the banner; it
+showed "Free Game 1 of 6" as the reels started before, and counted from 1 at 0.133 s a step). As
+each free game starts the last count is settled, so the WIN banner never shows the last game's
+amount (our recording showed "WIN $1.00 WIN" for 4 frames before $0.01; the cabinet never does,
+`y8c8lEdPW8Y` 1027.4). A Hold & Spin's payment always shows its banner, however small (`WIN $0.29
 WIN`, `1bAevGz0K2k` 164.3).
 
 ## Hold & Spin

@@ -57,8 +57,8 @@ const FEATURE_TEST_SCATTER: usize = 6;
 
 /// Testing only (`DRAGONLINK_SCENARIO`, Golden Century): prepared runs whose
 /// first spin lands three flags, and in most of them six coins too, so Hold &
-/// Spin plays and the free games follow; the free games' reels carry the
-/// mystery doors often.
+/// Spin plays and the free games follow; in the `doors` run the free games'
+/// reels carry the mystery doors often, in short vertical runs.
 /// The outcome source is left alone: its first spin's reel stops are worked
 /// out from the seed and the synthetic strips are dressed at those stops.
 /// Changes to that run's synthetic model only, never a claim about the
@@ -112,6 +112,9 @@ impl Scenario {
     /// full chance at every stake, so the run is the same whatever the bet.
     fn model(self, model: MathModel, seed: u64) -> MathModel {
         let mut model = dress_scenario(model, seed, self != Scenario::Doors);
+        if self == Scenario::Doors {
+            door_runs(&mut model);
+        }
         let orb = model.symbols.iter().position(|s| s.kind == SymbolKind::Orb);
         // The runs that promise their jackpots keep coins out of their free
         // games (off the doors and off the reels, a nine in each coin's
@@ -185,8 +188,7 @@ fn scenario(game: GameChoice, model: MathModel, seed: u64) -> (MathModel, u64) {
 }
 
 /// A prepared run's dressing (see [`Scenario`]): the first spin's window with
-/// three flags, and six coins when `coins`, at the stops the seed draws; the
-/// doors on every third stop of the free games' reels.
+/// three flags, and six coins when `coins`, at the stops the seed draws.
 fn dress_scenario(mut model: MathModel, seed: u64, coins: bool) -> MathModel {
     let id = |key: &str| {
         model
@@ -206,7 +208,7 @@ fn dress_scenario(mut model: MathModel, seed: u64, coins: bool) -> MathModel {
             .map(dragonlink_model::SymbolId)
     };
     let doors = model.free_games.as_ref().and_then(|fg| fg.mystery);
-    let (Some(orb), Some(flag), Some(doors)) = (
+    let (Some(orb), Some(flag), Some(_)) = (
         of_kind(SymbolKind::Orb),
         of_kind(SymbolKind::Scatter),
         doors,
@@ -254,17 +256,31 @@ fn dress_scenario(mut model: MathModel, seed: u64, coins: bool) -> MathModel {
             }
         }
     }
-    // The doors on every third stop of the free games' reels.
-    if let Some(fg) = model.free_games.as_mut() {
-        for strip in &mut fg.free_reel_strips {
-            for (i, s) in strip.iter_mut().enumerate() {
-                if i % 3 == 1 {
-                    *s = doors;
-                }
+    model
+}
+
+/// The `doors` run's free reels: the mystery doors in runs of three stops in
+/// every nine, so a window shows none to three doors on a reel, one on
+/// average, mostly in vertical blocks, and now and then a free game none at
+/// all, as club cabinets show them (60 reveals in 9 recordings: 1 to 12
+/// cells a game, whole reels, runs of 2 and singles, 3 games of about 63
+/// with none; the project's notes, research/doors-2026-10-18 under the
+/// source root). The model's own door stacks stay. Synthetic, for the
+/// prepared run only.
+fn door_runs(model: &mut MathModel) {
+    let Some(fg) = model.free_games.as_mut() else {
+        return;
+    };
+    let Some(doors) = fg.mystery else {
+        return;
+    };
+    for strip in &mut fg.free_reel_strips {
+        for (i, s) in strip.iter_mut().enumerate() {
+            if (1..=3).contains(&(i % 9)) {
+                *s = doors;
             }
         }
     }
-    model
 }
 
 /// The model with extra orbs and scatters spread through its base reels (see
@@ -1241,6 +1257,7 @@ fn setup(
     profile: Res<cabinet::Profile>,
     pack: Res<PackDir>,
     machines: Res<cabinet::MachineMenu>,
+    mut images: ResMut<Assets<Image>>,
 ) {
     // The initial state's OnEnter runs before Startup systems, so the pack is
     // read here, on first use.
@@ -1248,6 +1265,11 @@ fn setup(
     let model = sim.game.model();
     art.roles = cabinet::Roles::from_model(model);
     if fidelity.0 {
+        // The club tall pill's icon: our own drawing, not the pack's.
+        if !art.ui.contains_key(cabinet::PILL_ICON_KEY) {
+            let icon = images.add(cabinet::club_pill_icon());
+            art.ui.insert(cabinet::PILL_ICON_KEY.to_string(), icon);
+        }
         let cab_fonts = cabinet::load_fonts(&mut fonts);
         if let Some(dir) = &pack.0 {
             *sounds = cabinet::Sounds::load(&asset_server, dir);
@@ -1917,7 +1939,7 @@ fn present(
     mut presentation: ResMut<Presentation>,
     mut reels_spin: ResMut<ReelAnim>,
     reels_motion: Res<cabinet::Reels>,
-    rollup: Res<cabinet::Rollup>,
+    mut rollup: ResMut<cabinet::Rollup>,
     mut stacks: ResMut<cabinet::WildStacks>,
     art: Res<ArtPack>,
     mut cells: Query<(&Cell, &mut BackgroundColor)>,
@@ -2021,11 +2043,11 @@ fn present(
         // until the reels are at rest on screen: the last reel's stop is
         // presented as it starts to run on to its stop, and it overshoots
         // and settles after that.
-        // The doors open sooner than a result shows (real game).
+        // The doors open a little later than a result shows (club cabinets),
+        // a wild fills its reel sooner.
         let after_rest = match presentation.queue.front() {
-            Some((_, Event::MysteryRevealed { .. } | Event::WildExpanded { .. })) => {
-                cabinet::REVEAL_AFTER_REST
-            }
+            Some((_, Event::MysteryRevealed { .. })) => cabinet::REVEAL_AFTER_REST,
+            Some((_, Event::WildExpanded { .. })) => cabinet::EXPAND_AFTER_REST,
             _ => cabinet::RESULT_AFTER_REST,
         };
         if fidelity.0
@@ -2176,6 +2198,10 @@ fn present(
                 presentation.status = format!("FREE GAMES  -  {games} games won");
             }
             Event::FreeGameStarted { number, remaining } => {
+                // The last count is done with: this game's win counts from
+                // its own first cent, never flashing the last one's amount
+                // (see `Rollup::settle`).
+                rollup.settle();
                 // Each free game spins the reels like a paid game, on the
                 // free reels' strips.
                 for s in reels_spin.spinning.iter_mut() {
@@ -3095,7 +3121,7 @@ fn main() -> AppExit {
                 cabinet::lines_digits,
                 cabinet::attract_bar,
                 (cabinet::additive_fire, cabinet::prepare_feature_art),
-                cabinet::machine_menu,
+                (cabinet::machine_menu, cabinet::echo_texts),
                 cabinet::fit,
             )
                 .chain(),
@@ -3301,6 +3327,53 @@ mod tests {
             .take(5)
             .collect();
         println!("Doors: {doors:?}");
+    }
+
+    /// The `doors` run's free reels show none to three doors a reel in a
+    /// window, mostly in blocks, and some windows none at all (club
+    /// cabinets: 1 to 12 doors a game, whole reels, runs of 2 and singles);
+    /// the other runs' free reels are the model's own.
+    #[test]
+    fn the_doors_run_lands_its_doors_in_blocks() {
+        let base = golden_century_synthetic();
+        let doors = base
+            .free_games
+            .as_ref()
+            .and_then(|fg| fg.mystery)
+            .expect("Golden Century has doors");
+        let model = Scenario::Doors.model(base.clone(), DOORS_SEED);
+        let fg = model.free_games.as_ref().expect("free games");
+        let own = base.free_games.as_ref().expect("free games");
+        let (mut empty, mut blocks, mut ours, mut windows) = (0, 0, 0, 0);
+        for (strip, own_strip) in fg.free_reel_strips.iter().zip(&own.free_reel_strips) {
+            let len = strip.len();
+            for stop in 0..len {
+                let count = |s: &[dragonlink_model::SymbolId]| {
+                    (0..3).filter(|row| s[(stop + row) % len] == doors).count()
+                };
+                // Where the model has no doors of its own.
+                if count(own_strip) > 0 {
+                    continue;
+                }
+                let here = count(strip);
+                windows += 1;
+                ours += here;
+                empty += usize::from(here == 0);
+                blocks += usize::from(here == 3);
+            }
+        }
+        assert!(empty > 0, "some windows show no doors");
+        assert!(blocks > 0, "some show a reel of them");
+        let mean = ours as f32 / windows as f32;
+        assert!((0.8..=1.2).contains(&mean), "about one a reel: {mean}");
+        // The prepared jackpot runs keep the model's own free reels' doors.
+        let jackpots = Scenario::Jackpots.model(golden_century_synthetic(), JACKPOTS_SEED);
+        let free = jackpots.free_games.as_ref().expect("free games");
+        for (strip, own_strip) in free.free_reel_strips.iter().zip(&own.free_reel_strips) {
+            for (s, o) in strip.iter().zip(own_strip) {
+                assert_eq!(*s == doors, *o == doors);
+            }
+        }
     }
 
     #[test]
