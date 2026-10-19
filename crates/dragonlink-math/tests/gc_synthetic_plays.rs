@@ -114,9 +114,15 @@ fn returns_at(
 /// (synthetic, not Dragon Link's) and they agree within the run's noise.
 #[test]
 fn the_return_is_flat_across_stakes_and_denominations() {
-    use dragonlink_model::fixtures::autumn_moon_synthetic;
-    let titles: [fn() -> dragonlink_model::MathModel; 2] =
-        [golden_century_synthetic, autumn_moon_synthetic];
+    use dragonlink_model::fixtures::{
+        autumn_moon_synthetic, happy_prosperous_synthetic, panda_magic_synthetic,
+    };
+    let titles: [fn() -> dragonlink_model::MathModel; 4] = [
+        golden_century_synthetic,
+        autumn_moon_synthetic,
+        happy_prosperous_synthetic,
+        panda_magic_synthetic,
+    ];
     for (title, meters) in titles
         .iter()
         .flat_map(|t| [(50_000, 500_000), (120_000, 1_200_000)].map(|m| (*t, m)))

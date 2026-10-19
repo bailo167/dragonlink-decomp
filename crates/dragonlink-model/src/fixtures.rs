@@ -830,678 +830,182 @@ pub fn autumn_moon_synthetic() -> MathModel {
     model
 }
 
-/// Identifier of [`happy_prosperous_synthetic`], written into trace headers.
-pub const HAPPY_PROSPEROUS_SYNTHETIC_ID: &str = "happy-prosperous-synthetic-1";
-
-/// A **synthetic** Happy & Prosperous configuration: the game's *evidenced
-/// structure* with *invented* numbers. Happy & Prosperous runs on the same
-/// engine family as Golden Century, so it shares this project's Dragon Link
-/// simulation; only the symbols, the pay table and the free-games rule differ
-/// (`docs/reverse-engineering/FOOTAGE.md`).
-///
-/// Official visible values used here: the US family pay table read from Happy
-/// & Prosperous's own rules screens (top picture 150/50/10 and 2 for two;
-/// second to fourth 100 down to 5; royals 75/50 down to 5), the scatter
-/// 100/15/2 times the total bet, six free games with three more on a
-/// retrigger, the royals removed inside the feature, and the twelve orb prize
-/// multiples. Invented and never to be quoted as Dragon Link's: every reel
-/// strip, weight, the land chance and the jackpot amounts. Unlike Autumn Moon
-/// this title has no free-games mystery reveal; the feature simply plays
-/// royal-free reels.
-pub fn happy_prosperous_synthetic() -> MathModel {
-    const NINE: u16 = 0;
-    const TEN: u16 = 1;
-    const JACK: u16 = 2;
-    const QUEEN: u16 = 3;
-    const KING: u16 = 4;
-    const LOTUS: u16 = 5; // fourth picture
-    const COINS: u16 = 6; // third picture
-    const JADE: u16 = 7; // second picture (jade ring)
-    const BELL: u16 = 8; // top picture
-    const BUDDHA: u16 = 9; // wild (laughing Buddha), reels 2 to 5 only
-    const POT: u16 = 10; // scatter (pot of gold)
-    const ORB: u16 = 11; // Hold & Spin prize symbol
-
-    let symbols = [
-        ("9", SymbolKind::Regular),
-        ("10", SymbolKind::Regular),
-        ("J", SymbolKind::Regular),
-        ("Q", SymbolKind::Regular),
-        ("K", SymbolKind::Regular),
-        ("lotus", SymbolKind::Regular),
-        ("coins", SymbolKind::Regular),
-        ("jade", SymbolKind::Regular),
-        ("bell", SymbolKind::Regular),
-        ("buddha", SymbolKind::Wild),
-        ("pot", SymbolKind::Scatter),
-        ("orb", SymbolKind::Orb),
-    ]
-    .into_iter()
-    .enumerate()
-    .map(|(i, (key, kind))| SymbolDef {
-        id: SymbolId(i as u16),
-        key: key.to_string(),
-        kind,
-    })
-    .collect::<Vec<_>>();
-
-    let reel = |parts: &[(u16, usize)]| -> Vec<SymbolId> {
-        parts
+/// The royal-free Dragon Link titles: in the official mobile build Happy &
+/// Prosperous and Panda Magic are Golden Century's package with their own art,
+/// less two features: no free-games mystery symbol and no tall stacked wild
+/// (research notes, 2026-10-19). Their free games are six, with the royals
+/// removed from the reels and three more on a retrigger (mobile help; club
+/// footage). So each is [`golden_century_synthetic`] in the title's symbols,
+/// its doors taken out, its free reels rebuilt without royals (synthetic), and
+/// the mobile pay table, which matches Golden Century's mobile one rank for
+/// rank; which table Australian club machines pay is not established (no club
+/// rules page found), so that choice is ours.
+fn golden_century_royal_free(
+    id: &str,
+    description: &str,
+    names: [(&str, &str); 6],
+    pays: [(&str, [u32; 4]); 9],
+) -> MathModel {
+    let mut model = golden_century_synthetic();
+    let gc = |key: &str| {
+        model
+            .symbols
             .iter()
-            .flat_map(|(sym, n)| std::iter::repeat_n(*sym, *n))
-            .map(SymbolId)
-            .collect()
+            .position(|s| s.key == key)
+            .and_then(|i| u16::try_from(i).ok())
+            .unwrap_or(0)
     };
-
-    // The base reels: royals common, pictures rarer, the top picture (bell)
-    // rarest; an orb block of three per reel, a wild block on reels 2 to 5, one
-    // scatter. Synthetic.
-    let reel_strips = vec![
-        reel(&[
-            (NINE, 7),
-            (ORB, 3),
-            (TEN, 6),
-            (LOTUS, 2),
-            (JACK, 6),
-            (JADE, 1),
-            (QUEEN, 4),
-            (POT, 1),
-            (KING, 4),
-            (COINS, 2),
-            (NINE, 6),
-            (BELL, 1),
-            (TEN, 6),
-            (JACK, 6),
-        ]),
-        reel(&[
-            (TEN, 6),
-            (BUDDHA, 2),
-            (NINE, 7),
-            (ORB, 3),
-            (JACK, 6),
-            (COINS, 2),
-            (QUEEN, 4),
-            (POT, 1),
-            (KING, 4),
-            (JADE, 1),
-            (LOTUS, 2),
-            (TEN, 6),
-            (BELL, 1),
-            (NINE, 6),
-            (JACK, 6),
-        ]),
-        reel(&[
-            (JACK, 7),
-            (ORB, 3),
-            (NINE, 7),
-            (BUDDHA, 2),
-            (TEN, 6),
-            (LOTUS, 2),
-            (QUEEN, 4),
-            (POT, 1),
-            (COINS, 2),
-            (KING, 4),
-            (JADE, 1),
-            (NINE, 6),
-            (BELL, 1),
-            (TEN, 6),
-            (JACK, 6),
-        ]),
-        reel(&[
-            (NINE, 7),
-            (ORB, 3),
-            (TEN, 6),
-            (BUDDHA, 2),
-            (JACK, 6),
-            (JADE, 1),
-            (QUEEN, 4),
-            (COINS, 2),
-            (POT, 1),
-            (KING, 4),
-            (LOTUS, 2),
-            (NINE, 6),
-            (BELL, 1),
-            (TEN, 6),
-            (JACK, 6),
-        ]),
-        reel(&[
-            (TEN, 7),
-            (ORB, 3),
-            (NINE, 7),
-            (BUDDHA, 2),
-            (JACK, 6),
-            (COINS, 2),
-            (QUEEN, 4),
-            (POT, 1),
-            (KING, 4),
-            (JADE, 1),
-            (LOTUS, 2),
-            (TEN, 6),
-            (BELL, 1),
-            (NINE, 6),
-            (JACK, 6),
-        ]),
-    ];
-
-    // Paylines 1 to 5 are the evidenced shapes; 6 to 50 synthetic.
-    let known = [
-        [1, 1, 1, 1, 1],
-        [0, 0, 0, 0, 0],
-        [2, 2, 2, 2, 2],
-        [0, 1, 2, 1, 0],
-        [2, 1, 0, 1, 2],
-    ];
-    let mut paylines: Vec<Payline> = known.iter().map(|rows| Payline(rows.to_vec())).collect();
-    let mut pattern = 0u32;
-    while paylines.len() < 50 {
-        let rows: Vec<u8> = (0..5)
-            .map(|r| ((pattern / 3u32.pow(r)) % 3) as u8)
-            .collect();
-        let all_same = rows.iter().all(|r| *r == rows[0]);
-        if !all_same && !known.iter().any(|k| k[..] == rows[..]) {
-            paylines.push(Payline(rows));
-        }
-        pattern += 1;
+    let (p1, p2, p3, p4) = (gc("warriors"), gc("women"), gc("vase"), gc("chest"));
+    let (wild, scatter, orb, doors) = (gc("emperor"), gc("pennant"), gc("orb"), gc("doors"));
+    // Royal-free free reels: the four pictures, the wild in stacks on reels
+    // 2 to 5, one scatter and a pair of coins on each. Synthetic.
+    let free_reel_strips = (0..5u8)
+        .map(|reel| {
+            let mut parts = vec![(p1, 3), (p2, 4), (p3, 5), (p4, 6), (scatter, 1), (orb, 2)];
+            if reel > 0 {
+                parts.push((wild, 3));
+            }
+            spread(&parts, &[orb, wild, doors, scatter])
+        })
+        .collect();
+    // The doors go: they are the last symbol and appear on no reel now.
+    if usize::from(doors) + 1 == model.symbols.len() {
+        model.symbols.pop();
     }
-
-    // Line pays, per credit on the line. The US family pay table (official
-    // visible values); only the top picture pays for two of a kind.
+    if let Some(fg) = model.free_games.as_mut() {
+        fg.free_reel_strips = free_reel_strips;
+        fg.mystery = None;
+        fg.reveal_values = Vec::new();
+        fg.retrigger_games = 3;
+    }
+    for s in &mut model.symbols {
+        if let Some((_, to)) = names.iter().find(|(from, _)| *from == s.key) {
+            s.key = (*to).to_string();
+        }
+    }
+    let title = |key: &str| {
+        model
+            .symbols
+            .iter()
+            .position(|s| s.key == key)
+            .and_then(|i| u16::try_from(i).ok())
+            .map(SymbolId)
+    };
     let mut line_pays = Vec::new();
-    for (symbol, pays) in [
-        //              2   3   4    5
-        (BELL, [2, 10, 50, 150]),
-        (JADE, [0, 5, 30, 100]),
-        (COINS, [0, 5, 25, 100]),
-        (LOTUS, [0, 5, 25, 100]),
-        (KING, [0, 5, 20, 75]),
-        (QUEEN, [0, 5, 10, 50]),
-        (JACK, [0, 5, 10, 50]),
-        (TEN, [0, 5, 10, 50]),
-        (NINE, [0, 5, 10, 50]),
-    ] {
-        for (count, pay) in (2u8..=5).zip(pays) {
+    for (key, row) in pays {
+        let Some(symbol) = title(key) else { continue };
+        for (count, pay) in (2u8..=5).zip(row) {
             if pay > 0 {
-                line_pays.push(LinePay {
-                    symbol: SymbolId(symbol),
-                    count,
-                    pay,
-                });
+                line_pays.push(LinePay { symbol, count, pay });
             }
         }
     }
+    // The scatter pays 2, 10 and 100 times the total bet (mobile; three pay
+    // twice the bet on Australian machines).
+    let scatter_key = names[5].1;
+    let scatter_pays = title(scatter_key)
+        .map(|symbol| {
+            [(3u8, 2u32), (4, 10), (5, 100)]
+                .into_iter()
+                .map(|(count, total_bet_multiple)| ScatterPay {
+                    symbol,
+                    count,
+                    total_bet_multiple,
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+    model.line_pays = line_pays;
+    model.scatter_pays = scatter_pays;
+    model.id = id.to_string();
+    model.description = description.to_string();
+    model
+}
 
-    // Scatter: the family's 100/15/2 times the total bet (official visible).
-    let scatter_pays = vec![
-        ScatterPay {
-            symbol: SymbolId(POT),
-            count: 3,
-            total_bet_multiple: 2,
-        },
-        ScatterPay {
-            symbol: SymbolId(POT),
-            count: 4,
-            total_bet_multiple: 15,
-        },
-        ScatterPay {
-            symbol: SymbolId(POT),
-            count: 5,
-            total_bet_multiple: 100,
-        },
+/// The mobile pay table of the Golden Century family for 2, 3, 4 and 5 of a
+/// kind, the pictures highest first (help screens); the wild pays nothing.
+const FAMILY_PAYS: [[u32; 4]; 9] = [
+    [3, 10, 50, 250],
+    [2, 5, 30, 150],
+    [2, 5, 25, 100],
+    [2, 5, 25, 100],
+    [0, 5, 20, 75],
+    [0, 5, 10, 50],
+    [0, 5, 10, 50],
+    [0, 5, 10, 50],
+    [0, 5, 10, 50],
+];
+
+/// The family pays with the title's four pictures, highest first.
+fn family_pays(pictures: [&str; 4]) -> [(&str, [u32; 4]); 9] {
+    let keys = [
+        pictures[0],
+        pictures[1],
+        pictures[2],
+        pictures[3],
+        "K",
+        "Q",
+        "J",
+        "10",
+        "9",
     ];
-
-    // Orb values: the twelve official multiples and the four levels; synthetic
-    // weights (as Golden Century and Autumn Moon).
-    let orb_values = [
-        (260, OrbValue::BetMultiple(1)),
-        (220, OrbValue::BetMultiple(2)),
-        (160, OrbValue::BetMultiple(3)),
-        (120, OrbValue::BetMultiple(4)),
-        (90, OrbValue::BetMultiple(5)),
-        (70, OrbValue::BetMultiple(10)),
-        (46, OrbValue::BetMultiple(15)),
-        (28, OrbValue::BetMultiple(20)),
-        (12, OrbValue::BetMultiple(50)),
-        (6, OrbValue::BetMultiple(100)),
-        (3, OrbValue::BetMultiple(200)),
-        (2, OrbValue::BetMultiple(250)),
-        (45, OrbValue::Jackpot(JackpotTier::Mini)),
-        (14, OrbValue::Jackpot(JackpotTier::Minor)),
-        (3, OrbValue::Jackpot(JackpotTier::Major)),
-    ]
-    .into_iter()
-    .map(|(weight, value)| WeightedOrbValue { weight, value })
-    .collect();
-
-    let jackpots = [
-        (JackpotTier::Mini, 15),
-        (JackpotTier::Minor, 60),
-        (JackpotTier::Major, 300),
-        (JackpotTier::Grand, 1000),
-    ]
-    .into_iter()
-    .map(|(tier, total_bet_multiple)| JackpotDef::multiple(tier, total_bet_multiple))
-    .collect();
-
-    // Free-game reels: the royals removed (official US rule), so only the four
-    // pictures, the wild (reels 2 to 5) and the scatter appear; no orb and no
-    // mystery reveal. Synthetic composition.
-    let free_reel_strips = vec![
-        reel(&[(LOTUS, 8), (COINS, 6), (JADE, 5), (BELL, 2), (POT, 1)]),
-        reel(&[
-            (LOTUS, 6),
-            (BUDDHA, 3),
-            (COINS, 6),
-            (JADE, 5),
-            (BELL, 2),
-            (POT, 1),
-        ]),
-        reel(&[
-            (COINS, 6),
-            (BUDDHA, 3),
-            (LOTUS, 6),
-            (JADE, 5),
-            (BELL, 2),
-            (POT, 1),
-        ]),
-        reel(&[
-            (LOTUS, 6),
-            (BUDDHA, 3),
-            (JADE, 5),
-            (COINS, 6),
-            (BELL, 2),
-            (POT, 1),
-        ]),
-        reel(&[
-            (JADE, 6),
-            (BUDDHA, 3),
-            (LOTUS, 6),
-            (COINS, 5),
-            (BELL, 2),
-            (POT, 1),
-        ]),
-    ];
-
-    MathModel {
-        id: HAPPY_PROSPEROUS_SYNTHETIC_ID.to_string(),
-        provenance: MathProvenance::SyntheticDevFixture,
-        description: "SYNTHETIC Happy & Prosperous: the game's evidenced structure (the Golden \
-                      Century engine family, with its own symbols, the US family pay table and \
-                      royals removed inside the free games) with INVENTED strips, weights and \
-                      jackpot amounts. Not recovered from any machine; never quote its numbers \
-                      as Dragon Link's (docs/reverse-engineering/FOOTAGE.md, docs/DECISIONS.md \
-                      D-017)."
-            .to_string(),
-        grid: GridShape { reels: 5, rows: 3 },
-        symbols,
-        reel_strips,
-        paylines,
-        line_pays,
-        scatter_pays,
-        bet: BetModel {
-            credits_per_line_options: vec![1, 2, 3, 4, 5, 10],
-            line_options: vec![5, 25, 50],
-        },
-        hold_and_spin: Some(HoldAndSpinModel {
-            orb: SymbolId(ORB),
-            trigger_count: 6,
-            initial_respins: 3,
-            reset_respins_on_new_orb: true,
-            orb_land_chance: Ratio { num: 1, den: 14 },
-            orb_values,
-            full_grid_award: Some(JackpotTier::Grand),
-            jackpots,
-        }),
-        free_games: Some(FreeGamesModel {
-            trigger_count: 3,
-            initial_games: 6,
-            retrigger_count: 3,
-            retrigger_games: 3,
-            free_reel_strips,
-            mystery: None,
-            reveal_values: Vec::new(),
-        }),
+    let mut out = [("", [0; 4]); 9];
+    for (i, key) in keys.into_iter().enumerate() {
+        out[i] = (key, FAMILY_PAYS[i]);
     }
+    out
+}
+
+/// Identifier of [`happy_prosperous_synthetic`], written into trace headers.
+pub const HAPPY_PROSPEROUS_SYNTHETIC_ID: &str = "happy-prosperous-synthetic-2";
+
+/// A **synthetic** Happy & Prosperous configuration (see
+/// [`golden_century_royal_free`]): the bell, jade bangle, coins and lotus as
+/// the pictures, the laughing Buddha as the wild (reels 2 to 5, one cell),
+/// the pot of gold as the scatter.
+pub fn happy_prosperous_synthetic() -> MathModel {
+    golden_century_royal_free(
+        HAPPY_PROSPEROUS_SYNTHETIC_ID,
+        "SYNTHETIC Happy & Prosperous: Golden Century's synthetic model in Happy & Prosperous's \
+         symbols, without the mystery reveal, with royal-free free games (three more on a \
+         retrigger) and the family's mobile pay table. Strips, weights and jackpots INVENTED; \
+         never quote its numbers as Dragon Link's.",
+        [
+            ("warriors", "bell"),
+            ("women", "jade"),
+            ("vase", "coins"),
+            ("chest", "lotus"),
+            ("emperor", "buddha"),
+            ("pennant", "pot"),
+        ],
+        family_pays(["bell", "jade", "coins", "lotus"]),
+    )
 }
 
 /// Identifier of [`panda_magic_synthetic`], written into trace headers.
-pub const PANDA_MAGIC_SYNTHETIC_ID: &str = "panda-magic-synthetic-1";
+pub const PANDA_MAGIC_SYNTHETIC_ID: &str = "panda-magic-synthetic-2";
 
-/// A **synthetic** Panda Magic configuration: the game's *evidenced
-/// structure* with *invented* numbers. Panda Magic runs on the same
-/// engine family as Golden Century, so it shares this project's Dragon Link
-/// simulation; only the symbols, the pay table and the free-games rule differ
-/// (`docs/reverse-engineering/FOOTAGE.md`).
-///
-/// Official visible values used here: the US family pay table (top picture
-/// 150/50/10 and 2 for two; second to fourth 100 down to 5; royals 75/50 down
-/// to 5), seen for Panda Magic in one rules-screen frame and read in full on
-/// its sibling titles' screens; the scatter 100/15/2 times the total bet; six
-/// free games with three more on a retrigger; the royals removed inside the
-/// feature; and the twelve orb prize multiples. Invented and never to be
-/// quoted as Dragon Link's: every reel strip, weight, the land chance and the
-/// jackpot amounts. Like Happy & Prosperous this title has no free-games
-/// mystery reveal; the feature plays royal-free reels. Fidelity gap: on the
-/// real machine Hold & Spin can trigger inside the free games, which this
-/// config does not yet model (the free reels carry no orb).
+/// A **synthetic** Panda Magic configuration (see
+/// [`golden_century_royal_free`]): the tiger, rooster, junk and lotus as the
+/// pictures, the panda as the wild (reels 2 to 5, one cell, in stacks), the
+/// lantern as the scatter.
 pub fn panda_magic_synthetic() -> MathModel {
-    const NINE: u16 = 0;
-    const TEN: u16 = 1;
-    const JACK: u16 = 2;
-    const QUEEN: u16 = 3;
-    const KING: u16 = 4;
-    const LOTUS: u16 = 5; // fourth picture
-    const JUNK: u16 = 6; // third picture
-    const ROOSTER: u16 = 7; // second picture (rooster)
-    const TIGER: u16 = 8; // top picture
-    const PANDA: u16 = 9; // wild (panda), reels 2 to 5 only
-    const LANTERN: u16 = 10; // scatter (red lantern)
-    const ORB: u16 = 11; // Hold & Spin prize symbol
-
-    let symbols = [
-        ("9", SymbolKind::Regular),
-        ("10", SymbolKind::Regular),
-        ("J", SymbolKind::Regular),
-        ("Q", SymbolKind::Regular),
-        ("K", SymbolKind::Regular),
-        ("lotus", SymbolKind::Regular),
-        ("junk", SymbolKind::Regular),
-        ("rooster", SymbolKind::Regular),
-        ("tiger", SymbolKind::Regular),
-        ("panda", SymbolKind::Wild),
-        ("lantern", SymbolKind::Scatter),
-        ("orb", SymbolKind::Orb),
-    ]
-    .into_iter()
-    .enumerate()
-    .map(|(i, (key, kind))| SymbolDef {
-        id: SymbolId(i as u16),
-        key: key.to_string(),
-        kind,
-    })
-    .collect::<Vec<_>>();
-
-    let reel = |parts: &[(u16, usize)]| -> Vec<SymbolId> {
-        parts
-            .iter()
-            .flat_map(|(sym, n)| std::iter::repeat_n(*sym, *n))
-            .map(SymbolId)
-            .collect()
-    };
-
-    // The base reels: royals common, pictures rarer, the top picture (bell)
-    // rarest; an orb block of three per reel, a wild block on reels 2 to 5, one
-    // scatter. Synthetic.
-    let reel_strips = vec![
-        reel(&[
-            (NINE, 7),
-            (ORB, 3),
-            (TEN, 6),
-            (LOTUS, 2),
-            (JACK, 6),
-            (ROOSTER, 1),
-            (QUEEN, 4),
-            (LANTERN, 1),
-            (KING, 4),
-            (JUNK, 2),
-            (NINE, 6),
-            (TIGER, 1),
-            (TEN, 6),
-            (JACK, 6),
-        ]),
-        reel(&[
-            (TEN, 6),
-            (PANDA, 2),
-            (NINE, 7),
-            (ORB, 3),
-            (JACK, 6),
-            (JUNK, 2),
-            (QUEEN, 4),
-            (LANTERN, 1),
-            (KING, 4),
-            (ROOSTER, 1),
-            (LOTUS, 2),
-            (TEN, 6),
-            (TIGER, 1),
-            (NINE, 6),
-            (JACK, 6),
-        ]),
-        reel(&[
-            (JACK, 7),
-            (ORB, 3),
-            (NINE, 7),
-            (PANDA, 2),
-            (TEN, 6),
-            (LOTUS, 2),
-            (QUEEN, 4),
-            (LANTERN, 1),
-            (JUNK, 2),
-            (KING, 4),
-            (ROOSTER, 1),
-            (NINE, 6),
-            (TIGER, 1),
-            (TEN, 6),
-            (JACK, 6),
-        ]),
-        reel(&[
-            (NINE, 7),
-            (ORB, 3),
-            (TEN, 6),
-            (PANDA, 2),
-            (JACK, 6),
-            (ROOSTER, 1),
-            (QUEEN, 4),
-            (JUNK, 2),
-            (LANTERN, 1),
-            (KING, 4),
-            (LOTUS, 2),
-            (NINE, 6),
-            (TIGER, 1),
-            (TEN, 6),
-            (JACK, 6),
-        ]),
-        reel(&[
-            (TEN, 7),
-            (ORB, 3),
-            (NINE, 7),
-            (PANDA, 2),
-            (JACK, 6),
-            (JUNK, 2),
-            (QUEEN, 4),
-            (LANTERN, 1),
-            (KING, 4),
-            (ROOSTER, 1),
-            (LOTUS, 2),
-            (TEN, 6),
-            (TIGER, 1),
-            (NINE, 6),
-            (JACK, 6),
-        ]),
-    ];
-
-    // Paylines 1 to 5 are the evidenced shapes; 6 to 50 synthetic.
-    let known = [
-        [1, 1, 1, 1, 1],
-        [0, 0, 0, 0, 0],
-        [2, 2, 2, 2, 2],
-        [0, 1, 2, 1, 0],
-        [2, 1, 0, 1, 2],
-    ];
-    let mut paylines: Vec<Payline> = known.iter().map(|rows| Payline(rows.to_vec())).collect();
-    let mut pattern = 0u32;
-    while paylines.len() < 50 {
-        let rows: Vec<u8> = (0..5)
-            .map(|r| ((pattern / 3u32.pow(r)) % 3) as u8)
-            .collect();
-        let all_same = rows.iter().all(|r| *r == rows[0]);
-        if !all_same && !known.iter().any(|k| k[..] == rows[..]) {
-            paylines.push(Payline(rows));
-        }
-        pattern += 1;
-    }
-
-    // Line pays, per credit on the line. The US family pay table (official
-    // visible values); only the top picture pays for two of a kind.
-    let mut line_pays = Vec::new();
-    for (symbol, pays) in [
-        //              2   3   4    5
-        (TIGER, [2, 10, 50, 150]),
-        (ROOSTER, [0, 5, 30, 100]),
-        (JUNK, [0, 5, 25, 100]),
-        (LOTUS, [0, 5, 25, 100]),
-        (KING, [0, 5, 20, 75]),
-        (QUEEN, [0, 5, 10, 50]),
-        (JACK, [0, 5, 10, 50]),
-        (TEN, [0, 5, 10, 50]),
-        (NINE, [0, 5, 10, 50]),
-    ] {
-        for (count, pay) in (2u8..=5).zip(pays) {
-            if pay > 0 {
-                line_pays.push(LinePay {
-                    symbol: SymbolId(symbol),
-                    count,
-                    pay,
-                });
-            }
-        }
-    }
-
-    // Scatter: the family's 100/15/2 times the total bet (official visible).
-    let scatter_pays = vec![
-        ScatterPay {
-            symbol: SymbolId(LANTERN),
-            count: 3,
-            total_bet_multiple: 2,
-        },
-        ScatterPay {
-            symbol: SymbolId(LANTERN),
-            count: 4,
-            total_bet_multiple: 15,
-        },
-        ScatterPay {
-            symbol: SymbolId(LANTERN),
-            count: 5,
-            total_bet_multiple: 100,
-        },
-    ];
-
-    // Orb values: the twelve official multiples and the four levels; synthetic
-    // weights (as Golden Century and Autumn Moon).
-    let orb_values = [
-        (260, OrbValue::BetMultiple(1)),
-        (220, OrbValue::BetMultiple(2)),
-        (160, OrbValue::BetMultiple(3)),
-        (120, OrbValue::BetMultiple(4)),
-        (90, OrbValue::BetMultiple(5)),
-        (70, OrbValue::BetMultiple(10)),
-        (46, OrbValue::BetMultiple(15)),
-        (28, OrbValue::BetMultiple(20)),
-        (12, OrbValue::BetMultiple(50)),
-        (6, OrbValue::BetMultiple(100)),
-        (3, OrbValue::BetMultiple(200)),
-        (2, OrbValue::BetMultiple(250)),
-        (45, OrbValue::Jackpot(JackpotTier::Mini)),
-        (14, OrbValue::Jackpot(JackpotTier::Minor)),
-        (3, OrbValue::Jackpot(JackpotTier::Major)),
-    ]
-    .into_iter()
-    .map(|(weight, value)| WeightedOrbValue { weight, value })
-    .collect();
-
-    let jackpots = [
-        (JackpotTier::Mini, 15),
-        (JackpotTier::Minor, 60),
-        (JackpotTier::Major, 300),
-        (JackpotTier::Grand, 1000),
-    ]
-    .into_iter()
-    .map(|(tier, total_bet_multiple)| JackpotDef::multiple(tier, total_bet_multiple))
-    .collect();
-
-    // Free-game reels: the royals removed (official US rule), so only the four
-    // pictures, the wild (reels 2 to 5) and the scatter appear; no orb and no
-    // mystery reveal. Synthetic composition.
-    let free_reel_strips = vec![
-        reel(&[
-            (LOTUS, 8),
-            (JUNK, 6),
-            (ROOSTER, 5),
-            (TIGER, 2),
-            (LANTERN, 1),
-        ]),
-        reel(&[
-            (LOTUS, 6),
-            (PANDA, 3),
-            (JUNK, 6),
-            (ROOSTER, 5),
-            (TIGER, 2),
-            (LANTERN, 1),
-        ]),
-        reel(&[
-            (JUNK, 6),
-            (PANDA, 3),
-            (LOTUS, 6),
-            (ROOSTER, 5),
-            (TIGER, 2),
-            (LANTERN, 1),
-        ]),
-        reel(&[
-            (LOTUS, 6),
-            (PANDA, 3),
-            (ROOSTER, 5),
-            (JUNK, 6),
-            (TIGER, 2),
-            (LANTERN, 1),
-        ]),
-        reel(&[
-            (ROOSTER, 6),
-            (PANDA, 3),
-            (LOTUS, 6),
-            (JUNK, 5),
-            (TIGER, 2),
-            (LANTERN, 1),
-        ]),
-    ];
-
-    MathModel {
-        id: PANDA_MAGIC_SYNTHETIC_ID.to_string(),
-        provenance: MathProvenance::SyntheticDevFixture,
-        description: "SYNTHETIC Panda Magic: the game's evidenced structure (the Golden \
-                      Century engine family, with its own symbols, the US family pay table and \
-                      royals removed inside the free games) with INVENTED strips, weights and \
-                      jackpot amounts. Not recovered from any machine; never quote its numbers \
-                      as Dragon Link's (docs/reverse-engineering/FOOTAGE.md, docs/DECISIONS.md \
-                      D-017)."
-            .to_string(),
-        grid: GridShape { reels: 5, rows: 3 },
-        symbols,
-        reel_strips,
-        paylines,
-        line_pays,
-        scatter_pays,
-        bet: BetModel {
-            credits_per_line_options: vec![1, 2, 3, 4, 5, 10],
-            line_options: vec![5, 25, 50],
-        },
-        hold_and_spin: Some(HoldAndSpinModel {
-            orb: SymbolId(ORB),
-            trigger_count: 6,
-            initial_respins: 3,
-            reset_respins_on_new_orb: true,
-            orb_land_chance: Ratio { num: 1, den: 14 },
-            orb_values,
-            full_grid_award: Some(JackpotTier::Grand),
-            jackpots,
-        }),
-        free_games: Some(FreeGamesModel {
-            trigger_count: 3,
-            initial_games: 6,
-            retrigger_count: 3,
-            retrigger_games: 3,
-            free_reel_strips,
-            mystery: None,
-            reveal_values: Vec::new(),
-        }),
-    }
+    golden_century_royal_free(
+        PANDA_MAGIC_SYNTHETIC_ID,
+        "SYNTHETIC Panda Magic: Golden Century's synthetic model in Panda Magic's symbols, \
+         without the mystery reveal, with royal-free free games (three more on a retrigger) and \
+         the family's mobile pay table. Strips, weights and jackpots INVENTED; never quote its \
+         numbers as Dragon Link's.",
+        [
+            ("warriors", "tiger"),
+            ("women", "rooster"),
+            ("vase", "junk"),
+            ("chest", "lotus"),
+            ("emperor", "panda"),
+            ("pennant", "lantern"),
+        ],
+        family_pays(["tiger", "rooster", "junk", "lotus"]),
+    )
 }
 
 #[cfg(test)]

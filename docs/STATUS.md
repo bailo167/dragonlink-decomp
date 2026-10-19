@@ -33,6 +33,11 @@ owner; docs/DECISIONS.md). Every run muted. Progress, newest last:
   Century's in its symbols, with its own pay table (club wins fit the mobile table, STRONG) and a
   six-game retrigger (three club recordings); it plays every feature in the cabinet with its own
   art, the prepared runs included (checked on a muted capture).
+- **Happy & Prosperous and Panda Magic.** In the mobile build each is Golden Century's package
+  less the mystery reveal and the tall wild; their models are Golden Century's in their symbols,
+  without doors, with royal-free free reels (synthetic) and three-game retriggers (mobile and club
+  footage) and the family's mobile pay table (the club table is unknown). Both play in the cabinet
+  with their own art and return about 90% at every bet (checked on muted captures).
 
 ## Project interpretation (owner reset, 2026-10-14)
 

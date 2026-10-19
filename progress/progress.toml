@@ -703,30 +703,32 @@ status = "not_started"
 [[category.item]]
 id = "hold-and-spin"
 name = "Hold & Spin rules and presentation"
-status = "investigating"
-note = "US rules text transcribed from footage (six to fourteen prize symbols, individual reels, three spins resetting, the set of prize multiples). Australian screens show the same trigger and counters. Not implemented to these rules."
+status = "partial"
+note = "Played to Golden Century's rules and presentation, which the mobile build shares with this title; values and weights synthetic."
 
 [[category.item]]
 id = "jackpots"
 name = "Jackpot levels and presentation"
-status = "investigating"
-note = "Four levels; strong evidence that in Australia the Grand is linked, the Major a stand-alone progressive, and the Minor and Mini fixed. Venue start-up values for the Grand recorded. Major parameters and increment rates not public. Not implemented."
+status = "partial"
+note = "As Golden Century's: Mini and Minor fixed by denomination, Major and Grand progressive meters climbing in the app; chances follow the stake; start values, rates and odds synthetic."
 
 [[category.item]]
 id = "free-games"
 name = "Free games feature"
 status = "partial"
-note = "Six free games, three extra on a retrigger, royals removed: read from Australian footage and matching the manufacturer's page and US rules text. The synthetic Happy & Prosperous config implements this (six games, three-game retrigger, royal-free feature reels, no mystery reveal) with synthetic strips and weights; the exact strips, weights and retrigger behaviour are synthetic."
+note = "Six free games on royal-free reels (rebuilt, synthetic), three more on a retrigger (mobile and club footage), no mystery symbol; coins start Hold & Spin inside the free games."
 
 [[category.item]]
 id = "art-ui"
 name = "Title artwork, UI layout and typography"
-status = "not_started"
+status = "partial"
+note = "Plays in the cabinet from its own local pack through the shared presentation (single-cell wild, no tall stack); not compared side by side with its footage."
 
 [[category.item]]
 id = "audio"
 name = "Sound and music"
-status = "not_started"
+status = "partial"
+note = "The pack's own clips play where Golden Century's do; not checked title by title against recordings."
 
 [[category.item]]
 id = "animation-timing"
@@ -741,7 +743,8 @@ status = "not_started"
 [[category.item]]
 id = "imported-assets"
 name = "Locally imported original assets"
-status = "not_started"
+status = "partial"
+note = "Art, animation and sound exported by the private exporter into a local pack; never in Git."
 
 [[category.item]]
 id = "parity"
@@ -795,30 +798,32 @@ status = "not_started"
 [[category.item]]
 id = "hold-and-spin"
 name = "Hold & Spin rules and presentation"
-status = "investigating"
-note = "US rules text transcribed from footage (six to fourteen prize symbols, individual reels, three spins resetting, the set of prize multiples). Australian screens show the same trigger and counters. Not implemented to these rules."
+status = "partial"
+note = "Played to Golden Century's rules and presentation, which the mobile build shares with this title; values and weights synthetic."
 
 [[category.item]]
 id = "jackpots"
 name = "Jackpot levels and presentation"
-status = "investigating"
-note = "Four levels; strong evidence that in Australia the Grand is linked, the Major a stand-alone progressive, and the Minor and Mini fixed. Venue start-up values for the Grand recorded. Major parameters and increment rates not public. Not implemented."
+status = "partial"
+note = "As Golden Century's: Mini and Minor fixed by denomination, Major and Grand progressive meters climbing in the app; chances follow the stake; start values, rates and odds synthetic."
 
 [[category.item]]
 id = "free-games"
 name = "Free games feature"
 status = "partial"
-note = "Six free games, three extra on a retrigger, royals removed, and Hold & Spin can start inside free games: read from Australian footage and matching the manufacturer's page. The synthetic Panda Magic config implements the six games, the three-game retrigger and the royal-free feature reels; Hold & Spin starting inside the free games is a known fidelity gap, not yet modelled. Strips and weights are synthetic."
+note = "Six free games on royal-free reels (rebuilt, synthetic), three more on a retrigger (mobile and club footage), no mystery symbol; coins start Hold & Spin inside the free games."
 
 [[category.item]]
 id = "art-ui"
 name = "Title artwork, UI layout and typography"
-status = "not_started"
+status = "partial"
+note = "Plays in the cabinet from its own local pack through the shared presentation (single-cell wild, no tall stack); not compared side by side with its footage."
 
 [[category.item]]
 id = "audio"
 name = "Sound and music"
-status = "not_started"
+status = "partial"
+note = "The pack's own clips play where Golden Century's do; not checked title by title against recordings."
 
 [[category.item]]
 id = "animation-timing"
@@ -833,7 +838,8 @@ status = "not_started"
 [[category.item]]
 id = "imported-assets"
 name = "Locally imported original assets"
-status = "not_started"
+status = "partial"
+note = "Art, animation and sound exported by the private exporter into a local pack; never in Git."
 
 [[category.item]]
 id = "parity"

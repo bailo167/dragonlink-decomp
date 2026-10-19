@@ -269,15 +269,16 @@ fn dress_scenario(mut model: MathModel, seed: u64, coins: bool) -> MathModel {
 /// The model with extra orbs and scatters spread through its base reels (see
 /// [`FEATURE_TEST_ORB`]).
 fn feature_test(mut model: MathModel, orb_every: usize, scatter_every: usize) -> MathModel {
-    let id = |key: &str| {
+    let of_kind = |kind: SymbolKind| {
         model
             .symbols
             .iter()
-            .position(|s| s.key == key)
+            .position(|s| s.kind == kind)
             .and_then(|i| u16::try_from(i).ok())
             .map(dragonlink_model::SymbolId)
     };
-    let (Some(orb), Some(scatter)) = (id("orb"), id("pennant")) else {
+    let (Some(orb), Some(scatter)) = (of_kind(SymbolKind::Orb), of_kind(SymbolKind::Scatter))
+    else {
         return model;
     };
     // Testing (`DRAGONLINK_GRAND_TEST`): coins land on most respins, so the
@@ -375,15 +376,21 @@ enum GameChoice {
 
 impl GameChoice {
     fn model(self) -> MathModel {
+        let model = self.own_model();
+        if std::env::var_os("DRAGONLINK_FEATURE_TEST").is_some() && self != GameChoice::Synthetic {
+            let flags = std::env::var("DRAGONLINK_FEATURE_TEST").is_ok_and(|v| v == "flags");
+            return feature_test(
+                model,
+                if flags { 0 } else { FEATURE_TEST_ORB },
+                FEATURE_TEST_SCATTER,
+            );
+        }
+        model
+    }
+
+    /// The title's synthetic model as it is.
+    fn own_model(self) -> MathModel {
         match self {
-            GameChoice::GoldenCentury if std::env::var_os("DRAGONLINK_FEATURE_TEST").is_some() => {
-                let flags = std::env::var("DRAGONLINK_FEATURE_TEST").is_ok_and(|v| v == "flags");
-                feature_test(
-                    golden_century_synthetic(),
-                    if flags { 0 } else { FEATURE_TEST_ORB },
-                    FEATURE_TEST_SCATTER,
-                )
-            }
             GameChoice::GoldenCentury => golden_century_synthetic(),
             GameChoice::AutumnMoon => autumn_moon_synthetic(),
             GameChoice::HappyProsperous => happy_prosperous_synthetic(),
