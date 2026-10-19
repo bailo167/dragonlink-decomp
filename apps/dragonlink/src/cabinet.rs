@@ -1419,11 +1419,11 @@ pub fn spawn(
             spawn_strips(c, model.grid.reels);
             spawn_wild_talls(c, model.grid.reels);
             spawn_big_art(c, &fonts.meter);
-            spawn_feature_layer(c, art, &fonts.meter);
+            spawn_feature_layer(c, art, &fonts.meter, &fonts.heavy);
             spawn_hs_overlays(c, &fonts.meter);
             spawn_win_lines(c, &fonts.sans);
             spawn_coin_shower(c);
-            spawn_medallion(c, art);
+            spawn_counter_burst(c);
             spawn_win_flares(c);
 
             // The jackpots across the top.
@@ -2431,10 +2431,10 @@ fn spawn_deck(
 const DECK_KEY: (f32, f32, f32, f32) = (96.0, 80.0, 30.0, 10.0);
 
 /// The deck's stacking layer: above every screen effect (the Hold & Spin
-/// transition 30, the coin shower, bolt bursts and win flares 26, the
-/// medallion 25, the bolts 22, the WINNER plate 19-21, the CREDIT pill 14,
-/// the chooser and the gamble 12-13) and below the rules overlay (50) and the
-/// machine menu (60), which still cover the deck.
+/// transition 30, the coin shower, bolt bursts and win flares 26, the bolts
+/// 22, the WINNER box and its splash 20-21, the CREDIT pill 14, the chooser
+/// and the gamble 12-13, the WINNER plate 4) and below the rules overlay (50)
+/// and the machine menu (60), which still cover the deck.
 const DECK_LAYER: i32 = 40;
 const DECK_TEARDROP: (f32, f32) = (170.0, 170.0);
 
@@ -4814,6 +4814,8 @@ pub struct FeatureShow {
     pub scatter_award: u64,
     /// Seconds spent waiting for the current press.
     waited: f32,
+    /// When (`clock`) the start prompt showed, while it shows.
+    prompt_at: Option<f32>,
     /// A respin to animate: the positions orbs just landed on.
     respin_landed: Option<Vec<(u8, u8)>>,
     respin: Option<RespinAnim>,
@@ -4841,6 +4843,9 @@ pub struct FeatureShow {
     transition_at: Option<f32>,
     /// The WINNER total while the coins are counted.
     pub winner: Option<u64>,
+    /// After the count: until when (`clock`) the WINNER box stays, and the
+    /// total it holds meanwhile (whatever follows, the free games too).
+    winner_hold: Option<(f32, u64)>,
     /// When the burst on the banner's counter began (`clock`).
     banner_burst: Option<f32>,
     /// The rumble before the coins are added, while it plays.
@@ -4961,6 +4966,7 @@ impl FeatureShow {
                 self.collected = None;
                 self.grid = false;
                 self.winner = None;
+                self.winner_hold = None;
                 self.intro = None;
             }
             Event::JackpotAwarded { tier, award } => {
@@ -5075,6 +5081,7 @@ impl FeatureShow {
                 self.started = false;
                 self.bursts.clear();
                 self.winner = None;
+                self.winner_hold = None;
                 self.transition_at = None;
                 self.bolt = None;
                 self.splash_at = None;
@@ -5108,10 +5115,19 @@ impl FeatureShow {
     fn wait_for(&mut self, what: Await) {
         self.awaiting = Some(what);
         self.waited = 0.0;
+        // The start prompt's lettering blinks from the moment it shows.
+        self.prompt_at = matches!(what, Await::Start(_)).then_some(self.clock);
     }
 
-    fn reset_wait(&mut self) {
-        self.waited = 0.0;
+    /// Whether the start prompt's lettering is lit now, while a feature
+    /// waits for START FEATURE (`None` while none does).
+    pub fn prompt_lettering(&self) -> Option<bool> {
+        if !matches!(self.awaiting, Some(Await::Start(_))) {
+            return None;
+        }
+        Some(prompt_lit(
+            self.clock - self.prompt_at.unwrap_or(self.clock),
+        ))
     }
 
     /// A feature is under way: the credit meter holds still and its wins
@@ -5250,6 +5266,7 @@ pub fn feature_press(
             show.fg_cut = Some(0.0);
         }
         show.awaiting = None;
+        show.prompt_at = None;
         input.skip_spin = true;
         // The press plays the next step at once.
         presentation.step_timer = 0.0;
@@ -5287,8 +5304,55 @@ const BANNER_Y: f32 = GRID_CENTER.1 - 1.5 * PITCH.1 + 6.0;
 const COUNTER_X: [f32; 2] = [0.59, 0.795];
 const COUNTER_DIGIT_H: f32 = 52.0;
 
+/// The start prompt's lettering: PRESS START FEATURE BUTTON, drawn by us
+/// over the banner's blue bar (the pack has only the official app's SELECT
+/// SPIN TO START FEATURE art; the cabinet shows the same banner for both
+/// features).
+#[derive(Component)]
+pub struct PromptLettering;
+
+/// The banner's blue field on our 760 x 96 banner (left, top, width,
+/// height; measured on the bar's art).
+const PROMPT_FIELD: (f32, f32, f32, f32) = (15.0, 11.0, 730.0, 64.0);
+/// The lettering as club footage shows it (the same within a pixel on four
+/// frames of two recordings; VERIFIED): one line, centred, across 0.96 of
+/// the field; START FEATURE's caps 0.42 of the field's height, PRESS and
+/// BUTTON small caps 0.81 of theirs on the same baseline; pale cream (judged
+/// against white text on the same screen, not measured as a colour) with a
+/// dark shadow. Arial Black (caps 0.716 of its size) stands in for the
+/// game's brush face: its letters run narrow of the cabinet's, so the line
+/// is widened by `PROMPT_WIDEN`, and doubled spaces give the cabinet's gaps
+/// (0.03-0.045 of the line each); its caps sit a little low in their line,
+/// so the line is raised by `PROMPT_RAISE` to centre them (both checked on a
+/// capture: the line 0.96 of the field, centred within a pixel).
+const PROMPT_LARGE: f32 = 37.0;
+const PROMPT_SMALL: f32 = 30.0;
+const PROMPT_WIDEN: f32 = 1.09;
+const PROMPT_RAISE: f32 = 2.0;
+const PROMPT_CREAM: Color = Color::srgb(0.929, 0.898, 0.827);
+/// The lettering blinks while the bar stays: a 20-video-frame (0.667 s)
+/// cycle in every cycle measured, about 0.35 s lit, and the first lit phase
+/// about 0.25 s as the banner pops in (VERIFIED: three Hold & Spin waits and
+/// a free games wait, y8c8lEdPW8Y 969.10-970.53 and 2519.57-2521.77,
+/// 1bAevGz0K2k 113.77-115.37, y8c8lEdPW8Y 945.8-949.8; the free games wait
+/// measured 0.367 s lit and a 0.30 s first phase, within a camera frame).
+const PROMPT_BLINK_PERIOD: f32 = 2.0 / 3.0;
+const PROMPT_BLINK_ON: f32 = 0.35;
+const PROMPT_BLINK_PHASE: f32 = 0.10;
+
+/// Whether the start prompt's lettering is lit `since` seconds after the
+/// prompt showed.
+pub fn prompt_lit(since: f32) -> bool {
+    (since + PROMPT_BLINK_PHASE).rem_euclid(PROMPT_BLINK_PERIOD) < PROMPT_BLINK_ON
+}
+
 /// The banner, its counter digits, the Hold & Spin grid lines.
-pub fn spawn_feature_layer(c: &mut ChildSpawnerCommands, art: &ArtPack, font: &Handle<Font>) {
+pub fn spawn_feature_layer(
+    c: &mut ChildSpawnerCommands,
+    art: &ArtPack,
+    font: &Handle<Font>,
+    heavy: &Handle<Font>,
+) {
     let ui = |k: &str| art.ui.get(k).cloned().unwrap_or_default();
     let (gx, gy) = GRID_CENTER;
     c.spawn((
@@ -5340,6 +5404,53 @@ pub fn spawn_feature_layer(c: &mut ChildSpawnerCommands, art: &ArtPack, font: &H
             },
         ));
         spawn_banner_amount(b, font, bw, bh);
+        // The start prompt's lettering, centred in the blue field.
+        let (fx, fy, fw, fh) = PROMPT_FIELD;
+        let face = |size: f32| TextFont {
+            font: bevy::text::FontSource::Handle(heavy.clone()),
+            font_size: FontSize::Px(size),
+            ..default()
+        };
+        b.spawn(Node {
+            position_type: PositionType::Absolute,
+            left: Val::Px(fx * bw / 760.0),
+            top: Val::Px(fy * bh / 96.0 - PROMPT_RAISE),
+            width: Val::Px(fw * bw / 760.0),
+            height: Val::Px(fh * bh / 96.0),
+            justify_content: JustifyContent::Center,
+            align_items: AlignItems::Center,
+            ..default()
+        })
+        .with_children(|f| {
+            f.spawn((
+                PromptLettering,
+                Text::new("PRESS  "),
+                face(PROMPT_SMALL),
+                TextColor(PROMPT_CREAM),
+                TextShadow {
+                    offset: Vec2::new(2.0, 2.0),
+                    color: Color::srgba(0.02, 0.02, 0.06, 0.85),
+                },
+                TextLayout::default().with_no_wrap(),
+                UiTransform {
+                    scale: Vec2::new(PROMPT_WIDEN, 1.0),
+                    ..UiTransform::IDENTITY
+                },
+                Visibility::Hidden,
+            ))
+            .with_children(|t| {
+                t.spawn((
+                    TextSpan::new("START  FEATURE  "),
+                    face(PROMPT_LARGE),
+                    TextColor(PROMPT_CREAM),
+                ));
+                t.spawn((
+                    TextSpan::new("BUTTON"),
+                    face(PROMPT_SMALL),
+                    TextColor(PROMPT_CREAM),
+                ));
+            });
+        });
         for number in 0..2u8 {
             b.spawn(Node {
                 position_type: PositionType::Absolute,
@@ -5392,6 +5503,9 @@ pub fn spawn_hs_cell(cell: &mut ChildSpawnerCommands, art: &ArtPack, reel: u8, r
         Visibility::Hidden,
     ));
 }
+
+/// The banner's key for the start prompt, which has no art of its own.
+const PROMPT_KEY: &str = "prompt";
 
 /// Show the feature banner, counter, grid and messages for the stage.
 #[allow(clippy::too_many_arguments, clippy::type_complexity)]
@@ -5450,6 +5564,17 @@ pub fn feature_screen(
             Without<CounterDigit>,
         ),
     >,
+    mut lettering: Query<
+        &mut Visibility,
+        (
+            With<PromptLettering>,
+            Without<FeatureBanner>,
+            Without<CounterDigit>,
+            Without<HsFrame>,
+            Without<HsCell>,
+            Without<BannerAmount>,
+        ),
+    >,
 ) {
     if !fidelity.0 {
         return;
@@ -5486,7 +5611,8 @@ pub fn feature_screen(
         (_, Stage::HoldSpin { .. }) if show.intro.is_some() => None,
         // Between FREE SPINS COMPLETED and the WIN banner: no banner.
         (_, Stage::HoldSpinDone) if show.collect.is_some() => None,
-        (Some(Await::Start(_)), _) => Some("banner_start_feature".to_string()),
+        // Both features' start prompt: the bar with our lettering.
+        (Some(Await::Start(_)), _) => Some(PROMPT_KEY.to_string()),
         (_, Stage::FreeGames { .. }) => Some("banner_free_game".to_string()),
         (_, Stage::FreeGamesDone) => Some("banner_feature_completed".to_string()),
         (_, Stage::HoldSpin { .. }) if show.counter > 0 => {
@@ -5496,9 +5622,13 @@ pub fn feature_screen(
         (_, Stage::HoldSpinDone) => Some("banner_spins_completed".to_string()),
         _ => None,
     };
-    let handle = text.as_deref().and_then(|k| art.ui.get(k));
+    let prompt = text.as_deref() == Some(PROMPT_KEY);
+    let handle = text
+        .as_deref()
+        .filter(|_| !prompt)
+        .and_then(|k| art.ui.get(k));
     for mut vis in &mut banner {
-        let want = if handle.is_some() {
+        let want = if handle.is_some() || prompt {
             Visibility::Inherited
         } else {
             Visibility::Hidden
@@ -5507,11 +5637,28 @@ pub fn feature_screen(
             *vis = want;
         }
     }
-    if let Some(h) = handle {
-        for mut image in &mut banner_text {
-            if image.image != *h {
-                image.image = h.clone();
-            }
+    for mut image in &mut banner_text {
+        if let Some(h) = handle
+            && image.image != *h
+        {
+            image.image = h.clone();
+        }
+        // The prompt shows the bar alone under our lettering.
+        let tint = if prompt { Color::NONE } else { Color::WHITE };
+        if image.color != tint {
+            image.color = tint;
+        }
+    }
+    // Only the lettering blinks; the bar stays.
+    let lit = prompt && show.prompt_lettering() == Some(true);
+    for mut vis in &mut lettering {
+        let want = if lit {
+            Visibility::Inherited
+        } else {
+            Visibility::Hidden
+        };
+        if *vis != want {
+            *vis = want;
         }
     }
     // The counter's numbers, in the banner's own gold digits.
@@ -5586,40 +5733,47 @@ pub fn feature_screen(
 // Hold & Spin
 // ---------------------------------------------------------------------------
 //
-// The sequence follows cabinet footage of the feature (seconds after the
-// winning game's last reel stops): the feature bell (~0.4 s); the other
-// symbols dim and every coin bursts into flame with the trigger sound
-// (~3.2 s); fire dragons and a fireball sweep the screen (~4.0 s) and clear
-// to the Hold & Spin grid; "PRESS START FEATURE BUTTON" (~6.6 s). After the
-// press the respin counter counts up 1, 2, 3, and the first respin starts.
-// Held coins burn with a fire ring; open positions show dimmed symbols and
-// spin as small reels of their own, stopping one by one; a coin that lands
-// bursts in with the Hold & Spin "doonk". The counter drops as a respin
-// starts and returns to 3 when a coin has landed. At the end each coin is
-// counted in turn into a flame-bordered WINNER total.
+// The sequence follows club cabinet footage of the feature: the feature
+// bell; the other symbols dim and every coin bursts into flame with the
+// trigger sound; one fire (dragons, then a white-out) sweeps the screen and
+// clears straight to the Hold & Spin grid; "PRESS START FEATURE BUTTON",
+// its lettering blinking. After the press the respin counter counts up 1, 2,
+// 3, and the first respin starts. Held coins burn with a fire ring; open
+// positions show dimmed symbols and spin as small reels of their own,
+// stopping one by one; a coin that lands bursts in with the Hold & Spin
+// "doonk". The counter drops as a respin starts and returns to 3 when a coin
+// has landed. At the end each coin's comet flies to a flame-bordered WINNER
+// total over the jackpot bar.
 
 /// Seconds into the trigger sequence for each step (it begins when the
-/// result shows, 0.17 s after the last reel is still). Real game, recorded
-/// with sound and measured frame by frame (the sound's 0.09 s lag removed):
-/// the feature bell as the reels settle; 2.8 s later every coin bursts into
-/// flame and the other positions dim, to SND_FeatureTrigger; 0.2 s on the
-/// fire dragons rise and fill the screen with fire, which clears to the HOLD &
-/// SPIN medallion over the dimmed board; a second fire clears to the Hold &
-/// Spin board; 0.57 s later SELECT SPIN TO START FEATURE and the Hold & Spin
-/// music. The real game holds the medallion 3.8 s and then shows "COLLECT 15
-/// TO WIN GRAND JACKPOT"; the owner wants the medallion for about a second
-/// and no COLLECT screen, so the second fire follows the first at once.
+/// result shows, 0.17 s after the last reel is still). The bell's place is
+/// the official app's (recorded with sound; the cabinet copies have none);
+/// the rest is two club recordings matched frame by frame against the fire's
+/// own 54 frames (y8c8lEdPW8Y 965.60-969.10, 1bAevGz0K2k 110.17-113.67;
+/// STRONG): the coins burst 2.70 s after the reels are still, to
+/// SND_FeatureTrigger; the fire's first dragon head 0.90-0.93 s after the
+/// burst; the screen white about 1.8-2.3 s after it, the board already the
+/// Hold & Spin board under it; the fire gone (only its top band left) by
+/// 2.70 s; the prompt and the Hold & Spin music 3.50 s after the burst. The
+/// cabinet shows no medallion over the reels, no COLLECT screen and no
+/// second fire: those are the official app's, and the app follows the
+/// cabinet (owner, 2026-10-18), which replaces the owner's 2026-10-14 choice
+/// of a 1 s medallion.
 const INTRO_BELL: f32 = 0.01;
-const INTRO_BURST: f32 = 2.63;
-const INTRO_TRANSITION: f32 = INTRO_BURST + 0.2;
-/// The fire (54 frames) runs at 25 fps (2.15 s on the real game's screen).
-const FIRE_FPS: f32 = 25.0;
-/// The medallion stands from the first fire's turning see-through until the
-/// second fire covers it.
-const INTRO_MEDALLION: f32 = INTRO_TRANSITION + 1.4;
-const INTRO_FIRE2: f32 = INTRO_TRANSITION + 2.0;
-const INTRO_GRID: f32 = INTRO_FIRE2 + 0.9;
-const INTRO_END: f32 = INTRO_FIRE2 + 1.87 + 0.57;
+const INTRO_BURST: f32 = 2.53;
+/// The fire's frame 0, so its frame 1 (the first dragon head) shows 0.91 s
+/// after the burst.
+const INTRO_TRANSITION: f32 = INTRO_BURST + 0.87;
+/// The fire (54 frames) runs at 22.3 fps: a linear fit of its key frames on
+/// both recordings (21.5-23), which puts frame 41 (the top band) at the
+/// burst + 2.71 s and its embers' end at + 3.07 s.
+const FIRE_FPS: f32 = 22.3;
+/// The board and its backdrop come up under the fire's full white (frames
+/// 22-33), half way in.
+const INTRO_GRID: f32 = INTRO_TRANSITION + 27.0 / FIRE_FPS;
+/// The prompt (the music starts with it; its onset on the cabinet is not
+/// measurable, and with the prompt is the official app's order).
+const INTRO_END: f32 = INTRO_BURST + 3.5;
 /// The counter's count-up after START FEATURE (real game: a SND_Fea_Inc tick
 /// a step, the first 0.27 s after the press, then every 0.2 s; a burst on the
 /// banner's 3), and the pause before the first respin, which starts by
@@ -5711,30 +5865,43 @@ pub struct Collect {
 /// The position of the Grand's step (it has no coin).
 const GRAND_STEP: u8 = u8::MAX;
 
-/// The end of Hold & Spin, from the real game recorded with sound (the
-/// sound's lag removed): "FREE SPINS COMPLETED" with SND_Fea_End (3 s); a
-/// rumble (SND_Rumble) from 0.37 s after; an empty WIN banner over the reels
-/// at 2.86 s; then each coin in turn, reel by reel and top to bottom, 1.35 s
-/// apart: it flares and its fire comet (the game's bolt animations) flies to
-/// the banner, which adds its value at once, to SND_Small_5 (SND_Medium_1 for
-/// a big coin); the rumble fades over the first second of this. 0.8 s after
-/// the last value the banner's WIN letters burst (again every 59 frames until
-/// the next game) and the count begins: the payout music, a coin shower,
-/// and WIN counting the total up over the music's length (SPIN completes
-/// it; the music stops). Our cabinet keeps its own meters; a Grand is added
-/// to the banner after the coins, its plaque on the top while it is.
+/// The end of Hold & Spin. "FREE SPINS COMPLETED" with SND_Fea_End (3 s),
+/// then the collection, as club cabinets show it (VERIFIED: 1bAevGz0K2k
+/// 2:25-2:45, y8c8lEdPW8Y 1001.9-1019.9, f5sMl9a5jds 4:18-4:38): 0.1 s after
+/// the banner goes, the jackpot meters give way to an empty flame-bordered
+/// WINNER box, with a line of the live Grand and Major under it, and nothing
+/// shows over the reels; each coin in turn, reel by reel and top to bottom,
+/// 1.35 s apart (the first 0.4 s after the box), flares and its fire comet
+/// (the game's bolt animations) flies up to the box, which adds its value
+/// 0.6 s later with a splash, to SND_Small_5 (SND_Medium_1 for a big coin);
+/// after the last value the count begins: the WIN banner over the reels,
+/// counting up from nothing with WIN, its letters bursting from its first
+/// moment (again every 59 frames until the next game), the payout music and
+/// a coin shower, WIN counting the total up over the music's length (SPIN
+/// completes it; the music stops); the box keeps the total and gives way to
+/// the meters 0.55 s after the count is complete. The official app instead
+/// tallies onto an empty WIN banner over the reels (2.86 s after FREE SPINS
+/// COMPLETED, its first coin a frame later, 0.45 s comets, the letters 0.8 s
+/// after the last value); the app follows the cabinet. The rumble
+/// (SND_Rumble, 0.37 s in) and the pause before the count (0.87 s) are the
+/// official app's: the cabinet copies have no sound, and the cabinets
+/// disagree on the pause (1.6 s and 3.8 s). Our cabinet keeps its own
+/// meters; a Grand is added to the box after the coins, its plaque on the
+/// box while it is (owner: coins first).
 const COMPLETED_SECONDS: f32 = 3.0;
 const COLLECT_RUMBLE: f32 = 0.37;
-const COLLECT_BANNER: f32 = 2.86;
-const COLLECT_FIRST: f32 = COLLECT_BANNER + 1.0 / 30.0;
+const COLLECT_BANNER: f32 = 0.1;
+const COLLECT_FIRST: f32 = COLLECT_BANNER + 0.4;
 const COLLECT_STEP: f32 = 1.347;
-/// From a coin's flare to its value on the banner (the comet's flight).
-const BOLT_FLIGHT: f32 = 0.45;
-/// From the last value to the count, and to the first burst on WIN, and
-/// the bursts' period.
+/// From a coin's flare to its value on the box (the comet's flight).
+const BOLT_FLIGHT: f32 = 0.6;
+/// From the last value to the count, and the WIN letters' bursts' period.
 const PAY_DELAY: f32 = 0.87;
-const FLARE_DELAY: f32 = 0.8;
 const FLARE_EVERY: f32 = 59.0 / 30.0;
+/// The WINNER box gives way to the jackpot meters this long after the count
+/// is complete (club cabinets 0.53-0.60 s, through one dark frame; the
+/// owner's cabinet about 0.5 s).
+const WINNER_HOLD: f32 = 0.55;
 /// The rumble fades out over this long from the first coin.
 const RUMBLE_FADE: f32 = 1.0;
 /// A coin worth at least this many total bets sounds SND_Medium_1 (real
@@ -5761,7 +5928,74 @@ pub struct Pay {
     seconds: f32,
 }
 
+/// What a moment of the collection did: whether the rumble starts, the
+/// coins' sounds due, and the total once the count is due.
+#[derive(Debug, Default)]
+struct CollectStep {
+    rumble: bool,
+    sounds: Vec<&'static str>,
+    done: Option<u64>,
+}
+
 impl FeatureShow {
+    /// Run the collection on by `dt` seconds (at `self.clock`): the box,
+    /// each coin's comet and its value on the box with a splash, then the
+    /// count.
+    fn advance_collect(&mut self, dt: f32, total_bet: u64) -> CollectStep {
+        let mut step = CollectStep::default();
+        let Some(mut c) = self.collect.take() else {
+            return step;
+        };
+        let clock = self.clock;
+        let t0 = c.t;
+        c.t += dt;
+        let crossed = |at: f32| t0 < at && c.t >= at;
+        step.rumble = crossed(COLLECT_RUMBLE);
+        // The empty WINNER box over the jackpot bar.
+        if crossed(COLLECT_BANNER) {
+            self.winner = Some(0);
+        }
+        // Each coin in turn flares and sends its comet to the box.
+        while c.launched < c.coins.len() && c.t >= COLLECT_FIRST + c.launched as f32 * COLLECT_STEP
+        {
+            let (reel, row, amount, jackpot, _) = c.coins[c.launched];
+            if reel == GRAND_STEP {
+                c.grand_up = true;
+            } else {
+                self.bolt = Some((reel, row, clock));
+            }
+            step.sounds.push(if jackpot {
+                "SND_Credit1"
+            } else if amount >= BIG_COIN_RATIO * total_bet {
+                "SND_Medium_1"
+            } else {
+                "SND_Small_5"
+            });
+            c.launched += 1;
+        }
+        // Its value on the box as the comet arrives, with a splash.
+        while c.counted < c.launched
+            && c.t >= COLLECT_FIRST + c.counted as f32 * COLLECT_STEP + BOLT_FLIGHT
+        {
+            let (_, _, amount, _, tier) = c.coins[c.counted];
+            self.winner = Some(self.winner.unwrap_or(0) + amount);
+            self.splash_at = Some(clock);
+            // A progressive's meter restarts as its amount is counted.
+            if let Some(tier @ (JackpotTier::Major | JackpotTier::Grand)) = tier {
+                self.link_won.push(tier);
+            }
+            c.counted += 1;
+        }
+        let last =
+            COLLECT_FIRST + c.coins.len().saturating_sub(1) as f32 * COLLECT_STEP + BOLT_FLIGHT;
+        if c.counted >= c.coins.len() && c.t >= last + PAY_DELAY {
+            step.done = self.winner;
+        } else {
+            self.collect = Some(c);
+        }
+        step
+    }
+
     /// The Grand's plaque shows (from its step until the count is over).
     pub fn grand_showing(&self) -> bool {
         self.grand.is_some()
@@ -5770,25 +6004,43 @@ impl FeatureShow {
 
     /// What WIN shows while the feature's total is counted onto it.
     pub fn grand_win(&self) -> Option<u64> {
-        if let Some(p) = self.pay.as_ref() {
-            let k = (p.t / p.seconds).clamp(0.0, 1.0);
-            return Some(self.pay_base + self.paid + (p.amount as f32 * k) as u64);
-        }
-        // Once paid, WIN holds the sum until the game moves on.
-        (self.stage == Stage::HoldSpinDone && self.collected.is_some())
-            .then_some(self.pay_base + self.paid)
+        self.pay_banner().map(|w| self.pay_base + w)
     }
 
-    /// What the WIN banner over the reels shows: the coins added so far,
-    /// then the total while it counts and after, until the next game.
+    /// What the WIN banner over the reels shows: nothing while the coins
+    /// go to the WINNER box; then the amount counted so far, from nothing,
+    /// in step with WIN (club cabinets: the banner at $1.08 with WIN at
+    /// $11.08 from $10.00); then the total until the next game.
     pub fn pay_banner(&self) -> Option<u64> {
         if let Some(p) = &self.pay {
-            return Some(self.paid + p.amount);
+            let k = (p.t / p.seconds).clamp(0.0, 1.0);
+            return Some(self.paid + (p.amount as f32 * k) as u64);
         }
         if self.collect.is_some() {
-            return self.winner;
+            return None;
         }
+        // Once paid, it holds the sum until the game moves on.
         (self.stage == Stage::HoldSpinDone && self.collected.is_some()).then_some(self.paid)
+    }
+
+    /// The WINNER box shows over the jackpot bar: from its arrival during
+    /// the collection, through the count, until a moment after the count is
+    /// complete.
+    pub fn winner_showing(&self) -> bool {
+        self.winner.is_some() || self.pay.is_some() || self.held_winner().is_some()
+    }
+
+    /// The total the WINNER box holds after the count, while it stays.
+    fn held_winner(&self) -> Option<u64> {
+        self.winner_hold
+            .filter(|(until, _)| self.clock < *until)
+            .map(|(_, total)| total)
+    }
+
+    /// The amount in the WINNER box: empty until the first value lands,
+    /// then the values added so far, then the total.
+    fn winner_amount(&self) -> Option<u64> {
+        self.winner.or(self.held_winner()).filter(|w| *w > 0)
     }
 
     /// A big payment is counting (coins rain).
@@ -5829,8 +6081,8 @@ const BOLT_ENDS: [f32; 5] = [228.0, 209.0, 233.0, 194.0, 268.0];
 /// animations (each either way round) the least stretched is used.
 fn bolt_for(reel: u8, row: u8) -> (usize, bool, f32, f32, f32, f32) {
     let (cx, cy) = cell_center(reel, row);
-    // The comet flies to the WIN banner over the reels.
-    let (tx, ty) = (GRID_CENTER.0, BANNER_Y);
+    // The comet flies up to the middle of the WINNER box.
+    let (tx, ty) = WINNER_CENTRE;
     let mut best = (0, false, 1.0, 1.0, f32::MAX);
     for (k, (&(ax, ay), &ex)) in BOLT_RINGS.iter().zip(BOLT_ENDS.iter()).enumerate() {
         for flip in [false, true] {
@@ -5841,17 +6093,20 @@ fn bolt_for(reel: u8, row: u8) -> (usize, bool, f32, f32, f32, f32) {
             };
             let dx = ex - ax;
             let sy = (cy - ty) / ay;
-            let sx = if (tx - cx).abs() < 1.0 {
-                sy * 0.4
+            // Straight above the coin no bolt ends exactly over its ring:
+            // the one ending nearest the middle is taken (it ends inside the
+            // box all the same).
+            let (sx, miss) = if (tx - cx).abs() < 1.0 {
+                (sy * 0.4, (dx * sy * 0.4).abs())
             } else {
-                (tx - cx) / dx
+                ((tx - cx) / dx, 0.0)
             };
             if sx <= 0.0 || sy <= 0.0 {
                 continue;
             }
-            let distortion = (sx / sy).ln().abs();
-            if distortion < best.4 {
-                best = (k, flip, sx, sy, distortion);
+            let cost = (sx / sy).ln().abs() + miss;
+            if cost < best.4 {
+                best = (k, flip, sx, sy, cost);
             }
         }
     }
@@ -5868,17 +6123,33 @@ fn bolt_for(reel: u8, row: u8) -> (usize, bool, f32, f32, f32, f32) {
     )
 }
 
-/// The top of the WINNER total's flame box.
+/// The top of the WINNER total's flame box (y 33-113, above the WIN
+/// banner's top at 114.5).
 const WINNER_TOP: f32 = 33.0;
-/// The WINNER total's flame box.
+/// The WINNER total's flame box: the pack's own flame-bordered box (536 x
+/// 128), its inner aspect about 5.6 as on the cabinet.
 const WINNER_BOX: (f32, f32) = (440.0, 80.0);
+/// The middle of the WINNER box, where the comets end.
+const WINNER_CENTRE: (f32, f32) = (960.0, WINNER_TOP + WINNER_BOX.1 * 0.5);
 /// Where the splash animation (512 x 256) draws its box: x 40..472,
 /// y 145..223 (measured on its frames).
 const SPLASH_BOX: (f32, f32, f32, f32) = (40.0, 145.0, 432.0, 78.0);
 
-/// The WINNER plate's height: clear of the banner slot at the top of the
-/// reels (the WIN banner counts there while WINNER shows).
-const WINNER_PLATE_H: f32 = 114.0;
+/// The WINNER plate covers the whole jackpot bar (its bottom at canvas y
+/// 147.2), so none of the meters' digits show under it; the WIN banner
+/// (from y 114.5) draws over its foot while the count runs. Our single
+/// canvas has no top screen: the plate standing in for it is our layout
+/// (the owner's call; the suggested default).
+const WINNER_PLATE_H: f32 = 148.0;
+/// The line of the live Grand and Major under the box: its top and size,
+/// and its colour (yellow on one club camera, green-tinted on another:
+/// PARTIAL).
+const WINNER_LINE_TOP: f32 = 118.0;
+const WINNER_LINE_SIZE: f32 = 16.0;
+const WINNER_GREEN: Color = Color::srgb(0.86, 0.93, 0.36);
+/// The total's size in the box: the box's inner black is about 36 px tall,
+/// and on the cabinet the amount's caps are about 0.6 of it.
+const WINNER_AMOUNT_SIZE: f32 = 40.0;
 
 /// The slate under the Hold & Spin grid.
 #[derive(Component)]
@@ -5912,6 +6183,15 @@ pub fn hs_backdrop(
 /// The plate behind the WINNER display.
 #[derive(Component)]
 pub struct WinnerPlate;
+/// The line of the live Grand and Major under the WINNER box.
+#[derive(Component)]
+pub struct WinnerJackpots;
+
+/// The line under the WINNER box, from the Grand's and Major's values as
+/// the meters show them.
+pub fn winner_jackpots_line(grand: &str, major: &str) -> String {
+    format!("GRAND JACKPOT: {grand}   MAJOR JACKPOT: {major}")
+}
 
 /// Show the WINNER plate with the total.
 pub fn winner_plate(
@@ -5924,7 +6204,7 @@ pub fn winner_plate(
         return;
     }
     for mut v in &mut plates {
-        let want = if show.grand_showing() && !gamble.active {
+        let want = if show.winner_showing() && !gamble.active {
             Visibility::Inherited
         } else {
             Visibility::Hidden
@@ -6365,8 +6645,10 @@ pub fn spawn_hs_overlays(c: &mut ChildSpawnerCommands, font: &Handle<Font>) {
         Visibility::Hidden,
     ));
     // The WINNER display takes the place of the jackpot meters at the top of
-    // the screen while the coins are counted (the cabinet shows it on its
-    // top screen): a dark plate, "WINNER", the flame-bordered total.
+    // the screen through every Hold & Spin's collection and count (the
+    // cabinet shows it on its top screen): a navy plate over the whole bar,
+    // "WINNER" over the flame-bordered total, the live Grand and Major under
+    // it. Under the WIN banner (5), which counts over its foot.
     c.spawn((
         WinnerPlate,
         Node {
@@ -6375,14 +6657,12 @@ pub fn spawn_hs_overlays(c: &mut ChildSpawnerCommands, font: &Handle<Font>) {
             top: Val::Px(0.0),
             width: Val::Px(JACKPOT_BAR_W),
             height: Val::Px(WINNER_PLATE_H),
-            border: UiRect::all(Val::Px(4.0)),
             border_radius: BorderRadius::bottom(Val::Px(14.0)),
             justify_content: JustifyContent::Center,
             ..default()
         },
-        BackgroundColor(Color::srgb(0.05, 0.02, 0.03)),
-        BorderColor::all(Color::srgb(0.85, 0.6, 0.2)),
-        GlobalZIndex(19),
+        BackgroundColor(Color::srgb(0.06, 0.05, 0.20)),
+        GlobalZIndex(4),
         Visibility::Hidden,
     ))
     .with_children(|p| {
@@ -6390,13 +6670,31 @@ pub fn spawn_hs_overlays(c: &mut ChildSpawnerCommands, font: &Handle<Font>) {
             Text::new("WINNER"),
             TextFont {
                 font: bevy::text::FontSource::Handle(font.clone()),
-                font_size: FontSize::Px(32.0),
+                font_size: FontSize::Px(26.0),
                 ..default()
             },
             TextColor(Color::srgb(0.95, 0.32, 0.12)),
             Node {
                 position_type: PositionType::Absolute,
-                top: Val::Px(-4.0),
+                top: Val::Px(-2.0),
+                ..default()
+            },
+        ));
+        p.spawn((
+            WinnerJackpots,
+            Text::new(""),
+            TextFont {
+                font: bevy::text::FontSource::Handle(font.clone()),
+                font_size: FontSize::Px(WINNER_LINE_SIZE),
+                ..default()
+            },
+            TextColor(WINNER_GREEN),
+            TextLayout::justify(Justify::Center),
+            Node {
+                position_type: PositionType::Absolute,
+                left: Val::Px(0.0),
+                top: Val::Px(WINNER_LINE_TOP),
+                width: Val::Percent(100.0),
                 ..default()
             },
         ));
@@ -6445,10 +6743,10 @@ pub fn spawn_hs_overlays(c: &mut ChildSpawnerCommands, font: &Handle<Font>) {
             Text::new(""),
             TextFont {
                 font: bevy::text::FontSource::Handle(font.clone()),
-                font_size: FontSize::Px(54.0),
+                font_size: FontSize::Px(WINNER_AMOUNT_SIZE),
                 ..default()
             },
-            TextColor(Color::srgb(0.86, 0.93, 0.36)),
+            TextColor(WINNER_GREEN),
         ));
     });
 }
@@ -6540,7 +6838,7 @@ pub fn hold_and_spin_motion(
                 }
             }
         }
-        if crossed(t0, t, INTRO_TRANSITION) || crossed(t0, t, INTRO_FIRE2) {
+        if crossed(t0, t, INTRO_TRANSITION) {
             show.transition_at = Some(clock);
         }
         if crossed(t0, t, INTRO_GRID) {
@@ -6548,8 +6846,7 @@ pub fn hold_and_spin_motion(
         }
         if t >= INTRO_END {
             show.intro = None;
-            show.awaiting = Some(Await::Start(Feature::HoldAndSpin));
-            show.reset_wait();
+            show.wait_for(Await::Start(Feature::HoldAndSpin));
         }
     }
 
@@ -6770,62 +7067,18 @@ pub fn hold_and_spin_motion(
         show.flares_at = None;
         show.collect = Some(Collect { coins, ..default() });
     }
-    let mut done = None;
-    if let Some(mut c) = show.collect.take() {
-        let t0 = c.t;
-        c.t += dt;
-        let crossed = |at: f32| t0 < at && c.t >= at;
-        if crossed(COLLECT_RUMBLE) {
-            show.rumble = sounds.play(&mut commands, "SND_Rumble");
-        }
-        // The empty WIN banner.
-        if crossed(COLLECT_BANNER) {
-            show.winner = Some(0);
-        }
-        // Each coin in turn flares and sends its comet to the banner.
-        while c.launched < c.coins.len() && c.t >= COLLECT_FIRST + c.launched as f32 * COLLECT_STEP
-        {
-            let (reel, row, amount, jackpot, _) = c.coins[c.launched];
-            if reel == GRAND_STEP {
-                c.grand_up = true;
-            } else {
-                show.bolt = Some((reel, row, clock));
-            }
-            let name = if jackpot {
-                "SND_Credit1"
-            } else if amount >= BIG_COIN_RATIO * total_bet {
-                "SND_Medium_1"
-            } else {
-                "SND_Small_5"
-            };
-            sounds.play(&mut commands, name);
-            c.launched += 1;
-        }
-        // Its value on the banner as the comet arrives.
-        while c.counted < c.launched
-            && c.t >= COLLECT_FIRST + c.counted as f32 * COLLECT_STEP + BOLT_FLIGHT
-        {
-            let (_, _, amount, _, tier) = c.coins[c.counted];
-            show.winner = Some(show.winner.unwrap_or(0) + amount);
-            // A progressive's meter restarts as its amount is counted.
-            if let Some(tier @ (JackpotTier::Major | JackpotTier::Grand)) = tier {
-                show.link_won.push(tier);
-            }
-            c.counted += 1;
-        }
-        let last =
-            COLLECT_FIRST + c.coins.len().saturating_sub(1) as f32 * COLLECT_STEP + BOLT_FLIGHT;
-        if c.counted >= c.coins.len() && c.t >= last + FLARE_DELAY && show.flares_at.is_none() {
-            show.flares_at = Some(clock);
-        }
-        if c.counted >= c.coins.len() && c.t >= last + PAY_DELAY {
-            done = show.winner;
-            if let Some(id) = show.rumble.take() {
-                commands.entity(id).try_despawn();
-            }
-        } else {
-            show.collect = Some(c);
-        }
+    let step = show.advance_collect(dt, total_bet);
+    if step.rumble {
+        show.rumble = sounds.play(&mut commands, "SND_Rumble");
+    }
+    for name in step.sounds {
+        sounds.play(&mut commands, name);
+    }
+    let mut done = step.done;
+    if done.is_some()
+        && let Some(id) = show.rumble.take()
+    {
+        commands.entity(id).try_despawn();
     }
     // The count: the payout music (or, below the shower, the long win tune)
     // while WIN counts the total up over its length.
@@ -6839,6 +7092,8 @@ pub fn hold_and_spin_motion(
             PAY_TUNE
         };
         show.pay_sound = sounds.play(&mut commands, name);
+        // The WIN banner's letters burst as it appears (club cabinet).
+        show.flares_at = Some(clock);
         show.pay = Some(Pay {
             amount: total,
             t: 0.0,
@@ -6877,7 +7132,7 @@ pub fn hold_and_spin_motion(
         }
     }
     if let Some(total) = done {
-        show.winner = None;
+        show.winner_hold = show.winner.take().map(|w| (clock + WINNER_HOLD, w));
         show.collected = Some(total);
     }
 }
@@ -7042,7 +7297,7 @@ pub fn hold_and_spin_draw(
 
     // Fire rings on held coins, and bursts.
     // The coins burn in their rings once their burst has opened (real game:
-    // 0.2 s after it), through the medallion and the board.
+    // 0.2 s after it), through the fire and on the board.
     let hs = show.hold_and_spin() && (show.grid || show.since_burst(0.2));
     for (r, mut image, mut vis) in &mut rings {
         let held = hs
@@ -7137,20 +7392,25 @@ pub fn hold_and_spin_draw(
         }
     }
 
-    // The WINNER total; on a Grand, the GRAND JACKPOT plaque (its own
-    // 729 x 108 shape, the title across its top, the amount below).
+    // The WINNER total in the pack's flame-bordered box (its flames looped);
+    // on a Grand, the GRAND JACKPOT plaque (its own 729 x 108 shape, the
+    // title across its top, the amount below). The gamble shows the
+    // jackpots, not the box.
     let grand = show.grand_showing();
+    let boxed = show.winner_showing() && !gamble.active;
     for (mut image, mut node, mut vis) in &mut winner {
-        // The gamble shows the jackpots, not the Grand.
-        let winner = show.grand.filter(|_| grand && !gamble.active);
-        let key = art.ui.get("grand_plaque").cloned();
+        let key = if grand {
+            art.ui.get("grand_plaque").cloned()
+        } else {
+            frame("flameborder_sm", clock, true)
+        };
         let (w, h) = WINNER_BOX;
         let w = if grand { h * 729.0 / 108.0 } else { w };
         if node.width != Val::Px(w) {
             node.width = Val::Px(w);
             node.left = Val::Px(960.0 - w / 2.0);
         }
-        match winner.and(key) {
+        match key.filter(|_| boxed) {
             Some(h) => {
                 if image.image != h {
                     image.image = h;
@@ -7160,11 +7420,14 @@ pub fn hold_and_spin_draw(
             None => set(&mut vis, false),
         }
     }
-    let amount = show
-        .grand
-        .filter(|_| grand && !gamble.active)
-        .map(|w| money(w, denom.cents()))
-        .unwrap_or_default();
+    let amount = if grand {
+        show.grand
+    } else {
+        show.winner_amount()
+    }
+    .filter(|_| boxed)
+    .map(|w| money(w, denom.cents()))
+    .unwrap_or_default();
     let red = grand;
     for (mut t, mut color, mut font, mut node) in &mut winner_text {
         if t.0 != amount {
@@ -7174,7 +7437,7 @@ pub fn hold_and_spin_draw(
         let (size, drop) = if red {
             (WINNER_BOX.1 * 0.5, WINNER_BOX.1 * 0.17)
         } else {
-            (54.0, 0.0)
+            (WINNER_AMOUNT_SIZE, 0.0)
         };
         if font.font_size != FontSize::Px(size) {
             font.font_size = FontSize::Px(size);
@@ -7183,7 +7446,7 @@ pub fn hold_and_spin_draw(
         let want = if red {
             Color::srgb(0.95, 0.12, 0.1)
         } else {
-            Color::srgb(0.86, 0.93, 0.36)
+            WINNER_GREEN
         };
         if color.0 != want {
             color.0 = want;
@@ -9869,57 +10132,19 @@ pub fn free_games_trigger(
 }
 
 // ---------------------------------------------------------------------------
-// The Hold & Spin medallion and the counter's burst
+// The counter's burst
 // ---------------------------------------------------------------------------
+//
+// The official app stands a HOLD & SPIN medallion over the reels between two
+// fires; the club cabinet shows none over the reels (its medallion is on the
+// top screen), so the app has none (see the trigger sequence above).
 
-/// The HOLD & SPIN medallion: the burning gold disc over the reels with the
-/// feature's title on it (real game: centred on the reels, about 2.3 reels
-/// wide and the reels' full height).
-#[derive(Component)]
-pub struct HsMedallion;
 /// The burst on the banner's counter as it reaches 3.
 #[derive(Component)]
 pub struct BannerBurst;
 
-const MEDALLION: (f32, f32) = (2.33 * PITCH.0, 3.0 * PITCH.1);
-
-/// Spawn the medallion (hidden) and the banner's burst.
-pub fn spawn_medallion(c: &mut ChildSpawnerCommands, art: &ArtPack) {
-    let (w, h) = MEDALLION;
-    c.spawn((
-        HsMedallion,
-        Node {
-            position_type: PositionType::Absolute,
-            left: Val::Px(GRID_CENTER.0 - w / 2.0),
-            top: Val::Px(GRID_CENTER.1 - h / 2.0),
-            width: Val::Px(w),
-            height: Val::Px(h),
-            ..default()
-        },
-        ImageNode {
-            image_mode: NodeImageMode::Stretch,
-            ..default()
-        },
-        GlobalZIndex(25),
-        Visibility::Hidden,
-    ))
-    .with_children(|m| {
-        m.spawn((
-            Node {
-                position_type: PositionType::Absolute,
-                left: Val::Px(w * 0.22),
-                top: Val::Px(h * 0.21),
-                width: Val::Px(w * 0.56),
-                height: Val::Px(h * 0.58),
-                ..default()
-            },
-            ImageNode {
-                image: art.ui.get("hs_title").cloned().unwrap_or_default(),
-                image_mode: NodeImageMode::Stretch,
-                ..default()
-            },
-        ));
-    });
+/// Spawn the banner's burst (hidden).
+pub fn spawn_counter_burst(c: &mut ChildSpawnerCommands) {
     // The banner's counter digit sits near its left end (real game).
     let bw = BANNER_SIZE.0;
     let (sw, sh) = (1.2 * PITCH.0, 1.4 * PITCH.1);
@@ -9943,66 +10168,31 @@ pub fn spawn_medallion(c: &mut ChildSpawnerCommands, art: &ArtPack) {
     ));
 }
 
-/// Show the medallion during the trigger sequence, and the banner's burst.
-#[allow(clippy::type_complexity)]
-pub fn hs_medallion(
+/// Show the banner's burst as the counter reaches 3.
+pub fn counter_burst(
     fidelity: Res<Fidelity>,
     art: Res<ArtPack>,
     show: Res<FeatureShow>,
-    mut medallion: Query<
-        (&mut ImageNode, &mut Visibility),
-        (With<HsMedallion>, Without<BannerBurst>),
-    >,
-    mut burst: Query<(&mut ImageNode, &mut Visibility), (With<BannerBurst>, Without<HsMedallion>)>,
+    mut burst: Query<(&mut ImageNode, &mut Visibility), With<BannerBurst>>,
 ) {
     if !fidelity.0 {
         return;
     }
-    let clock = show.clock;
-    let frame = |name: &str, t: f32, looped: bool| -> Option<Handle<Image>> {
-        let frames = art.anims.get(name)?;
-        let n = (t.max(0.0) * ANIM_FPS) as usize;
-        let i = if looped {
-            n % frames.len().max(1)
-        } else if n < frames.len() {
-            n
-        } else {
-            return None;
-        };
-        frames.get(i).cloned()
-    };
-    let on = show
-        .intro
-        .is_some_and(|t| (INTRO_MEDALLION..INTRO_GRID).contains(&t));
-    for (mut image, mut vis) in &mut medallion {
-        let f = if on { frame("coin", clock, true) } else { None };
-        let want = if f.is_some() {
-            Visibility::Inherited
-        } else {
-            Visibility::Hidden
-        };
-        if let Some(h) = f
-            && image.image != h
-        {
-            image.image = h;
-        }
-        if *vis != want {
-            *vis = want;
-        }
-    }
+    let f = show.banner_burst.and_then(|s| {
+        let frames = art.anims.get("burst")?;
+        let n = ((show.clock - s).max(0.0) * ANIM_FPS) as usize;
+        frames.get(n).cloned()
+    });
     for (mut image, mut vis) in &mut burst {
-        let f = show
-            .banner_burst
-            .and_then(|s| frame("burst", clock - s, false));
         let want = if f.is_some() {
             Visibility::Inherited
         } else {
             Visibility::Hidden
         };
-        if let Some(h) = f
-            && image.image != h
+        if let Some(h) = &f
+            && image.image != *h
         {
-            image.image = h;
+            image.image = h.clone();
         }
         if *vis != want {
             *vis = want;
@@ -10548,5 +10738,187 @@ mod tests {
         let mut fresh = RestPhase::default();
         fresh.update(1.0, true, bet, 40);
         assert!(!fresh.flashing(1.0));
+    }
+
+    /// The Hold & Spin intro as two club recordings show it: one fire, the
+    /// board coming up under its white, the prompt 3.5 s after the burst
+    /// (y8c8lEdPW8Y 965.60-969.10, 1bAevGz0K2k 110.17-113.67).
+    #[test]
+    fn the_hold_and_spin_intro_is_one_fire_into_the_board() {
+        // The coins burst 2.67-2.70 s after the reels are still (the sequence
+        // starts 0.17 s after).
+        assert!((2.66..=2.71).contains(&(INTRO_BURST + 0.17)));
+        // The fire's key frames, seconds after the burst, against the cabinet.
+        let frame_at = |n: f32| INTRO_TRANSITION + n / FIRE_FPS - INTRO_BURST;
+        assert!((0.88..=0.95).contains(&frame_at(1.0)), "first dragon head");
+        assert!((1.70..=1.86).contains(&frame_at(20.0)), "full cover");
+        assert!((2.54..=2.63).contains(&frame_at(38.0)), "lower half clear");
+        assert!((2.67..=2.75).contains(&frame_at(41.0)), "top band only");
+        // The board and its backdrop come up under the full white (22-33).
+        let grid = (INTRO_GRID - INTRO_TRANSITION) * FIRE_FPS;
+        assert!((22.0..=33.0).contains(&grid), "{grid}");
+        // The prompt 3.50 s after the burst, the fire's embers gone.
+        assert!((INTRO_END - INTRO_BURST - 3.5).abs() < 1e-4);
+        assert!(frame_at(49.0) < INTRO_END - INTRO_BURST);
+    }
+
+    /// PRESS START FEATURE BUTTON's lettering blinks on a 0.667 s cycle,
+    /// about 0.35 s lit, lit for about 0.25 s as it first shows, phased from
+    /// the prompt's start, for both features (club footage).
+    #[test]
+    fn the_start_prompt_lettering_blinks_from_its_start() {
+        assert!(prompt_lit(0.0) && prompt_lit(0.24));
+        assert!(!prompt_lit(0.26) && !prompt_lit(0.56));
+        assert!(prompt_lit(0.58) && prompt_lit(0.90));
+        assert!(!prompt_lit(0.94) && prompt_lit(1.25));
+        // Lit a little over half the time.
+        let lit = (0..6000).filter(|k| prompt_lit(*k as f32 / 1000.0)).count();
+        assert!((3100..=3200).contains(&lit), "{lit}");
+
+        let mut show = FeatureShow::default();
+        assert_eq!(show.prompt_lettering(), None);
+        // The free games' prompt, phased from the moment it shows.
+        show.clock = 10.0;
+        show.on_event(&Event::FreeGamesStarted { games: 6 });
+        assert_eq!(show.prompt_lettering(), Some(true));
+        show.clock = 10.3;
+        assert_eq!(show.prompt_lettering(), Some(false));
+        show.clock = 10.6;
+        assert_eq!(show.prompt_lettering(), Some(true));
+        // The Hold & Spin prompt shows at another moment, on its own phase.
+        show.awaiting = None;
+        assert_eq!(show.prompt_lettering(), None);
+        show.clock = 20.13;
+        show.wait_for(Await::Start(Feature::HoldAndSpin));
+        assert_eq!(show.prompt_lettering(), Some(true));
+        show.clock = 20.43;
+        assert_eq!(show.prompt_lettering(), Some(false));
+        // A respin is awaited with no prompt.
+        show.wait_for(Await::Respin);
+        assert_eq!(show.prompt_lettering(), None);
+    }
+
+    /// Every Hold & Spin's coins go to the WINNER box over the jackpot bar,
+    /// with nothing over the reels; the WIN banner shows only for the count,
+    /// counting from nothing with WIN; the box goes 0.55 s after the count
+    /// (club cabinets: 1bAevGz0K2k 2:25-2:45, y8c8lEdPW8Y 1001.9-1019.9).
+    #[test]
+    fn every_hold_and_spin_tallies_on_the_winner_box() {
+        let mut show = FeatureShow::default();
+        show.on_event(&Event::HoldAndSpinStarted {
+            respins: 3,
+            locked: Vec::new(),
+        });
+        show.on_event(&Event::HoldAndSpinCompleted {
+            total_award: 100,
+            full_grid: false,
+        });
+        assert!(!show.winner_showing());
+        show.completed_wait = None;
+        show.pay_base = 1_000;
+        show.collect = Some(Collect {
+            coins: vec![(0, 0, 60, false, None), (1, 1, 40, false, None)],
+            ..default()
+        });
+        let dt = 1.0 / 60.0;
+        let mut t = 0.0;
+        let mut first_value = None;
+        let mut sounds = Vec::new();
+        let total = loop {
+            show.clock += dt;
+            t += dt;
+            let step = show.advance_collect(dt, 50);
+            sounds.extend(step.sounds);
+            if let Some(total) = step.done {
+                break total;
+            }
+            // No banner over the reels, and WIN unchanged, while the coins
+            // are collected.
+            assert_eq!(show.pay_banner(), None);
+            assert_eq!(show.grand_win(), None);
+            // The box arrives 0.1 s in, empty until the first value.
+            assert_eq!(show.winner_showing(), t >= COLLECT_BANNER, "{t}");
+            if show.winner_amount().is_some() && first_value.is_none() {
+                first_value = Some(t);
+                assert!(show.splash_at.is_some(), "a splash with each value");
+                assert_eq!(show.winner_amount(), Some(60));
+            }
+            assert!(show.flares_at.is_none());
+            assert!(t < 10.0);
+        };
+        // The first value 0.4 s after the box plus the comet's 0.6 s.
+        let first = first_value.unwrap_or_default();
+        assert!((first - 1.1).abs() < 0.03, "{first}");
+        assert_eq!(total, 100);
+        assert_eq!(sounds, ["SND_Small_5", "SND_Small_5"]);
+        // The count: the banner from nothing in step with WIN; the box keeps
+        // the total.
+        show.pay = Some(Pay {
+            amount: total,
+            t: 0.0,
+            seconds: 10.0,
+        });
+        assert!(show.winner_showing());
+        assert_eq!(show.pay_banner(), Some(0));
+        assert_eq!(show.grand_win(), Some(1_000));
+        if let Some(p) = show.pay.as_mut() {
+            p.t = 2.5;
+        }
+        assert_eq!(show.pay_banner(), Some(25));
+        assert_eq!(show.grand_win(), Some(1_025));
+        assert_eq!(show.winner_amount(), Some(100));
+        // Complete: the banner and WIN keep the total; the box gives way to
+        // the meters 0.55 s later.
+        show.pay = None;
+        show.paid = total;
+        show.winner = None;
+        show.collected = Some(total);
+        show.winner_hold = Some((show.clock + WINNER_HOLD, total));
+        assert_eq!(show.pay_banner(), Some(100));
+        assert_eq!(show.grand_win(), Some(1_100));
+        assert!(show.winner_showing());
+        assert_eq!(show.winner_amount(), Some(100));
+        // Free games that follow do not cut it short.
+        show.on_event(&Event::FreeGamesStarted { games: 6 });
+        assert!(show.winner_showing());
+        assert_eq!(show.winner_amount(), Some(100));
+        show.clock += 0.6;
+        assert!(!show.winner_showing());
+        assert_eq!(show.winner_amount(), None);
+        // The next game clears it all.
+        show.on_event(&Event::SpinStarted { spin: 2 });
+        assert!(!show.winner_showing());
+        assert_eq!(show.pay_banner(), None);
+    }
+
+    /// The comets end in the middle of the WINNER box, from every position.
+    #[test]
+    fn every_comet_flies_to_the_winner_box() {
+        for reel in 0..5u8 {
+            for row in 0..3u8 {
+                let (k, flip, left, top, w, h) = bolt_for(reel, row);
+                let (sx, sy) = (w / BOLT_FRAME.0, h / BOLT_FRAME.1);
+                let end = if flip {
+                    BOLT_FRAME.0 - BOLT_ENDS[k]
+                } else {
+                    BOLT_ENDS[k]
+                };
+                let (ex, ey) = (left + end * sx, top);
+                // Straight above a coin, inside the box's flames.
+                let near = if reel == 2 { WINNER_BOX.0 * 0.4 } else { 0.5 };
+                assert!((ex - WINNER_CENTRE.0).abs() < near, "{reel},{row}: x {ex}");
+                assert!((ey - WINNER_CENTRE.1).abs() < 0.5, "{reel},{row}: y {ey}");
+                assert!(sy > 0.0 && sx > 0.0);
+            }
+        }
+        // The box sits above the WIN banner, inside the plate, which covers
+        // the whole jackpot bar.
+        let bar_bottom = JACKPOT_BAR_TOP + JACKPOT_BAR_W * 104.0 / 1225.0;
+        assert!(WINNER_PLATE_H >= bar_bottom);
+        assert!(WINNER_TOP + WINNER_BOX.1 <= BANNER_Y - BANNER_SIZE.1 / 2.0);
+        assert_eq!(
+            winner_jackpots_line("$12,018.71", "$714.89"),
+            "GRAND JACKPOT: $12,018.71   MAJOR JACKPOT: $714.89"
+        );
     }
 }

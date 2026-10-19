@@ -75,6 +75,17 @@ owner; docs/DECISIONS.md). Every run muted. Progress, newest last:
   ends at 5 lines and for line 1 at 25), outside the frame with a stub across it (sizes and count
   STRONG; sides VERIFIED for the lines filmed, unfilmed lines by parity HYPOTHESIS). Unit tests
   cover the sizes, sides, crop and panel fit; checked on muted captures at 50, 25 and 5 lines.
+- **Audit fixes: Hold & Spin.** The intro is the cabinet's: one fire straight into the Hold & Spin
+  board (no medallion over the reels, no second fire), timed to two club recordings, the prompt
+  3.5 s after the coins burst (STRONG; it was 4.6 s). Both features' prompt reads PRESS START
+  FEATURE BUTTON, our own cream lettering over the banner's bar, the lettering alone blinking on a
+  0.667 s cycle (VERIFIED). Every Hold & Spin's coins now fly to a flame-bordered WINNER box on a
+  plate over the jackpot bar, with the live Grand and Major under it and nothing over the reels;
+  the count's WIN banner counts up from nothing with WIN, and the plate goes 0.55 s after the count
+  (VERIFIED on three club recordings; the plate's layout is ours, the line's colour PARTIAL). The
+  official app's medallion, SELECT SPIN wording and banner tally are recorded as the app's. Unit
+  tests cover the intro's timing, the blink, the collection and the comets; checked on muted
+  captures (both features, the jackpots and doors runs, Golden Gong).
 
 ## Project interpretation (owner reset, 2026-10-14)
 
@@ -395,7 +406,9 @@ The app now follows it:
 - **Hold & Spin.** The trigger, fire and medallion (about 1 s, and no COLLECT screen: the owner's
   changes), the counter, respins stopping by reel with their sounds, and the payout: coins added to
   a WIN banner by fire comets, then a coin shower and the payout music, found in the app's shared
-  sound bank (it also plays under the cabinet's big counts).
+  sound bank (it also plays under the cabinet's big counts). Updated 2026-10-19: the intro, the
+  prompt and the collection now follow club cabinets (one fire, no medallion, PRESS START FEATURE
+  BUTTON, the coins to a WINNER box over the jackpot bar; see the overnight report).
 
 ### Button deck, GAMES MENU and gamble rebuilt from cabinet footage (2026-10-17)
 

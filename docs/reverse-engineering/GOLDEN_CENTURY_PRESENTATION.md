@@ -75,25 +75,49 @@ pieces"); the mobile app's two large badges per line are gone.
 | Trigger | Flags land with the clink only; the feature bell 0.2 s after the reels are still, played out (2.55 s) | VERIFIED |
 | Flags | As the bell ends the flags wave (their animation from its first frame, at 20 fps) to SND_Scatter (4.75 s) | VERIFIED |
 | Scatter win | Counts when SND_Scatter ends, to its win tune | VERIFIED |
-| Prompt | SELECT SPIN TO START FEATURE after the count; "Scatter wins N" only while it waits | VERIFIED |
+| Prompt | SELECT SPIN TO START FEATURE after the count (the official app's wording; the cabinet's differs, below); "Scatter wins N" only while it waits | VERIFIED |
 | Start | The press is silent; the flags wave on about 1 s; a hard cut to the free games: SND_Fea_BGM from its start, the first game spinning at once, the banner's total counting up from 1 with a SND_Fea_Inc tick a step | VERIFIED |
 | Doors | Land with the reels, open together 3 frames after the reels are still (1.4 s), to SND_EndMask; wins 47 frames after they begin to open | VERIFIED (6 games) |
 | Pace | Next game 1.25 s after a win's count; about 2.5 s after the doors with no win | VERIFIED |
 | End | FEATURE COMPLETED in the win slot, SND_Fea_End as the music stops | VERIFIED |
+
+**The cabinet's prompt differs** (club footage, both features): the banner reads PRESS START
+FEATURE BUTTON on one line, PRESS and BUTTON small caps (0.81 of START FEATURE's cap height) on the
+same baseline, the line across 0.96 of the blue field, START FEATURE's caps 0.42 of its height, in
+the brush face of the app's lettering but pale cream, not gold. Only the lettering blinks, on a
+0.667 s cycle (20 video frames in every cycle measured), about 0.35 s lit, the first lit phase
+about 0.25 s as the banner pops in; the bar stays. VERIFIED (y8c8lEdPW8Y 969.10-970.53 and
+2519.57-2521.77; 1bAevGz0K2k 113.77-115.37; free games y8c8lEdPW8Y 945.8-949.8). The status line
+reads "Press START FEATURE button" on both. **The app** follows the cabinet for both features: our
+own lettering over the banner's bar (the pack has no such art; Arial Black stands in for the brush
+face, the cream judged by eye against white text, not measured as a colour), blinking from the
+moment the prompt shows.
 
 ## Hold & Spin
 
 | Step | Real app | Label |
 |---|---|---|
 | Trigger | Feature bell as the reels settle; 2.8 s later every coin bursts into flame and the other positions go dark, to SND_FeatureTrigger | VERIFIED |
-| Fire | Fire dragons rise and fill the screen (the fire animation at about 25 fps), clearing to the HOLD & SPIN medallion over the darkened board | VERIFIED |
-| Medallion | 3.8 s, then "COLLECT 15 TO WIN GRAND JACKPOT" for 2 s, then a second fire to the board | VERIFIED |
-| Owner's change | The app shows the medallion for about 1 s and leaves the COLLECT screen out | owner |
-| Board | SELECT SPIN TO START FEATURE and SND_FreeSpin_BGM 0.57 s after the board clears; the press counts 1, 2, 3 (SND_Fea_Inc), a burst on the 3; the first respin starts by itself 1.9 s later | VERIFIED |
+| Fire | Fire dragons rise and fill the screen (the fire animation at about 25 fps), clearing to the HOLD & SPIN medallion over the darkened board (official app only) | VERIFIED |
+| Medallion | 3.8 s, then "COLLECT 15 TO WIN GRAND JACKPOT" for 2 s, then a second fire to the board (official app only) | VERIFIED |
+| Owner's change | The app showed the medallion for about 1 s and left the COLLECT screen out; replaced by the cabinet's sequence (below) | owner, 2026-10-14; superseded |
+| Board | SELECT SPIN TO START FEATURE and SND_FreeSpin_BGM 0.57 s after the board clears (the wording and the 0.57 s the official app's); the press counts 1, 2, 3 (SND_Fea_Inc), a burst on the 3; the first respin starts by itself 1.9 s later | VERIFIED |
 | Respins | Open positions of a reel stop together: reel 1 0.53 s after the press, each further reel 0.467 s later whether or not it has open positions; half a cell overshoot, settled in 11 frames; SND_Button at each start | VERIFIED |
 | Respin sounds | Every reel with positions spinning clinks; a new coin plays SND_HandSDoonk1 and the respin's first coin also SND_GrandStrike | VERIFIED |
 | Counter | Drops as a respin starts; back to 3 six frames after a coin lands, its burst a frame later; at 0 the banner is gone until a coin lands | VERIFIED |
 | End | FREE SPINS COMPLETED with SND_Fea_End (3 s) | VERIFIED |
+
+**The cabinet's intro differs** (two club recordings, matched frame by frame against the fire's own
+54 frames: y8c8lEdPW8Y 965.60-969.10 in the base game and 1bAevGz0K2k 110.17-113.67 inside free
+games; they agree within 0.03-0.07 s): the coins burst 2.67-2.70 s after the reels are still; one
+fire, at about 22 fps (a fit of its key frames on both, 21.5-23), its first dragon head 0.90-0.93 s
+after the burst, the screen white about 1.8-2.3 s after it with the Hold & Spin board already under
+it, gone but for its top band by 2.70 s; PRESS START FEATURE BUTTON 3.50 s after the burst. No
+medallion over the reels (the cabinet's is on its top screen), no COLLECT screen and no second fire.
+STRONG. The music's onset is not measurable: the copies have no sound. **The app** follows the
+cabinet (the owner's 2026-10-18 rule that cabinet footage outranks the app), which replaces the
+owner's 2026-10-14 change: the fire from 0.87 s after the burst at 22.3 fps, the board coming up
+under its white, the prompt and the music at 3.50 s.
 
 ## Hold & Spin payout
 
@@ -106,9 +130,34 @@ pieces"); the mobile app's two large badges per line are gone.
 | Letters | The banner's WIN letters burst every 59 frames from 0.8 s after the last value | VERIFIED |
 | Music | Not among the game's own clips: one of three tracks in the app's shared sound bank. The same tracks play under the cabinet's coin-shower counts; across one cabinet session they ran in turn | VERIFIED (app); STRONG (cabinet, rotation) |
 
+**The cabinet's collection differs** (VERIFIED: club recordings 1bAevGz0K2k 2:25-2:45 and
+145.2-165.2 s, y8c8lEdPW8Y 1001.9-1019.9 s, f5sMl9a5jds 4:18-4:38, all Golden Century; a casino
+build, OL6Pu1AI-cQ 86 s, and the owner's Happy & Prosperous cabinet agree). The table above is the
+official app's. On the cabinet, in the frame FREE SPINS COMPLETED goes (within 0.1 s), the top
+screen's jackpot meters give way to WINNER over an empty flame-bordered box, with a small line
+"GRAND JACKPOT: $x   MAJOR JACKPOT: $y" under it whose values keep climbing; nothing shows over the
+reels and WIN does not move. This happens for every Hold & Spin, not only a Grand. The first coin
+flares 0.3-0.5 s after the box appears; each coin's comet flies up to the box, its value landing
+0.6-0.8 s after the flare, with white splash arcs over the box each time. The WIN banner over the
+reels appears only when the count begins, counting up from nothing in step with WIN (banner $1.08
+with WIN $11.08 from $10.00; banner $0.29 with WIN $0.29), its WIN letters bursting from that
+moment; the box keeps the total through the count, then gives way to the meters 0.53-0.60 s after
+the count is complete, through one dark frame; the WIN banner stays until the next game. The line's
+colour differs between cameras (yellow on one, green-tinted on another): PARTIAL. The pause from
+the last value to the count differs between cabinets (1.6 s and 3.8 s), so the app's 0.87 s is
+kept.
+
 **The app** follows the free games, Hold & Spin and payout sequences above at the measured times,
-with the owner's two changes. It keeps the cabinet's own meters, button deck and gamble (owner),
-rebuilt from cabinet footage in [GOLDEN_CENTURY_CABINET_DECK.md](GOLDEN_CENTURY_CABINET_DECK.md).
+and the cabinet where it differs (the prompt, the intro and the collection above), with the owner's
+order of the Grand (below). Its collection: a navy plate over the whole jackpot bar (our single
+canvas has no top screen; the plate, the box's size and the line's place are our layout, the
+owner's call), "WINNER" over the pack's flame-bordered box (440 x 80, the total in it), the live
+Grand and Major under it; the box 0.1 s after FREE SPINS COMPLETED goes, the first coin 0.4 s
+later, 1.35 s apart, each comet 0.6 s to the box with the pack's splash; the count's banner from
+nothing with WIN, its letters bursting as it appears; the plate gone 0.55 s after the count. The
+rumble and the 0.87 s pause are the official app's (the cabinet copies have no sound). It keeps the
+cabinet's own meters, button deck and gamble (owner), rebuilt from cabinet footage in
+[GOLDEN_CENTURY_CABINET_DECK.md](GOLDEN_CENTURY_CABINET_DECK.md).
 
 ## The other clips
 

@@ -604,7 +604,7 @@ status = "not_started"
 id = "hold-and-spin"
 name = "Hold & Spin rules and presentation"
 status = "partial"
-note = "Presentation follows the official app recording step by step (trigger, medallion with the owner's 1 s change, respins, counter, payout and its music). Rules, values and weights are synthetic."
+note = "Presentation follows the official app recording step by step (trigger, respins, counter, payout and its music) and club cabinet footage where it differs: one fire into the board with no medallion, PRESS START FEATURE BUTTON blinking, every tally on a WINNER box over the jackpot bar (docs/reverse-engineering/GOLDEN_CENTURY_PRESENTATION.md). Rules, values and weights are synthetic."
 
 [[category.item]]
 id = "jackpots"

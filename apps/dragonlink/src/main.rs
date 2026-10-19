@@ -2339,7 +2339,7 @@ fn present(
     }
 }
 
-#[allow(clippy::type_complexity)]
+#[allow(clippy::type_complexity, clippy::too_many_arguments)]
 fn hud(
     sim: Res<Sim>,
     presentation: Res<Presentation>,
@@ -2347,7 +2347,23 @@ fn hud(
     link: Res<Link>,
     mut hud: Single<&mut Text, (With<HudText>, Without<StatusText>)>,
     mut status: Single<&mut Text, (With<StatusText>, Without<HudText>)>,
-    mut meters: Query<(&JackpotMeter, &mut Text), (Without<HudText>, Without<StatusText>)>,
+    mut meters: Query<
+        (&JackpotMeter, &mut Text),
+        (
+            Without<HudText>,
+            Without<StatusText>,
+            Without<cabinet::WinnerJackpots>,
+        ),
+    >,
+    mut winner_line: Query<
+        &mut Text,
+        (
+            With<cabinet::WinnerJackpots>,
+            Without<HudText>,
+            Without<StatusText>,
+            Without<JackpotMeter>,
+        ),
+    >,
 ) {
     let game = &sim.game;
     let cents = denom.cents();
@@ -2373,13 +2389,22 @@ fn hud(
     }
     // Jackpot meters: a progressive's meter in money, any other its prize
     // now in credits.
+    let value = |tier: JackpotTier| match link.shown(tier) {
+        Some(meter_cents) => money(meter_cents, 1),
+        None => game
+            .jackpot_value(tier)
+            .map_or_else(|| "-".to_string(), |c| money(c, cents)),
+    };
     for (meter, mut text) in &mut meters {
-        text.0 = match link.shown(meter.tier) {
-            Some(meter_cents) => money(meter_cents, 1),
-            None => game
-                .jackpot_value(meter.tier)
-                .map_or_else(|| "-".to_string(), |c| money(c, cents)),
-        };
+        text.0 = value(meter.tier);
+    }
+    // The live Grand and Major under the WINNER box (club cabinets).
+    for mut text in &mut winner_line {
+        let line =
+            cabinet::winner_jackpots_line(&value(JackpotTier::Grand), &value(JackpotTier::Major));
+        if text.0 != line {
+            text.0 = line;
+        }
     }
 }
 
@@ -2956,7 +2981,7 @@ fn main() -> AppExit {
                 cabinet::rollup_skip,
                 cabinet::feature_press,
                 cabinet::free_games_trigger,
-                cabinet::hs_medallion,
+                cabinet::counter_burst,
                 cabinet::payout_effects,
                 cabinet::gamble_control,
                 cabinet::attract_timer,
