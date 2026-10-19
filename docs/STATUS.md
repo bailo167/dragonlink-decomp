@@ -116,6 +116,94 @@ owner; docs/DECISIONS.md). Every run muted. Progress, newest last:
   under their prompt (the free games now start an event interval later, as before); and the
   WINNER plate stayed 0.95 s after the count, not 0.55 s (it counted from the payment, 0.4 s
   after the count). Golden Gong's monk and Spring Festival's BIG reel still play as before.
+- **Audit fixes, second pass: Hold & Spin.** A second verification of the audit, frame by frame at
+  30 fps on four club recordings, corrected the board and the collection (all VERIFIED unless
+  said). The first respin now starts 0.59 s after the counter's 3 (cabinets 0.55-0.63 s; the app
+  had waited about 1.4 s, its hold meant to precede a step pause that never applied there). The
+  burst on the 3 is a short blue-white flash, the pack's burst recoloured at load, 0.45 s (its size
+  PARTIAL). The board's row lines are thin and pale under the gold dividers (the pack frame's own
+  cleared at load; the hue PARTIAL). The status line follows the cabinet through the feature:
+  blank through the intro and running respins, "Press START FEATURE button" through the count-up,
+  "Press SPIN button" between respins, "Free Spins Completed" through the tally and the count
+  (inside the free games "Free Game N of 6", STRONG). The WINNER box shows in the frame FREE SPINS
+  COMPLETED goes, the first coin 0.38 s later, each comet 0.67 s and landing with its value (the
+  bolt's frames stretched to its flight); the WIN banner's amount is white. Unit tests cover each;
+  checked on muted captures (the jackpots run, Spring Festival's BIG coin feature).
+- **Audit fixes, second pass: jackpots.** The Grand restarts at $10,000, as a Golden Century
+  machine shows after its Grand (VERIFIED there, STRONG for Australian Golden Century), opening
+  below $13,000 and stopping at $25,000 (synthetic; a club Grand was won at $24,122.63); the
+  synthetic return stays flat at about 90% at every bet (the flat-return test re-run with the new
+  meters). Both meters now climb a cent or two every few seconds, the club machines' order of rate
+  (STRONG on five machines; it was 14-100 times faster), and a changed figure rolls up inside its
+  box over 0.37 s (VERIFIED on one machine). Every meter holds while a resolved respin plays out,
+  so a won meter no longer stops alone before its coin lands (HYPOTHESIS). Through Hold & Spin a
+  plate over the jackpot bar shows the cabinet's disc, "N COLLECTED / 15 WIN / GRAND JACKPOT",
+  counting each coin as it lands, with the four jackpots at its corners and the game's fire dragons
+  (the disc VERIFIED, our layout HYPOTHESIS). A Major is awarded first on the pack's MAJOR JACKPOT
+  plaque, its amount green, with its own count and coin shower, then the coins (STRONG on an Autumn
+  Moon club recording, PARTIAL for Golden Century; WIN keeping it is the owner's call). A Grand
+  comes under the pack's fire at 30 fps, the plaque switching on under full cover (the fire VERIFIED
+  on one machine), with "GRAND JACKPOT Win $x" on the status line and "Call Attendant : JACKPOT HIT
+  $x" on the club's system line (STRONG). After a base game's Hold & Spin the status line turns
+  PLAY ON and "Free Spins Completed" while the win is offered (VERIFIED on a Happy & Prosperous club
+  recording, PARTIAL for Golden Century). The feature banner moved 10 px down, clear of the Major's
+  and Minor's values. Unit tests cover each; checked on muted captures (the jackpots and both runs,
+  a base run for the roll).
+
+- **Audit fixes, second pass: base game and free games.** Checked frame by frame on club
+  recordings and followed (each label in [GOLDEN_CENTURY_PRESENTATION.md](reverse-engineering/GOLDEN_CENTURY_PRESENTATION.md)
+  and [GOLDEN_CENTURY_CABINET_DECK.md](reverse-engineering/GOLDEN_CENTURY_CABINET_DECK.md)): a
+  winning line blinks in two even 0.66 s cycles, its badges lit exactly while its symbols show
+  (STRONG; the app's uneven 1.45 s was the mobile app's); the first free game's banner counts from
+  "1 OF 0", a step every 5 frames, the status blank until a step after the total (VERIFIED); the
+  doors open 0.30 s after the rest and faster, the wins at the rest + 1.5 s, a no-win free game's
+  next reels at the rest + 2.0 s (STRONG; PARTIAL for the wins); FEATURE COMPLETED waits for the
+  last count, "Feature Completed" then the offer, CREDIT no longer flickering to the total
+  (STRONG); a free game's WIN banner no longer flashes the last game's amount (our glitch, fixed);
+  no start prompt from a denomination choice to the first game (STRONG). The club's meter labels
+  shade orange to yellow and its denomination yellow to orange (direction VERIFIED, tints PARTIAL),
+  the status and message texts have a dark rim all round (STRONG), and the club's tall pill has our
+  drawing of its signal-like icon on a yellow-to-orange pill (shapes VERIFIED). The prepared doors
+  run lands its doors in short vertical runs, the other prepared runs' free reels the model's own
+  (synthetic). Unit tests cover each; checked on muted captures (the doors run, Golden Gong, Spring
+  Festival, the casino profile) and an event trace (doors at the rest + 0.30 s, wins + 1.50 s,
+  no-win next game + 2.00 s).
+- **Audit fixes, second pass: the button deck.** Checked frame by frame on club recordings
+  ([GOLDEN_CENTURY_CABINET_DECK.md](reverse-engineering/GOLDEN_CENTURY_CABINET_DECK.md)): every Hold
+  & Spin respin now spells GOOD LUCK, as each cabinet respin does (VERIFIED); as the reels start
+  each key keeps its idle face until its letter arrives, and as they stop the idle faces wipe
+  back from the left, 0.08 s a column (VERIFIED, one machine). The teardrop points up (four
+  machines) and is dark and smoky with a pale-blue legend, lit blue only for START FEATURE, which
+  stays lit on the club profile with its legend turning like a coin (STRONG for deck A; the
+  casino profile keeps deck B's blink). GAMBLE and TAKE WIN are always lit, TAKE WIN pale khaki
+  with blue letters; the selected lines key is light blue with white ink and the selected credits
+  key pale with a red numeral; the credits keys a denomination does not offer are lit; on the
+  flash's plain half the keys turn light blue with faint legends; in the gamble the black choices
+  are dark with light-blue icons and the unused keys a white-silver lattice. The keys are an eighth
+  of a key apart, the teardrop about 1.7 keys wide a quarter key clear (STRONG): each key's art had
+  been drawn inside its legend padding, widening the gaps and squashing the teardrop. The teardrop
+  and the lattice key are our own new drawings in the local packs (nothing in Git). Unit tests
+  cover each rule; checked on muted captures (base, the minors run, the autogambler, Golden Gong,
+  Spring Festival, the casino profile).
+- **Audit fixes, second pass: the gamble and the GAMES MENU.** Checked on club recordings
+  ([GOLDEN_CENTURY_CABINET_DECK.md](reverse-engineering/GOLDEN_CENTURY_CABINET_DECK.md)): nothing of
+  the base screen stands over the gamble any more (FEATURE COMPLETED's plate and a tall wild's head
+  showed above its top), and it comes back after a loss (VERIFIED, two machines); the club's COLLECT
+  and GAMES MENU stay over the gamble screen (VERIFIED, three machines); the gamble prompt is the bet
+  line's yellow, widely spaced (VERIFIED on two club machines; an NSW video-deck machine and the
+  owner's Happy & Prosperous show it pale, a conflict recorded); the picked button fills with the
+  card's face, not at the press (STRONG); the teardrop shows a card-back lattice through the gamble
+  (VERIFIED, one machine; our own drawing, `spin_lattice`, in the local packs, the dark teardrop
+  where a pack lacks it). The chooser is laid out as two recordings measure it by homography
+  (STRONG): an opaque panel about 995 x 195 centred near y 755, bevelled red-orange and amber keys
+  162 x 80 with white figures in a navy outline and a smaller cent sign, a larger cream header, ARE
+  YOU SURE? wholly above the panel with yellow and cream lines and bevelled YES / NO (sizes
+  PARTIAL), and the drawn title where the logo stands, about 1565 px wide, now each title's own
+  name (a longer one set smaller); the club chooser keeps a COLLECT pill moved to the bottom right
+  corner (STRONG, one machine). `DRAGONLINK_SHOW=menu` now waits for the first rest instead of
+  testing one frame, and `DRAGONLINK_SHOW=confirm` also opens ARE YOU SURE?, for captures. Unit
+  tests cover each (three spawn the cabinet into a world); checked on muted captures (the chooser
+  with its confirmation, a base run's gamble).
 
 ## Project interpretation (owner reset, 2026-10-14)
 
@@ -508,14 +596,17 @@ The owner's next play test asked for the jackpots to behave as on the machines:
 - **Major and Grand** are progressive meters in money (that they climb: STRONG,
   `jackpots.meters-au`). The core pays the meter, in whole credits with the cents held over, and
   restarts it (`Command::SetProgressive`, `GameState::meters`). The app's link opens each meter at
-  random between its restart and 80% of a ceiling (Grand $5,000 to $12,000 of $15,000, Major $500
-  to $1,200 of $1,500, the owner's ranges), climbs it by a few cents at irregular moments with an
-  occasional jump, through features too, and holds a won meter at the amount won until the win is
-  counted. Start values, rates, restarts and ceilings are synthetic: no source shows them.
+  random between its restart and a mark below its ceiling (Grand $10,000 to $13,000 of $25,000,
+  Major $500 to $1,200 of $1,500), climbs it by a cent or two every few seconds with an occasional
+  jump, through features too, and holds a won meter at the amount won until the win is counted.
+  Updated 2026-10-19: the Grand's $10,000 restart is filmed (VERIFIED on one machine, STRONG for
+  Australian Golden Century) and the climb's order of rate too (STRONG); the openings, the exact
+  rates, the Major's restart and the ceilings stay synthetic (it was $5,000 to $12,000 of $15,000,
+  14-100 times faster).
 - **Chance follows the stake.** The national standard requires a jackpot's chance to be directly
   and linearly proportional to the bet (NS 4.17, PUBLISHED_RETURNS.md). A jackpot coin, or a full
   grid's Grand, stands only with chance stake / its prize (a progressive's restart value), so a
-  1c bet cannot win a $5,000 Grand at a $5 bet's chance (the return once ran past 8,000% at the
+  1c bet cannot win a $10,000 Grand at a $5 bet's chance (the return once ran past 8,000% at the
   smallest stake). Updated 2026-10-19: first a set stake per jackpot, now its prize.
 - **Prepared runs** (`DRAGONLINK_SCENARIO`): `both` (Hold & Spin then free games, the Grand),
   `jackpots` (a Major, four Minis and two Minors, then free games; no gamble after the Major) and

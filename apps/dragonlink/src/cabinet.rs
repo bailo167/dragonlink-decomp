@@ -1210,10 +1210,12 @@ fn jackpot_value_colour(tier: JackpotTier) -> Color {
     }
 }
 
-/// A jackpot value's box width, in canvas pixels.
+/// A jackpot value's box width, in canvas pixels, and its largest type
+/// size.
 #[derive(Component)]
 pub struct JackpotFit {
     width: f32,
+    max: f32,
 }
 
 /// A value's width in ems in the jackpot values' heavy face (Arial Black's
@@ -1224,13 +1226,14 @@ fn meter_ems(text: &str) -> f32 {
         .sum()
 }
 
-/// The type size that keeps `text` inside a box `width` wide.
-fn jackpot_value_size(text: &str, width: f32) -> f32 {
+/// The type size, at most `max`, that keeps `text` inside a box `width`
+/// wide.
+fn jackpot_value_size(text: &str, width: f32, max: f32) -> f32 {
     let ems = meter_ems(text);
     if ems <= 0.0 {
-        return JACKPOT_VALUE_SIZE;
+        return max;
     }
-    JACKPOT_VALUE_SIZE.min(width * JACKPOT_VALUE_FILL / ems)
+    max.min(width * JACKPOT_VALUE_FILL / ems)
 }
 
 /// Set each jackpot value small enough to stay inside its box.
@@ -1242,11 +1245,11 @@ pub fn fit_jackpots(
         return;
     }
     for (fit, text, mut font, mut node) in &mut values {
-        let size = jackpot_value_size(&text.0, fit.width);
+        let size = jackpot_value_size(&text.0, fit.width, fit.max);
         if font.font_size != FontSize::Px(size) {
             let old = match font.font_size {
                 FontSize::Px(px) => px,
-                _ => JACKPOT_VALUE_SIZE,
+                _ => fit.max,
             };
             font.font_size = FontSize::Px(size);
             // Keep the value on the same middle line.
@@ -1255,6 +1258,275 @@ pub fn fit_jackpots(
             }
         }
     }
+}
+
+/// How long a changed figure of a progressive's value takes to roll, and
+/// how many figures a value may have. On a club cabinet the changed figure
+/// rolls up inside its box: the old one rises out of sight, the new one
+/// rises from below, clipped to the box, easing at both ends, over about
+/// 0.35-0.40 s; one-cent steps follow each other at once (y8c8lEdPW8Y,
+/// m_top1.jpg and two rolls at 30 fps in its 1105-1122 s section: .71 to
+/// .72 over 11-12 frames, .72 to .73 over 10-11; VERIFIED there). What a
+/// carry does was not seen: every changed figure rolls (HYPOTHESIS).
+const ROLL_SECONDS: f32 = 0.37;
+const ROLL_SLOTS: u8 = 12;
+/// The value box the figures roll inside: the dark panel under each
+/// level's title, rows 40-90 of the jackpot bar's 104 (every pack's bar).
+const ROLL_CLIP: (f32, f32) = (40.0 / 104.0, 90.0 / 104.0);
+
+/// A progressive's value as it rolls from one string to the next.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct Roll {
+    from: String,
+    to: String,
+    t: f32,
+}
+
+/// Where one figure of a rolling value is: its character and its offset in
+/// line heights (0 in place, positive below), and the character it replaces
+/// with that one's offset, while it rolls.
+#[derive(Clone, Debug, PartialEq)]
+pub struct RollPose {
+    pub now: char,
+    pub now_y: f32,
+    pub old: Option<(char, f32)>,
+}
+
+impl Roll {
+    /// Follow the value the meter shows: a change starts a roll from the
+    /// value last shown in full (a roll still running ends at once).
+    pub fn follow(&mut self, text: &str) {
+        if self.to == text {
+            return;
+        }
+        if self.to.is_empty() || self.to == "-" {
+            // The first value (after the placeholder) shows as it is.
+            self.from = text.to_string();
+            self.t = ROLL_SECONDS;
+        } else {
+            self.from = std::mem::take(&mut self.to);
+            self.t = 0.0;
+        }
+        self.to = text.to_string();
+    }
+
+    pub fn advance(&mut self, dt: f32) {
+        self.t = (self.t + dt).min(ROLL_SECONDS);
+    }
+
+    /// Each figure's pose now. The old value lines up with the new from the
+    /// right (the cents stay in place when a figure is added).
+    pub fn poses(&self) -> Vec<RollPose> {
+        let x = (self.t / ROLL_SECONDS).clamp(0.0, 1.0);
+        let e = x * x * (3.0 - 2.0 * x);
+        let old: Vec<char> = self.from.chars().collect();
+        let new: Vec<char> = self.to.chars().collect();
+        let shift = new.len() as isize - old.len() as isize;
+        new.iter()
+            .enumerate()
+            .map(|(i, &c)| {
+                let was = usize::try_from(i as isize - shift)
+                    .ok()
+                    .and_then(|j| old.get(j).copied());
+                let rolling = x < 1.0 && was != Some(c);
+                RollPose {
+                    now: c,
+                    now_y: if rolling { 1.0 - e } else { 0.0 },
+                    old: if rolling { was.map(|w| (w, -e)) } else { None },
+                }
+            })
+            .collect()
+    }
+}
+
+/// A progressive's value drawn as rolling figures over its meter, whose
+/// own text stays hidden (its size still fitted to the box).
+#[derive(Component)]
+pub struct JackpotRoll {
+    source: Entity,
+    roll: Roll,
+    /// The box's top and height on the canvas.
+    clip: (f32, f32),
+}
+/// One figure of a rolling value: its slot, and whether it is the figure
+/// leaving.
+#[derive(Component)]
+pub struct RollGlyph {
+    slot: u8,
+    old: bool,
+}
+
+/// The rolling figures for the meter `source`: a row across the value's
+/// box (`cx`, `w`; `clip` its top and height), one clipped slot a figure,
+/// each holding the figure coming (in the row's flow) and the figure
+/// leaving.
+fn spawn_roll(
+    c: &mut ChildSpawnerCommands,
+    source: Entity,
+    font: &Handle<Font>,
+    colour: Color,
+    (cx, w): (f32, f32),
+    clip: (f32, f32),
+) {
+    let glyph = |slot: u8, old: bool| {
+        (
+            RollGlyph { slot, old },
+            Text::new(""),
+            TextFont {
+                font: bevy::text::FontSource::Handle(font.clone()),
+                font_size: FontSize::Px(JACKPOT_VALUE_SIZE),
+                ..default()
+            },
+            TextColor(colour),
+            TextShadow {
+                offset: Vec2::new(2.0, 2.0),
+                color: Color::srgba(0.03, 0.03, 0.05, 0.9),
+            },
+            Node {
+                position_type: if old {
+                    PositionType::Absolute
+                } else {
+                    PositionType::Relative
+                },
+                left: Val::Px(0.0),
+                top: Val::Px(0.0),
+                ..default()
+            },
+        )
+    };
+    c.spawn((
+        JackpotRoll {
+            source,
+            roll: Roll::default(),
+            clip,
+        },
+        Node {
+            position_type: PositionType::Absolute,
+            left: Val::Px(cx - w / 2.0),
+            top: Val::Px(clip.0),
+            width: Val::Px(w),
+            height: Val::Px(clip.1),
+            flex_direction: FlexDirection::Row,
+            justify_content: JustifyContent::Center,
+            align_items: AlignItems::FlexStart,
+            ..default()
+        },
+    ))
+    .with_children(|r| {
+        for slot in 0..ROLL_SLOTS {
+            r.spawn(Node {
+                height: Val::Percent(100.0),
+                flex_shrink: 0.0,
+                overflow: Overflow::clip(),
+                ..default()
+            })
+            .with_children(|s| {
+                s.spawn(glyph(slot, false));
+                s.spawn(glyph(slot, true));
+            });
+        }
+    });
+}
+
+/// Roll each progressive's changed figures (after the meters are written
+/// and fitted): each figure at its meter's size, where the meter's own
+/// text would draw it, offset by its pose (a box's height a step).
+#[allow(clippy::type_complexity)]
+pub fn roll_jackpots(
+    fidelity: Res<Fidelity>,
+    time: Res<Time>,
+    smoke: Res<Smoke>,
+    sources: Query<(&Text, &TextFont, &Node), (With<JackpotFit>, Without<RollGlyph>)>,
+    mut rows: Query<
+        (Entity, &mut JackpotRoll, &mut Node),
+        (Without<JackpotFit>, Without<RollGlyph>),
+    >,
+    parents: Query<&ChildOf>,
+    mut glyphs: Query<
+        (
+            Entity,
+            &RollGlyph,
+            &mut Text,
+            &mut TextFont,
+            &mut Node,
+            &mut Visibility,
+        ),
+        (Without<JackpotFit>, Without<JackpotRoll>),
+    >,
+) {
+    if !fidelity.0 {
+        return;
+    }
+    let dt = smoke.dt(&time);
+    for (row_id, mut row, mut node) in &mut rows {
+        let Ok((text, font, source_node)) = sources.get(row.source) else {
+            continue;
+        };
+        row.roll.follow(&text.0);
+        row.roll.advance(dt);
+        let size = match font.font_size {
+            FontSize::Px(px) => px,
+            _ => JACKPOT_VALUE_SIZE,
+        };
+        let (clip_top, clip_h) = row.clip;
+        let base = match source_node.top {
+            Val::Px(top) => top - clip_top,
+            _ => 0.0,
+        };
+        if node.top != Val::Px(clip_top) {
+            node.top = Val::Px(clip_top);
+        }
+        let poses = row.roll.poses();
+        for (id, g, mut t, mut f, mut n, mut vis) in &mut glyphs {
+            // This row's figures only (glyph, slot, row).
+            let row_of = parents
+                .get(id)
+                .and_then(|slot| parents.get(slot.parent()))
+                .map(|r| r.parent());
+            if row_of != Ok(row_id) {
+                continue;
+            }
+            let pose = poses.get(usize::from(g.slot));
+            let (ch, y, show) = match (pose, g.old) {
+                (Some(p), false) => (Some(p.now), p.now_y, true),
+                (
+                    Some(RollPose {
+                        old: Some((c, y)), ..
+                    }),
+                    true,
+                ) => (Some(*c), *y, true),
+                _ => (None, 0.0, false),
+            };
+            let want: String = ch.map(String::from).unwrap_or_default();
+            if t.0 != want {
+                t.0 = want;
+            }
+            if f.font_size != FontSize::Px(size) {
+                f.font_size = FontSize::Px(size);
+            }
+            let top = Val::Px(base + y * clip_h);
+            if n.top != top {
+                n.top = top;
+            }
+            let v = if show {
+                Visibility::Inherited
+            } else {
+                Visibility::Hidden
+            };
+            if *vis != v {
+                *vis = v;
+            }
+        }
+    }
+}
+
+/// Whether the model's `tier` is a running (progressive) meter.
+fn is_progressive(model: &MathModel, tier: JackpotTier) -> bool {
+    model
+        .hold_and_spin
+        .as_ref()
+        .and_then(|hs| hs.jackpots.iter().find(|j| j.tier == tier))
+        .is_some_and(|j| j.progressive_reset.is_some())
 }
 
 /// A text block of width `w` centred at `(cx, cy)`.
@@ -1284,6 +1556,25 @@ fn label(
             ..default()
         },
     )
+}
+
+/// The name a title's model shows on screen (its chooser's drawn title, the
+/// window's title), from the model's id.
+pub fn title_name(model_id: &str) -> &'static str {
+    const NAMES: [(&str, &str); 8] = [
+        ("golden-century", "GOLDEN CENTURY"),
+        ("autumn-moon", "AUTUMN MOON"),
+        ("happy-prosperous", "HAPPY & PROSPEROUS"),
+        ("panda-magic", "PANDA MAGIC"),
+        ("genghis-khan", "GENGHIS KHAN"),
+        ("golden-gong", "GOLDEN GONG"),
+        ("peace-long-life", "PEACE & LONG LIFE"),
+        ("spring-festival", "SPRING FESTIVAL"),
+    ];
+    NAMES
+        .iter()
+        .find(|(slug, _)| model_id.starts_with(slug))
+        .map_or("DRAGONLINK (synthetic fixture)", |(_, name)| name)
 }
 
 /// Build the cabinet: the game screen, the meter strip and the button deck.
@@ -1447,16 +1738,23 @@ pub fn spawn(
             // y 73-117 (measured on a capture; the app's centre is 93.4).
             for (tier, (left, right)) in JACKPOT_BOXES {
                 let width = (right - left) * k;
-                c.spawn((
+                let (cx, cy) = (
+                    960.0 - bar_w / 2.0 + (left + right) / 2.0 * k,
+                    bar_top + 64.5 * k,
+                );
+                let mut value = c.spawn((
                     JackpotMeter { tier },
-                    JackpotFit { width },
+                    JackpotFit {
+                        width,
+                        max: JACKPOT_VALUE_SIZE,
+                    },
                     label(
                         "-",
                         &fonts.heavy,
                         JACKPOT_VALUE_SIZE,
                         jackpot_value_colour(tier),
-                        960.0 - bar_w / 2.0 + (left + right) / 2.0 * k,
-                        bar_top + 64.5 * k,
+                        cx,
+                        cy,
                         width,
                     ),
                     TextShadow {
@@ -1464,13 +1762,33 @@ pub fn spawn(
                         color: Color::srgba(0.03, 0.03, 0.05, 0.9),
                     },
                 ));
+                // A running meter's figures roll as they change (drawn by
+                // `roll_jackpots` over its hidden text).
+                if is_progressive(model, tier) {
+                    value.insert(Visibility::Hidden);
+                    let source = value.id();
+                    spawn_roll(
+                        c,
+                        source,
+                        &fonts.heavy,
+                        jackpot_value_colour(tier),
+                        (cx, width),
+                        (
+                            bar_top + bar_h * ROLL_CLIP.0,
+                            bar_h * (ROLL_CLIP.1 - ROLL_CLIP.0),
+                        ),
+                    );
+                }
             }
+
+            // Through Hold & Spin, the collected-coin disc over the bar.
+            spawn_hs_collected(c, art, fonts);
 
             spawn_meter_band(c, fonts, art, gold, pale, profile);
 
             spawn_deck(c, art, &fonts.sans, &fonts.symbols);
             spawn_gamble_screen(c, art, fonts, profile);
-            spawn_games_menu(c, art, fonts, profile);
+            spawn_games_menu(c, art, fonts, profile, title_name(&model.id));
 
             // The shared presentation systems still expect these; unused here.
             c.spawn((
@@ -1502,8 +1820,24 @@ enum TabLook {
     CasinoSilver,
 }
 
+/// The club band's tabs that stay on screen through the gamble, above its
+/// screen (club cabinets: _XHUzg4qDXI 0:07.60 and 1:13.00, LwC3hVqFRMg
+/// 18:30-18:33, the owner's Happy & Prosperous 00:13.53; VERIFIED), and give
+/// way on the chooser (whose own COLLECT moves to the corner).
+#[derive(Component, Clone, Copy, PartialEq, Eq, Debug)]
+pub enum BandTab {
+    Collect,
+    GamesMenu,
+}
+
+/// The club tabs' layer: over the gamble screen and the chooser's splash
+/// (12), as CREDIT and the tall pill are; the GAMES MENU's touch area one
+/// above it.
+const BAND_TAB_LAYER: i32 = 14;
+
 /// A rounded on-screen tab (COLLECT, GAMES MENU, GAME RULES): a capsule with
-/// a gloss across its upper half kept inside the rounded rim.
+/// a gloss across its upper half kept inside the rounded rim. Returns the
+/// tab.
 #[allow(clippy::too_many_arguments)]
 fn pill(
     c: &mut ChildSpawnerCommands,
@@ -1515,7 +1849,7 @@ fn pill(
     h: f32,
     size: f32,
     look: TabLook,
-) {
+) -> Entity {
     let stop = |r: u8, g: u8, b: u8, at: f32| {
         bevy::ui::ColorStop::new(Color::srgb_u8(r, g, b), Val::Percent(at))
     };
@@ -1592,7 +1926,8 @@ fn pill(
             TextLayout::no_wrap(),
             TextColor(ink),
         ));
-    });
+    })
+    .id()
 }
 
 /// The status line's centre, and its height (the centre of its capitals) on
@@ -1630,10 +1965,27 @@ fn meter_y(profile: Profile) -> f32 {
     }
 }
 
-/// The status and message rows' text: Verdana Bold 23, pale blue-white,
-/// with a dark edge (cabinet footage); the casino spaces its letters a
-/// little.
+/// The status and message rows' text: Verdana Bold 23, pale blue-white
+/// (cabinet footage); the casino spaces its letters a little. Its dark edge
+/// is drawn by copies (`spawn_edged_text`).
 fn status_text(s: &str, fonts: &CabFonts, profile: Profile, justify: Justify) -> impl Bundle {
+    status_text_in(
+        s,
+        fonts,
+        profile,
+        TextLayout::justify(justify),
+        Color::srgb_u8(210, 220, 245),
+    )
+}
+
+/// A status-row text in `colour`, laid out by `layout`.
+fn status_text_in(
+    s: &str,
+    fonts: &CabFonts,
+    profile: Profile,
+    layout: TextLayout,
+    colour: Color,
+) -> impl Bundle {
     (
         Text::new(s),
         TextFont {
@@ -1641,13 +1993,298 @@ fn status_text(s: &str, fonts: &CabFonts, profile: Profile, justify: Justify) ->
             font_size: FontSize::Px(23.0),
             ..default()
         },
-        TextColor(Color::srgb_u8(210, 220, 245)),
-        TextLayout::justify(justify),
+        TextColor(colour),
+        layout,
         LetterSpacing::Px(if profile == Profile::Casino { 1.5 } else { 0.0 }),
-        TextShadow {
-            offset: Vec2::new(2.0, 2.0),
-            color: Color::srgba(0.03, 0.03, 0.05, 0.9),
+    )
+}
+
+/// The status and message rows' dark edge, all round the letters (club
+/// footage, a straight-on zoom: T49m2COe0Ho; STRONG; an offset shadow left
+/// the letters' top and left edges light). Bevy draws one shadow a text and
+/// no stroke, so the edge is eight dark copies of the text, this far off
+/// each way, behind it.
+const EDGE_OFFSETS: [(f32, f32); 8] = [
+    (-1.5, -1.5),
+    (0.0, -1.5),
+    (1.5, -1.5),
+    (-1.5, 0.0),
+    (1.5, 0.0),
+    (-1.5, 1.5),
+    (0.0, 1.5),
+    (1.5, 1.5),
+];
+const EDGE_COLOUR: Color = Color::srgba(0.03, 0.03, 0.05, 0.9);
+
+/// A copy of another text (a dark edge, a shaded band) that follows its
+/// words, letter spacing and visibility (`echo_texts`).
+#[derive(Component)]
+pub struct Echo(Entity);
+
+/// Keep each copy's words, spacing and visibility those of its text.
+pub fn echo_texts(
+    owners: Query<(&Text, Option<&LetterSpacing>, &Visibility), Without<Echo>>,
+    mut echoes: Query<(
+        &Echo,
+        &mut Text,
+        Option<&mut LetterSpacing>,
+        &mut Visibility,
+    )>,
+) {
+    for (echo, mut text, spacing, mut vis) in &mut echoes {
+        let Ok((theirs, their_spacing, their_vis)) = owners.get(echo.0) else {
+            continue;
+        };
+        if text.0 != theirs.0 {
+            text.0.clone_from(&theirs.0);
+        }
+        if let (Some(mut mine), Some(their_spacing)) = (spacing, their_spacing)
+            && *mine != *their_spacing
+        {
+            *mine = *their_spacing;
+        }
+        if *vis != *their_vis {
+            *vis = *their_vis;
+        }
+    }
+}
+
+/// Move a length by `d` pixels, if it is in pixels.
+fn nudge(v: Val, d: f32) -> Val {
+    match v {
+        Val::Px(p) => Val::Px(p + d),
+        other => other,
+    }
+}
+
+/// Spawn a status-row text placed by `node`, with `extra` on it and its dark
+/// edge behind it (following it), all at `z` if given; returns the text.
+#[allow(clippy::too_many_arguments)]
+fn spawn_edged_text(
+    c: &mut ChildSpawnerCommands,
+    s: &str,
+    fonts: &CabFonts,
+    profile: Profile,
+    justify: Justify,
+    node: Node,
+    z: Option<GlobalZIndex>,
+    extra: impl Bundle,
+) -> Entity {
+    let mut copies = Vec::with_capacity(EDGE_OFFSETS.len());
+    for (dx, dy) in EDGE_OFFSETS {
+        let mut at = node.clone();
+        at.left = nudge(at.left, dx);
+        at.top = nudge(at.top, dy);
+        let mut copy = c.spawn((
+            status_text_in(s, fonts, profile, TextLayout::justify(justify), EDGE_COLOUR),
+            at,
+        ));
+        if let Some(z) = z {
+            copy.insert(z);
+        }
+        copies.push(copy.id());
+    }
+    let mut text = c.spawn((status_text(s, fonts, profile, justify), node, extra));
+    if let Some(z) = z {
+        text.insert(z);
+    }
+    let owner = text.id();
+    for copy in copies {
+        c.commands().entity(copy).insert(Echo(owner));
+    }
+    owner
+}
+
+/// A fixed status-row text in a row (the start prompts' words), with its
+/// dark edge behind it.
+fn spawn_edged_inline(c: &mut ChildSpawnerCommands, s: &str, fonts: &CabFonts, profile: Profile) {
+    c.spawn(Node::default()).with_children(|w| {
+        for (dx, dy) in EDGE_OFFSETS {
+            w.spawn((
+                status_text_in(s, fonts, profile, TextLayout::no_wrap(), EDGE_COLOUR),
+                Node {
+                    position_type: PositionType::Absolute,
+                    left: Val::Px(dx),
+                    top: Val::Px(dy),
+                    ..default()
+                },
+            ));
+        }
+        w.spawn(status_text(s, fonts, profile, Justify::Left));
+    });
+}
+
+/// The club meters' labels (CREDIT, BET, WIN) are orange at the top of their
+/// capitals and yellow in the lower half; the denomination is the other way
+/// up, yellow at the top and orange at the foot (club footage, row profiles
+/// of the label pixels on three machines: CAM8vranI9Y, T49m2COe0Ho,
+/// y8c8lEdPW8Y; the direction VERIFIED, the white digits beside them flat,
+/// so the shading is the art's; the tints from camera colour, PARTIAL). Bevy
+/// fills text with one colour, so a label is drawn in its lower colour with
+/// copies in steps of the shading over it, each clipped to the top of the
+/// capitals (`shade_bands`): (top colour, lower colour, the share of the
+/// capitals' height from their top where the lower colour is reached, steps).
+const LABEL_SHADE: ([u8; 3], [u8; 3], f32, u32) = ([245, 155, 45], [245, 214, 40], 0.6, 5);
+const DENOM_SHADE: ([u8; 3], [u8; 3], f32, u32) = ([245, 212, 62], [235, 125, 45], 0.85, 6);
+
+/// The shading's lower colour, the label's own.
+fn shade_base((_, lower, _, _): ([u8; 3], [u8; 3], f32, u32)) -> Color {
+    Color::srgb_u8(lower[0], lower[1], lower[2])
+}
+
+/// The copies that shade a label from `top` at the capitals' top to `lower`
+/// at `until` of their height, in `steps`: (colour, the share of the
+/// capitals' height each is clipped to), the largest first, so each smaller
+/// one lies over the last and each shows its colour over its own step.
+fn shade_bands((top, lower, until, steps): ([u8; 3], [u8; 3], f32, u32)) -> Vec<(Color, f32)> {
+    let steps = steps.max(1);
+    (0..steps)
+        .rev()
+        .map(|k| {
+            // Step k covers until * k / steps .. until * (k + 1) / steps, in
+            // the shading's colour at its middle.
+            let mid = (k as f32 + 0.5) / steps as f32;
+            let channel = |i: usize| {
+                let (a, b) = (f32::from(top[i]), f32::from(lower[i]));
+                (a + (b - a) * mid) / 255.0
+            };
+            (
+                Color::srgb(channel(0), channel(1), channel(2)),
+                until * (k + 1) as f32 / steps as f32,
+            )
+        })
+        .collect()
+}
+/// Where the meters' face (Impact) puts its capitals in a `label` box: their
+/// top below the box's top, and their height, as shares of the font size
+/// (from the face's metrics: cap height 0.79 of the size, the line box 1.2).
+const IMPACT_CAPS: (f32, f32) = (0.21, 0.79);
+
+/// Copies of a `label` in the colours of `bands`, each clipped to the top of
+/// its capitals, drawn over it (see `LABEL_SHADE`); `of` makes them follow a
+/// label whose words change.
+#[allow(clippy::too_many_arguments)]
+fn spawn_label_bands(
+    c: &mut ChildSpawnerCommands,
+    text: &str,
+    font: &Handle<Font>,
+    size: f32,
+    (cx, cy, w): (f32, f32, f32),
+    bands: &[(Color, f32)],
+    transform: UiTransform,
+    z: Option<GlobalZIndex>,
+    of: Option<Entity>,
+) {
+    for &(colour, share) in bands {
+        let mut clip = c.spawn((
+            Node {
+                position_type: PositionType::Absolute,
+                left: Val::Px(cx - w / 2.0),
+                top: Val::Px(cy - size * 0.62),
+                width: Val::Px(w),
+                height: Val::Px(size * (IMPACT_CAPS.0 + IMPACT_CAPS.1 * share)),
+                overflow: Overflow::clip(),
+                ..default()
+            },
+            transform,
+        ));
+        if let Some(z) = z {
+            clip.insert(z);
+        }
+        clip.with_children(|k| {
+            let mut copy = k.spawn((
+                Text::new(text),
+                TextFont {
+                    font: bevy::text::FontSource::Handle(font.clone()),
+                    font_size: FontSize::Px(size),
+                    ..default()
+                },
+                TextColor(colour),
+                TextLayout::justify(Justify::Center),
+                Node {
+                    position_type: PositionType::Absolute,
+                    left: Val::Px(0.0),
+                    top: Val::Px(0.0),
+                    width: Val::Px(w),
+                    ..default()
+                },
+            ));
+            if let Some(of) = of {
+                copy.insert(Echo(of));
+            }
+        });
+    }
+}
+
+/// The key under which the app's own drawing of the club tall pill's icon
+/// joins the pack's ui images (made by `club_pill_icon`, never from a pack).
+pub const PILL_ICON_KEY: &str = "_club_pill_icon";
+/// The club tall pill's icon on the canvas, width and height.
+const PILL_ICON: (f32, f32) = (36.0, 56.0);
+
+/// Whether the club tall pill's icon covers (`x`, `y`), in canvas pixels from
+/// its box's top left (`PILL_ICON`): from the top, two arcs and a half-disc
+/// about one centre, like a signal sign, then a trapezoid wider at its top
+/// and a short bar (club cabinets, straight on at 1080p: CAM8vranI9Y and
+/// T49m2COe0Ho at 13.0 s; the shapes VERIFIED, their sizes measured on the
+/// zoom and scaled to our pill, PARTIAL). Our own drawing.
+fn pill_icon_covers(x: f32, y: f32) -> bool {
+    const CX: f32 = PILL_ICON.0 / 2.0;
+    // The arcs' and the half-disc's centre, on the half-disc's flat foot.
+    const CY: f32 = 28.4;
+    // How far the arcs reach either side of upright, in degrees.
+    const ARC_HALF_ANGLE: f32 = 40.0;
+    let dx = x - CX;
+    let up = CY - y;
+    let r = dx.hypot(up);
+    let within = up > 0.0 && dx.abs().atan2(up).to_degrees() <= ARC_HALF_ANGLE;
+    let arc = |outer: f32, inner: f32| within && r <= outer && r >= inner;
+    let half_disc = up >= 0.0 && r <= 6.6;
+    // The trapezoid, 33 px across at its top and 20 at its foot.
+    let trapezoid = (32.0..=46.0).contains(&y) && {
+        let k = (y - 32.0) / 14.0;
+        dx.abs() <= 16.5 + (10.0 - 16.5) * k
+    };
+    let bar = (48.5..=56.0).contains(&y) && dx.abs() <= 9.5;
+    arc(28.4, 21.2) || arc(18.0, 10.6) || half_disc || trapezoid || bar
+}
+
+/// The club tall pill's icon as an image of ours, blue on clear, drawn at
+/// twice the canvas size and smoothed (4 x 4 samples a pixel).
+pub fn club_pill_icon() -> Image {
+    use bevy::asset::RenderAssetUsages;
+    use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};
+    const SCALE: u32 = 2;
+    const SAMPLES: u32 = 4;
+    let (w, h) = (PILL_ICON.0 as u32 * SCALE, PILL_ICON.1 as u32 * SCALE);
+    let mut data = Vec::with_capacity((w * h * 4) as usize);
+    for py in 0..h {
+        for px in 0..w {
+            let mut hits = 0u32;
+            for sy in 0..SAMPLES {
+                for sx in 0..SAMPLES {
+                    let x = (px as f32 + (sx as f32 + 0.5) / SAMPLES as f32) / SCALE as f32;
+                    let y = (py as f32 + (sy as f32 + 0.5) / SAMPLES as f32) / SCALE as f32;
+                    if pill_icon_covers(x, y) {
+                        hits += 1;
+                    }
+                }
+            }
+            let alpha = (hits * 255 / (SAMPLES * SAMPLES)) as u8;
+            // The cabinet's blue (camera colour about 25, 45, 160).
+            data.extend_from_slice(&[28, 42, 150, alpha]);
+        }
+    }
+    Image::new(
+        Extent3d {
+            width: w,
+            height: h,
+            depth_or_array_layers: 1,
         },
+        TextureDimension::D2,
+        data,
+        TextureFormat::Rgba8UnormSrgb,
+        RenderAssetUsages::all(),
     )
 }
 
@@ -1919,9 +2556,12 @@ fn spawn_meter_band(
     }
 
     // The status line under the reels.
-    c.spawn((
-        CabMeter::Multiplier,
-        status_text("", fonts, profile, Justify::Center),
+    spawn_edged_text(
+        c,
+        "",
+        fonts,
+        profile,
+        Justify::Center,
         Node {
             position_type: PositionType::Absolute,
             left: Val::Px(STATUS_X - 600.0),
@@ -1929,7 +2569,9 @@ fn spawn_meter_band(
             width: Val::Px(1200.0),
             ..default()
         },
-    ));
+        None,
+        CabMeter::Multiplier,
+    );
 
     // The message row: the start prompts at its right, right-aligned to
     // x 1685, wholly above the band.
@@ -1963,7 +2605,7 @@ fn spawn_meter_band(
             },
         ))
         .with_children(|row| {
-            row.spawn(status_text(count, fonts, profile, Justify::Left));
+            spawn_edged_inline(row, count, fonts, profile);
             // The symbol as a small tile, on its own background (a coin on
             // black).
             row.spawn((
@@ -1992,15 +2634,18 @@ fn spawn_meter_band(
                     },
                 ));
             });
-            row.spawn(status_text(text, fonts, profile, Justify::Left));
+            spawn_edged_inline(row, text, fonts, profile);
         });
     }
 
     // A feature's message ("Line 3 wins 20", "Scatter wins 100") takes the
     // prompts' place on the same row.
-    c.spawn((
-        FeatureMessage,
-        status_text("", fonts, profile, Justify::Right),
+    spawn_edged_text(
+        c,
+        "",
+        fonts,
+        profile,
+        Justify::Right,
         Node {
             position_type: PositionType::Absolute,
             left: Val::Px(1145.0),
@@ -2008,14 +2653,19 @@ fn spawn_meter_band(
             width: Val::Px(540.0),
             ..default()
         },
-    ));
+        None,
+        FeatureMessage,
+    );
 
     // The club's system message at the row's left (see `SystemMessage`),
     // over the chooser's splash and the gamble screen (12) as CREDIT is:
     // it stays on the chooser (VERIFIED). The longest text is 728 px.
-    c.spawn((
-        SystemMessage,
-        status_text("", fonts, profile, Justify::Left),
+    spawn_edged_text(
+        c,
+        "",
+        fonts,
+        profile,
+        Justify::Left,
         Node {
             position_type: PositionType::Absolute,
             left: Val::Px(SYSTEM_MESSAGE_X),
@@ -2023,14 +2673,20 @@ fn spawn_meter_band(
             width: Val::Px(800.0),
             ..default()
         },
-        GlobalZIndex(13),
-    ));
+        Some(GlobalZIndex(13)),
+        SystemMessage,
+    );
 
-    // The tall yellow pill at the far left, with its stacked bars (its
-    // function is not shown on footage). In this app it opens the machine
-    // chooser (MachineMenu), this app's own feature.
+    // The tall yellow pill at the far left (its function is not shown on
+    // footage). In this app it opens the machine chooser (MachineMenu), this
+    // app's own feature. The casino's has stacked bars on a flat yellow
+    // (GOLDEN_CENTURY_CABINET_DECK.md, "Casino left side"); the club's
+    // shades from pale yellow at the top to orange at the foot and carries
+    // our drawing of its icon (`club_pill_icon`), the bars where it is
+    // missing.
     let (pill_top, pill_h) = if club { (937.0, 92.0) } else { (945.0, 90.0) };
-    c.spawn((
+    let icon = art.ui.get(PILL_ICON_KEY).filter(|_| club).cloned();
+    let mut pill_node = c.spawn((
         Node {
             border: UiRect::all(Val::Px(2.0)),
             border_radius: BorderRadius::all(Val::Px(20.0)),
@@ -2043,28 +2699,60 @@ fn spawn_meter_band(
         BackgroundColor(Color::srgb(0.98, 0.8, 0.14)),
         BorderColor::all(Color::srgb(0.75, 0.45, 0.05)),
         GlobalZIndex(14),
-    ))
-    .with_children(|b| {
-        for w in [28.0, 22.0, 14.0] {
-            b.spawn((
-                Node {
-                    width: Val::Px(w),
-                    height: Val::Px(5.0),
-                    border_radius: BorderRadius::all(Val::Px(3.0)),
-                    ..default()
-                },
-                BackgroundColor(Color::srgb(0.12, 0.14, 0.4)),
-            ));
-        }
-    })
-    .observe(|_press: On<PointerPress>, mut menu: ResMut<MachineMenu>| {
-        menu.open = !menu.open;
-    });
-    // The tabs. Club: GAMES MENU above the band at the far left, GAME RULES
-    // on it; COLLECT over the denomination box. Casino: GAME RULES on the
-    // band at the left, GAMES MENU over the denomination box.
+    ));
     if club {
-        pill(
+        // Pale yellow at the top to orange at the foot (club cabinets; the
+        // tints from camera colour, PARTIAL).
+        let stop = |r: u8, g: u8, b: u8, at: f32| {
+            bevy::ui::ColorStop::new(Color::srgb_u8(r, g, b), Val::Percent(at))
+        };
+        pill_node.insert(bevy::ui::BackgroundGradient(vec![
+            bevy::ui::Gradient::Linear(bevy::ui::LinearGradient::to_bottom(vec![
+                stop(250, 228, 120, 0.0),
+                stop(246, 200, 50, 45.0),
+                stop(238, 150, 40, 100.0),
+            ])),
+        ]));
+    }
+    pill_node
+        .with_children(|b| {
+            if let Some(image) = icon {
+                b.spawn((
+                    Node {
+                        width: Val::Px(PILL_ICON.0),
+                        height: Val::Px(PILL_ICON.1),
+                        ..default()
+                    },
+                    ImageNode {
+                        image,
+                        image_mode: NodeImageMode::Stretch,
+                        ..default()
+                    },
+                ));
+                return;
+            }
+            for w in [28.0, 22.0, 14.0] {
+                b.spawn((
+                    Node {
+                        width: Val::Px(w),
+                        height: Val::Px(5.0),
+                        border_radius: BorderRadius::all(Val::Px(3.0)),
+                        ..default()
+                    },
+                    BackgroundColor(Color::srgb(0.12, 0.14, 0.4)),
+                ));
+            }
+        })
+        .observe(|_press: On<PointerPress>, mut menu: ResMut<MachineMenu>| {
+            menu.open = !menu.open;
+        });
+    // The tabs. Club: GAMES MENU above the band at the far left, GAME RULES
+    // on it; COLLECT over the denomination box; GAMES MENU and COLLECT stay
+    // over the gamble screen (`BandTab`). Casino: GAME RULES on the band at
+    // the left, GAMES MENU over the denomination box (no casino gamble is
+    // filmed).
+    if club {
+        let menu_tab = pill(
             c,
             fonts,
             "GAMES MENU",
@@ -2075,10 +2763,15 @@ fn spawn_meter_band(
             20.0,
             TabLook::Club,
         );
+        c.commands()
+            .entity(menu_tab)
+            .insert((BandTab::GamesMenu, GlobalZIndex(BAND_TAB_LAYER)));
+        // Its touch area over the raised tab (inert in the gamble and on the
+        // chooser: `input` opens the menu only at rest).
         c.spawn((
             rect(3.0, 880.0, 112.0, 40.0),
             BackgroundColor(Color::NONE),
-            GlobalZIndex(1),
+            GlobalZIndex(BAND_TAB_LAYER + 1),
         ))
         .observe(
             |_press: On<PointerPress>, mut input: ResMut<CabinetInput>| {
@@ -2104,7 +2797,7 @@ fn spawn_meter_band(
         .observe(|_press: On<PointerPress>, mut rules: ResMut<GameRules>| {
             rules.pressed = true;
         });
-        pill(
+        let collect = pill(
             c,
             fonts,
             "COLLECT",
@@ -2115,6 +2808,9 @@ fn spawn_meter_band(
             32.0,
             TabLook::Club,
         );
+        c.commands()
+            .entity(collect)
+            .insert((BandTab::Collect, GlobalZIndex(BAND_TAB_LAYER)));
     } else {
         pill(
             c,
@@ -2184,9 +2880,25 @@ fn spawn_meter_band(
         ..UiTransform::IDENTITY
     };
     for (i, (text, x)) in labels.into_iter().enumerate() {
-        let mut e = c.spawn((label(text, font, 68.0, gold, x, my, 260.0), narrow));
-        if i == 0 {
-            e.insert(GlobalZIndex(14));
+        let z = (i == 0).then_some(GlobalZIndex(14));
+        let base = if club { shade_base(LABEL_SHADE) } else { gold };
+        let mut e = c.spawn((label(text, font, 68.0, base, x, my, 260.0), narrow));
+        if let Some(z) = z {
+            e.insert(z);
+        }
+        // Club: orange at the top of the capitals (see `LABEL_SHADE`).
+        if club {
+            spawn_label_bands(
+                c,
+                text,
+                font,
+                68.0,
+                (x, my, 260.0),
+                &shade_bands(LABEL_SHADE),
+                narrow,
+                z,
+                None,
+            );
         }
     }
     for (meter, x) in values {
@@ -2234,10 +2946,38 @@ fn spawn_meter_band(
         BackgroundColor(Color::srgba_u8(12, 10, 12, 242)),
         BorderColor::all(Color::srgb_u8(60, 58, 60)),
     ));
-    c.spawn((
-        CabMeter::Denom,
-        label("1¢", font, dsize, denom_colour, dx, dy, bw),
-    ));
+    // Club: yellow at the top, orange at the foot (see `LABEL_SHADE`).
+    let denom = c
+        .spawn((
+            CabMeter::Denom,
+            label(
+                "1¢",
+                font,
+                dsize,
+                if club {
+                    shade_base(DENOM_SHADE)
+                } else {
+                    denom_colour
+                },
+                dx,
+                dy,
+                bw,
+            ),
+        ))
+        .id();
+    if club {
+        spawn_label_bands(
+            c,
+            "1¢",
+            font,
+            dsize,
+            (dx, dy, bw),
+            &shade_bands(DENOM_SHADE),
+            UiTransform::IDENTITY,
+            None,
+            Some(denom),
+        );
+    }
     c.spawn((
         CabMeter::MinBet,
         label(
@@ -2341,16 +3081,22 @@ pub fn start_prompts(
     fidelity: Res<Fidelity>,
     show: Res<FeatureShow>,
     gamble: Res<GambleShow>,
+    menu: Res<GamesMenu>,
     mut prompts: Query<(&StartPrompt, &mut Visibility)>,
 ) {
     if !fidelity.0 {
         return;
     }
-    // Blank from START FEATURE to the first free game too (club cabinet).
+    // Blank from START FEATURE to the first free game too (club cabinet),
+    // and from a denomination choice until the first game starts (club
+    // cabinets: y8c8lEdPW8Y 11.8-15.4 s, CAM8vranI9Y 11.4-13.8 s, the prompt
+    // back with the game's debit; STRONG; after a visit with no change
+    // UNKNOWN, treated alike).
     let quiet = show.message().is_some()
         || show.fg_cut.is_some()
         || show.stage != Stage::Base
-        || gamble.active;
+        || gamble.active
+        || menu.selecting;
     for (p, mut vis) in &mut prompts {
         let want = if p.which == show.prompt && !quiet {
             Visibility::Inherited
@@ -2592,6 +3338,7 @@ pub fn system_message(
     show: Res<FeatureShow>,
     gamble: Res<GambleShow>,
     deck: Res<DeckState>,
+    reels: Res<Reels>,
     mut slot: ResMut<SystemSlot>,
     mut seen: Local<SlotSeen>,
     mut texts: Query<&mut Text, With<SystemMessage>>,
@@ -2604,8 +3351,9 @@ pub fn system_message(
         let credit = credit_shown(&sim, &presentation, &rollup, &show, &gamble)
             .saturating_mul(cents)
             .saturating_add(sim.game.state().residue);
-        // A start: the reels set off (free games' too) or a respin begins.
-        let spinning = deck.mode == DeckMode::Spinning;
+        // A start: the reels set off (free games' too) or a respin begins
+        // (the deck's spinning mode covers both, so the reels are read).
+        let spinning = reels.any_moving();
         let respinning = show.respinning();
         let started = (spinning && !seen.spinning) || (respinning && !seen.respinning);
         seen.spinning = spinning;
@@ -2627,7 +3375,9 @@ pub fn system_message(
             offer: deck.offer && show.stage == Stage::Base,
             credit,
         });
-        slot.showing().text()
+        // A Grand calls the attendant from its award until the next game.
+        show.grand_call(cents)
+            .unwrap_or_else(|| slot.showing().text())
     } else {
         String::new()
     };
@@ -2687,12 +3437,16 @@ fn spawn_deck(
         GlobalZIndex(DECK_LAYER),
         ZIndex(1),
     ));
-    // Square keys, as on the cabinet (its keys are about as tall as wide),
-    // in two rows, and the teardrop beside them spanning both.
+    // Near-square keys, as on the cabinet, in two rows, and the teardrop
+    // beside them spanning both, the whole centred on what shows: the
+    // teardrop's art fills about [`TEARDROP_VISIBLE`] of its node from
+    // [`TEARDROP_INSET`] in, and it stands a quarter of a key clear of the
+    // keys (cabinet footage).
     let (kw, kh, gx, gy) = DECK_KEY;
     let cluster = 6.0 * kw + 5.0 * gx;
     let (sw, sh) = DECK_TEARDROP;
-    let left = (CANVAS_W - (cluster + 60.0 + sw)) / 2.0;
+    let gap = TEARDROP_GAP * kw;
+    let left = (CANVAS_W - (cluster + gap + TEARDROP_VISIBLE * sw)) / 2.0;
     let top = DECK_TOP + 8.0;
     for row in 0..2u8 {
         for col in 0..6u8 {
@@ -2713,17 +3467,32 @@ fn spawn_deck(
         font,
         symbols,
         CabButton::Spin,
-        left + cluster + 60.0,
+        left + cluster + gap - TEARDROP_INSET * sw,
         top + kh + gy / 2.0 - sh / 2.0,
         sw,
         sh,
     );
 }
 
-/// A key's width and height and the gaps between keys, and the teardrop's
-/// size (cabinet footage: square keys about a third of a key apart, the
-/// teardrop about 1.75 keys wide and as tall as both rows).
-const DECK_KEY: (f32, f32, f32, f32) = (96.0, 80.0, 30.0, 10.0);
+/// A key's width and height and the gaps between keys (cabinet footage:
+/// near-square keys about a tenth of a key apart along a row, 0.09-0.14 on
+/// three machines, STRONG; the key art's bezel runs to its edge, so the
+/// node gap is the gap seen). Truly square keys would need a taller deck
+/// strip.
+const DECK_KEY: (f32, f32, f32, f32) = (96.0, 80.0, 12.0, 10.0);
+
+/// The teardrop's node: its art shows about 1.7 keys wide (cabinet 1.6-1.74
+/// keys) and as tall as both rows.
+const DECK_TEARDROP: (f32, f32) = (204.0, 170.0);
+
+/// The share of the teardrop's node its art fills across, and how far in
+/// from the node's left edge it starts (the pack's `spin_*` art).
+const TEARDROP_VISIBLE: f32 = 0.8;
+const TEARDROP_INSET: f32 = 0.1;
+
+/// The gap between the keys and the teardrop, in keys (cabinet footage:
+/// 0.2-0.4 of a key).
+const TEARDROP_GAP: f32 = 0.25;
 
 /// The deck's stacking layer: above every screen effect (the Hold & Spin
 /// transition 30, the coin shower, bolt bursts and win flares 26, the bolts
@@ -2731,7 +3500,6 @@ const DECK_KEY: (f32, f32, f32, f32) = (96.0, 80.0, 30.0, 10.0);
 /// and the gamble 12-13, the WINNER plate 4) and below the rules overlay (50)
 /// and the machine menu (60), which still cover the deck.
 const DECK_LAYER: i32 = 40;
-const DECK_TEARDROP: (f32, f32) = (170.0, 170.0);
 
 /// A key's legend as the cabinet stacks it: lines of their own sizes (a lines
 /// key reads a small PLAY, its count large, LINES, then the credits it bets),
@@ -2893,6 +3661,13 @@ pub struct DeckState {
     /// choice, since the YES): the one clock of the deck's flash, the
     /// teardrop's legends and the meters' switch.
     pub since: f32,
+    /// The mode before this one, and seconds since the mode changed (not
+    /// restarted by the offer): the clock of the wipe back to the idle
+    /// faces as the reels stop.
+    pub prev: DeckMode,
+    pub mode_t: f32,
+    /// Seconds START FEATURE has been awaited (0 while it is not).
+    pub wait_t: f32,
 }
 
 impl DeckState {
@@ -3049,9 +3824,11 @@ fn deck_button(
     w: f32,
     h: f32,
 ) {
-    // The play button's legend sits in the teardrop's wide upper part.
+    // The teardrop points up, as on every cabinet filmed; its legend sits in
+    // its ring, centred 0.55 of the way down (cabinet 0.52-0.57 from the
+    // apex).
     let pad = if button == CabButton::Spin {
-        UiRect::bottom(Val::Px(h * 0.22))
+        UiRect::top(Val::Px(h * TEARDROP_LEGEND_PAD))
     } else {
         UiRect::all(Val::Px(6.0))
     };
@@ -3069,8 +3846,12 @@ fn deck_button(
             align_items: AlignItems::Center,
             ..default()
         },
+        // The art fills the whole key: an image node draws in its content
+        // box by default, and the legend's padding would shrink every key
+        // (to 84 x 68, widening the gaps) and squash the teardrop.
         ImageNode {
             image_mode: NodeImageMode::Stretch,
+            visual_box: bevy::ui::VisualBox::BorderBox,
             ..default()
         },
         // Above the bezel and the panel inside the deck's layer; the legend
@@ -3117,14 +3898,285 @@ fn deck_button(
     );
 }
 
-/// Light the deck and set its legends, as the cabinet does: the selected
-/// credits and lines keys pale white among red credits keys and blue lines
-/// keys; GAMBLE purple and TAKE WIN gold, glowing while a win can be gambled;
-/// the teardrop's PLAY / REPEAT BET at rest, START FEATURE blinking while a
-/// feature waits, SPIN in Hold & Spin, a lattice in the gamble; GOOD LUCK
-/// wiping in from the left as the reels start; on the club machines the 1 Hz
-/// flash of the keys that can be pressed while a win is offered and in the
-/// gamble, with the chosen key steady light blue once a card is turned.
+/// The teardrop legend's top padding, in its height: the legend centres on
+/// the art's ring, 0.55 of the way down.
+const TEARDROP_LEGEND_PAD: f32 = 0.10;
+
+/// GOOD LUCK's wipe as the reels start: a letter every 0.1 s from the left,
+/// each key keeping its idle face and legend until its letter arrives, the
+/// bottom row a frame behind, the right column dark 0.1 s after the D
+/// (cabinet footage: four wipes on one machine, two of them respins,
+/// VERIFIED).
+const WIPE_IN_STEP: f32 = 0.1;
+const WIPE_ROW_LAG: f32 = 1.0 / 30.0;
+
+/// The wipe back to the idle faces as the reels stop: from the left, a
+/// column every 0.08 s (two stops on one machine, VERIFIED).
+const WIPE_BACK_STEP: f32 = 0.08;
+
+/// The legend's alpha on the plain face of the flash: faint (PARTIAL).
+const PLAIN_LEGEND_ALPHA: f32 = 0.35;
+
+/// The club teardrop's START FEATURE turns edge-on and back like a coin,
+/// over [`LEGEND_TURN`] s at the end of every [`LEGEND_TURN_PERIOD`] s from
+/// the wait's start (a Golden Century Dragon Cash deck A, STRONG; the phase
+/// ours).
+const LEGEND_TURN_PERIOD: f32 = 1.28;
+const LEGEND_TURN: f32 = 0.3;
+
+/// Faces a pack may lack, drawn as another of its images under a tint:
+/// (face, stand-in, tint). Tints multiply, so the coloured stand-ins tint
+/// the white key.
+const STAND_IN_FACES: [(&str, &str, Color); 7] = [
+    // The selected lines key, the chosen gamble key and the plain flash.
+    ("key_lightblue", "key_white", Color::srgb(0.62, 0.80, 1.0)),
+    // The red gamble choices' plain flash.
+    ("key_lavender", "key_white", Color::srgb(0.86, 0.84, 1.0)),
+    // The selected credits key: pale lavender-white.
+    ("key_pale", "key_white", Color::srgb(0.94, 0.92, 1.0)),
+    // TAKE WIN: pale khaki.
+    ("key_khaki", "key_white", Color::srgb(1.0, 0.88, 0.60)),
+    // A pack built before the purple key draws GAMBLE blue.
+    ("key_purple", "key_blue", Color::WHITE),
+    // The gamble's unused keys: the card back if the pack has no lattice key.
+    ("key_lattice", "card_back", Color::WHITE),
+    // The teardrop's gamble lattice: the dark teardrop if the pack has none.
+    ("spin_lattice", "spin_dim", Color::WHITE),
+];
+
+/// The pack image and tint that draw a face: its own image if the pack has
+/// one, else its stand-in (see [`STAND_IN_FACES`]).
+fn resolve_face(face: &'static str, has: impl Fn(&str) -> bool) -> (&'static str, Color) {
+    if has(face) {
+        return (face, Color::WHITE);
+    }
+    STAND_IN_FACES
+        .iter()
+        .find(|(f, ..)| *f == face)
+        .map_or((face, Color::WHITE), |&(_, image, tint)| (image, tint))
+}
+
+/// What the deck shows this frame: its state and the facts of the game its
+/// faces, legends and inks follow (see [`light_deck`]).
+#[derive(Clone, Copy, Debug, Default)]
+pub struct DeckLook {
+    pub deck: DeckState,
+    /// At rest: the game idle with nothing queued.
+    pub idle: bool,
+    /// START FEATURE is awaited.
+    pub start_wait: bool,
+    /// The Hold & Spin board shows.
+    pub hold_and_spin: bool,
+    /// The gamble's suits may be chosen (within the gamble win limit).
+    pub suits_open: bool,
+    /// The gamble choice, once its card is turned.
+    pub chosen: Option<GamblePick>,
+    pub lines: u16,
+    pub bet: u32,
+}
+
+impl DeckLook {
+    /// The role a key shows. It trails the deck's own while the deck changes
+    /// over: as the reels start, GOOD LUCK wipes in from the left, each key
+    /// keeping its idle face and legend until its letter arrives; as they
+    /// stop, the idle faces wipe back from the left.
+    pub fn shown(&self, cap: CabButton) -> Role {
+        let d = self.deck;
+        if let CabButton::Slot { row, col } = cap {
+            let c = f32::from(col.min(5));
+            match d.mode {
+                DeckMode::Spinning if col > 0 => {
+                    let lag = if row == 1 { WIPE_ROW_LAG } else { 0.0 };
+                    if d.since < WIPE_IN_STEP * c + lag {
+                        let idle = DeckState {
+                            mode: DeckMode::Base,
+                            offer: false,
+                            ..d
+                        };
+                        return role(cap, &idle);
+                    }
+                }
+                DeckMode::Base if d.prev == DeckMode::Spinning && d.mode_t < WIPE_BACK_STEP * c => {
+                    let spinning = DeckState {
+                        mode: DeckMode::Spinning,
+                        ..d
+                    };
+                    return role(cap, &spinning);
+                }
+                _ => {}
+            }
+        }
+        role(cap, &d)
+    }
+
+    /// Whether a key shows the plain face of the club machines' 1 Hz flash:
+    /// the keys that can be pressed while a win is offered (top keys 1-2 and
+    /// the bottom row), and the gamble's open choices until a card is turned
+    /// (suits past the gamble limit stay dark and still).
+    pub fn flashing(&self, cap: CabButton, shown: Role) -> bool {
+        let d = self.deck;
+        if d.profile != Profile::Club || !d.plain() {
+            return false;
+        }
+        match (d.mode, cap, shown) {
+            (_, _, Role::Letter(_) | Role::Off | Role::Blank | Role::Lattice) => false,
+            (DeckMode::Base, CabButton::Slot { row, col }, _) => d.offer && (row == 1 || col <= 1),
+            (DeckMode::Gamble, _, Role::Pick(p)) => {
+                self.chosen.is_none() && (is_colour(p) || self.suits_open)
+            }
+            _ => false,
+        }
+    }
+
+    /// A key's face: a pack image, or a stand-in face (see
+    /// [`resolve_face`]). Every key is lit at full brightness, GAMBLE and
+    /// TAKE WIN whether or not a gamble is offered and the credits keys a
+    /// denomination does not offer too (club footage).
+    pub fn face(&self, cap: CabButton) -> &'static str {
+        let d = self.deck;
+        let r = self.shown(cap);
+        if cap == CabButton::Spin {
+            // A dark smoky teardrop at rest, while the reels spin and through
+            // Hold & Spin; lit blue only while START FEATURE waits: steadily
+            // on the club deck (deck A), blinking 0.5 s on, 0.5 s off on the
+            // casino's (US deck B).
+            let blink_off = d.profile == Profile::Casino && ((d.wait_t * 2.0) as u32) % 2 == 1;
+            return match r {
+                // The gamble: a card-back lattice filling the face, with no
+                // legend (club footage, _XHUzg4qDXI 0:06.80-0:08.57 and
+                // 1:12.00-1:14.50; VERIFIED on one machine).
+                Role::Lattice => "spin_lattice",
+                Role::Off => "spin_dim",
+                _ if self.start_wait && !blink_off => "spin_lit",
+                _ => "spin_dim",
+            };
+        }
+        if self.flashing(cap, r) {
+            return match r {
+                Role::Pick(p) if is_red(p) => "key_lavender",
+                _ => "key_lightblue",
+            };
+        }
+        match r {
+            Role::Pick(p) if self.chosen == Some(p) => "key_lightblue",
+            Role::Credits(m) if m == self.bet => "key_pale",
+            Role::Bet(m) if m == self.bet => "key_white",
+            Role::Bet(_) | Role::Credits(_) | Role::Blank => "key_red",
+            Role::Lines(n) if n == self.lines => "key_lightblue",
+            Role::Lines(_) | Role::Play => "key_blue",
+            Role::Gamble => "key_purple",
+            Role::TakeWin => "key_khaki",
+            // Hearts, diamonds and RED orange; clubs, spades and BLACK dark
+            // (club footage, the vivid phase); a suit past the limit dark.
+            Role::Pick(p) if is_red(p) && (is_colour(p) || self.suits_open) => "key_red",
+            Role::Pick(_) | Role::Letter(_) | Role::Off => "key_dark",
+            Role::Lattice => "key_lattice",
+        }
+    }
+
+    /// A key's legend colour: faint on the plain face of the flash.
+    pub fn ink(&self, cap: CabButton) -> Color {
+        let r = self.shown(cap);
+        let ink = match (r, self.face(cap)) {
+            // Spelled letters glow blue on a dark key.
+            (Role::Letter(_), _) => Color::srgb(0.35, 0.65, 1.0),
+            // The dark teardrop's legend pale blue; white on the lit one.
+            (_, "spin_dim") => Color::srgb(0.45, 0.62, 1.0),
+            (_, "key_lightblue" | "key_lavender" | "spin_lit") => Color::WHITE,
+            // TAKE WIN's letters blue on its pale face.
+            (Role::TakeWin, _) => Color::srgb(0.20, 0.42, 0.95),
+            // The selected credits key's numeral pink-red, the others' light
+            // blue on orange.
+            (Role::Credits(_), "key_pale") => Color::srgb(0.85, 0.35, 0.45),
+            (Role::Credits(_), _) => Color::srgb(0.7, 0.85, 1.0),
+            // The gamble's choices: light-blue icons on orange and on dark.
+            (Role::Pick(_), "key_red") => Color::srgb(0.75, 0.88, 1.0),
+            (Role::Pick(_), "key_dark") => Color::srgb(0.6, 0.8, 1.0),
+            (_, "key_white" | "key_pale" | "key_khaki" | "key_gold") => {
+                Color::srgb(0.06, 0.08, 0.2)
+            }
+            (_, "key_dark") => Color::srgb(0.45, 0.5, 0.62),
+            _ => Color::WHITE,
+        };
+        if self.flashing(cap, r) {
+            ink.with_alpha(PLAIN_LEGEND_ALPHA)
+        } else {
+            ink
+        }
+    }
+
+    /// A key's legend, line by line with sizes.
+    pub fn words(&self, cap: CabButton) -> Vec<(String, f32)> {
+        let d = self.deck;
+        let r = self.shown(cap);
+        let lines_of = |v: &[(&str, f32)]| -> Vec<(String, f32)> {
+            v.iter().map(|(w, z)| ((*w).to_string(), *z)).collect()
+        };
+        match (cap, r) {
+            (CabButton::Spin, Role::Off | Role::Lattice) => Vec::new(),
+            // Footage: START FEATURE while a feature waits, SPIN through Hold
+            // & Spin, PLAY and REPEAT BET in turn at rest (club); sized to
+            // sit inside the teardrop's ring.
+            (CabButton::Spin, _) if self.start_wait => {
+                lines_of(&[("START", 17.0), ("FEATURE", 15.0)])
+            }
+            (CabButton::Spin, _) if self.hold_and_spin => lines_of(&[("SPIN", 25.0)]),
+            (CabButton::Spin, _)
+                if d.profile == Profile::Club
+                    && d.mode == DeckMode::Base
+                    && self.idle
+                    && (d.since as u32) % 2 == 1 =>
+            {
+                lines_of(&[("REPEAT", 16.0), ("BET", 16.0)])
+            }
+            (CabButton::Spin, _) => lines_of(&[("PLAY", 25.0)]),
+            // Top left is blank purple in the gamble.
+            (_, Role::Gamble) if d.mode == DeckMode::Gamble => Vec::new(),
+            (_, Role::Pick(p)) if !is_colour(p) && !self.suits_open => Vec::new(),
+            _ => legend(r, self.lines, self.bet),
+        }
+    }
+
+    /// The teardrop legend's width as a share of its own: 1, but while the
+    /// club's START FEATURE turns like a coin.
+    pub fn legend_turn(&self) -> f32 {
+        if !self.start_wait || self.deck.profile != Profile::Club {
+            return 1.0;
+        }
+        let into = self.deck.wait_t % LEGEND_TURN_PERIOD - (LEGEND_TURN_PERIOD - LEGEND_TURN);
+        if into < 0.0 {
+            1.0
+        } else {
+            (std::f32::consts::PI * into / LEGEND_TURN).cos().abs()
+        }
+    }
+}
+
+/// The deck's mode: the GAMES MENU, the gamble, a spin, or the game. A Hold
+/// & Spin respin spins the deck as the reels do (club footage: GOOD LUCK on
+/// every respin, the teardrop keeping SPIN; VERIFIED).
+fn deck_mode(menu: bool, gambling: bool, reels_moving: bool, respinning: bool) -> DeckMode {
+    if menu {
+        DeckMode::Menu
+    } else if gambling {
+        DeckMode::Gamble
+    } else if reels_moving || respinning {
+        DeckMode::Spinning
+    } else {
+        DeckMode::Base
+    }
+}
+
+/// Light the deck and set its legends, as the cabinet does (see
+/// [`DeckLook`]): the selected credits key pale and the selected lines key
+/// light blue among orange credits keys and blue lines keys; GAMBLE purple
+/// and TAKE WIN pale khaki, always lit; the teardrop dark with a pale-blue
+/// PLAY / REPEAT BET at rest, PLAY while the reels spin and SPIN in Hold &
+/// Spin, lit for START FEATURE, a lattice in the gamble; GOOD LUCK wiping in
+/// from the left as the reels start or a Hold & Spin respin turns, and the
+/// idle faces wiping back as they stop; on the club machines the 1 Hz flash
+/// of the keys that can be pressed while a win is offered and in the gamble,
+/// with the chosen key steady light blue once a card is turned.
 #[allow(clippy::too_many_arguments, clippy::type_complexity)]
 pub fn light_deck(
     fidelity: Res<Fidelity>,
@@ -3149,6 +4201,7 @@ pub fn light_deck(
         &mut TextFont,
         &mut TextColor,
         &mut Node,
+        &mut UiTransform,
     )>,
 ) {
     if !fidelity.0 {
@@ -3159,129 +4212,61 @@ pub fn light_deck(
     let idle = sim.game.is_idle() && presentation.queue.is_empty();
     let cents = denom.cents();
     let can_gamble = idle && gamble_open(&sim.game, cents, &show) && !rollup.active() && !waiting;
-    // A suit's four times the stake may pass the gamble win limit.
-    let suits_open = within_gamble_limit(gamble.stake, 4, cents);
-    let mode = if menu.showing() {
-        DeckMode::Menu
-    } else if gambling {
-        DeckMode::Gamble
-    } else if reels.any_moving() {
-        DeckMode::Spinning
-    } else {
-        DeckMode::Base
-    };
+    let mode = deck_mode(
+        menu.showing(),
+        gambling,
+        reels.any_moving(),
+        show.respinning(),
+    );
     let offer = mode == DeckMode::Base && can_gamble;
     // After a denomination choice, until the first game (club footage).
     let selecting = menu.selecting && mode == DeckMode::Base;
+    let start_wait = matches!(show.awaiting, Some(Await::Start(_)));
+    let dt = smoke.dt(&time).min(0.05);
     if deck.mode != mode || deck.offer != offer {
         deck.since = deck_clock_restart(deck.mode, selecting);
     } else {
-        deck.since += smoke.dt(&time).min(0.05);
+        deck.since += dt;
     }
+    if deck.mode != mode {
+        deck.prev = deck.mode;
+        deck.mode_t = 0.0;
+    } else {
+        deck.mode_t += dt;
+    }
+    deck.wait_t = if start_wait { deck.wait_t + dt } else { 0.0 };
     deck.mode = mode;
     deck.offer = offer;
     deck.selecting = selecting;
     deck.profile = *profile;
     deck.cents = cents;
-    let d = *deck;
-    let lines = sim.game.lines();
-    let bet = sim.game.credits_per_line();
-    let t = time.elapsed_secs();
-    let glow = 0.84 + 0.16 * (t * 3.5).sin().abs();
-    let start_wait = matches!(show.awaiting, Some(Await::Start(_)));
-    // Once a card is turned the flash stops; the chosen key stays light blue.
-    let chosen = gamble.card.and(gamble.last.map(|(p, _)| p));
-    let flashing = |cap: CabButton, r: Role| -> bool {
-        if d.profile != Profile::Club || !d.plain() {
-            return false;
-        }
-        match (d.mode, cap) {
-            (DeckMode::Base, CabButton::Slot { row, col }) => d.offer && (row == 1 || col <= 1),
-            (DeckMode::Gamble, _) => chosen.is_none() && matches!(r, Role::Pick(_)),
-            _ => false,
-        }
-    };
-    let face = |cap: CabButton| -> (&'static str, f32) {
-        let r = role(cap, &d);
-        if flashing(cap, r) {
-            return ("key_blue", 1.0);
-        }
-        match (cap, r) {
-            (CabButton::Spin, Role::Off | Role::Lattice) => ("spin_dim", 1.0),
-            (CabButton::Spin, _) if start_wait && ((t * 2.0) as u32) % 2 == 1 => ("spin_dim", 1.0),
-            (CabButton::Spin, _) if idle || waiting => ("spin_lit", glow),
-            (CabButton::Spin, _) => ("spin_dim", 1.0),
-            (_, Role::Pick(p)) if chosen == Some(p) => ("key_blue", 1.0),
-            (_, Role::Bet(m) | Role::Credits(m)) if m == bet => ("key_white", 1.0),
-            (_, Role::Bet(_) | Role::Credits(_)) => ("key_red", 1.0),
-            (_, Role::Blank) => ("key_red", 0.45),
-            (_, Role::Lines(n)) if n == lines => ("key_white", 1.0),
-            (_, Role::Lines(_) | Role::Play) => ("key_blue", 1.0),
-            (_, Role::Gamble) if can_gamble || (gambling && gamble.stake >= 2) => {
-                ("key_purple", glow)
-            }
-            (_, Role::Gamble) => ("key_purple", 0.5),
-            (_, Role::TakeWin) if can_gamble || gambling => ("key_gold", glow),
-            (_, Role::TakeWin) => ("key_gold", 0.5),
-            (_, Role::Pick(p)) if !is_colour(p) && !suits_open => ("key_dark", 1.0),
-            (_, Role::Pick(p)) if is_red(p) => ("key_red", 1.0),
-            (_, Role::Pick(_)) => ("key_blue", 1.0),
-            (_, Role::Lattice) => ("card_back", 1.0),
-            (_, Role::Letter(_) | Role::Off) => ("key_dark", 1.0),
-        }
+    let look = DeckLook {
+        deck: *deck,
+        idle,
+        start_wait,
+        hold_and_spin: show.hold_and_spin(),
+        // A suit's four times the stake may pass the gamble win limit.
+        suits_open: within_gamble_limit(gamble.stake, 4, cents),
+        // Once a card is turned the flash stops; the chosen key stays light
+        // blue.
+        chosen: gamble.card.and(gamble.last.map(|(p, _)| p)),
+        lines: sim.game.lines(),
+        bet: sim.game.credits_per_line(),
     };
     for (cap, mut image) in &mut caps {
-        let (key, k) = face(cap.0);
-        // A pack built before the purple key draws GAMBLE blue.
-        let h = art.ui.get(key).or_else(|| {
-            (key == "key_purple")
-                .then(|| art.ui.get("key_blue"))
-                .flatten()
-        });
-        if let Some(h) = h
+        let (key, tint) = resolve_face(look.face(cap.0), |k| art.ui.contains_key(k));
+        if let Some(h) = art.ui.get(key)
             && image.image != *h
         {
             image.image = h.clone();
         }
-        let tint = Color::srgb(k, k, k);
         if image.color != tint {
             image.color = tint;
         }
     }
-    for (label, fonts, mut text, mut font, mut color, mut node) in &mut labels {
-        let r = role(label.0, &d);
-        let lines_of = |v: &[(&str, f32)]| -> Vec<(String, f32)> {
-            v.iter().map(|(w, z)| ((*w).to_string(), *z)).collect()
-        };
-        let words: Vec<(String, f32)> = match (label.0, r) {
-            (CabButton::Spin, Role::Off | Role::Lattice) => Vec::new(),
-            // Footage: START FEATURE while a feature waits, SPIN through Hold
-            // & Spin, PLAY and REPEAT BET in turn at rest (club); sized to sit
-            // inside the teardrop's face.
-            (CabButton::Spin, _) if start_wait => lines_of(&[("START", 17.0), ("FEATURE", 15.0)]),
-            (CabButton::Spin, _) if show.hold_and_spin() => lines_of(&[("SPIN", 25.0)]),
-            (CabButton::Spin, _)
-                if d.profile == Profile::Club
-                    && d.mode == DeckMode::Base
-                    && idle
-                    && (d.since as u32) % 2 == 1 =>
-            {
-                lines_of(&[("REPEAT", 16.0), ("BET", 16.0)])
-            }
-            (CabButton::Spin, _) => lines_of(&[("PLAY", 25.0)]),
-            // The plain face of the flash carries no legend.
-            (cap, r) if flashing(cap, r) => Vec::new(),
-            // Top left is blank purple in the gamble.
-            (_, Role::Gamble) if d.mode == DeckMode::Gamble => Vec::new(),
-            (_, Role::Pick(p)) if !is_colour(p) && !suits_open => Vec::new(),
-            // The letters wipe in from the left, one every 0.1 s.
-            (CabButton::Slot { col, .. }, Role::Letter(_))
-                if d.mode == DeckMode::Spinning && d.since < 0.1 * f32::from(col) =>
-            {
-                Vec::new()
-            }
-            _ => legend(r, lines, bet),
-        };
+    let turn = look.legend_turn();
+    for (label, fonts, mut text, mut font, mut color, mut node, mut transform) in &mut labels {
+        let words = look.words(label.0);
         let (word, size) = words
             .get(label.1 as usize)
             .cloned()
@@ -3300,22 +4285,23 @@ pub fn light_deck(
         if font.font_size != FontSize::Px(size) {
             font.font_size = FontSize::Px(size);
         }
-        let suit = matches!(r, Role::Pick(p) if !is_colour(p));
+        let suit = matches!(look.shown(label.0), Role::Pick(p) if !is_colour(p));
         let want = if suit { &fonts.symbols } else { &fonts.text };
         let source = bevy::text::FontSource::Handle(want.clone());
         if font.font != source {
             font.font = source;
         }
-        // Dark lettering on the white and gold caps, white on the others;
-        // spelled letters glow blue on a dark key (footage).
-        let ink = match (r, face(label.0).0) {
-            (Role::Letter(_), _) => Color::srgb(0.35, 0.65, 1.0),
-            (_, "key_white" | "key_gold") => Color::srgb(0.06, 0.08, 0.2),
-            (_, "key_dark") => Color::srgb(0.45, 0.5, 0.62),
-            _ => Color::WHITE,
-        };
+        let ink = look.ink(label.0);
         if color.0 != ink {
             color.0 = ink;
+        }
+        let sx = if label.0 == CabButton::Spin {
+            turn
+        } else {
+            1.0
+        };
+        if transform.scale.x != sx {
+            transform.scale.x = sx;
         }
     }
 }
@@ -3424,8 +4410,16 @@ impl RestPhase {
 /// payment: on the last free game the engine is idle before they are
 /// shown): CREDIT holds still while the win counts on WIN (cabinet
 /// footage).
-fn credit_held(sim: &Sim, show: &FeatureShow) -> bool {
-    show.in_feature() || show.counting() || !sim.game.is_idle()
+fn credit_held(sim: &Sim, presentation: &Presentation, show: &FeatureShow) -> bool {
+    show.in_feature() || show.counting() || !sim.game.is_idle() || fg_end_queued(presentation, show)
+}
+
+/// FEATURE COMPLETED is showing and the free games' last events are still
+/// queued: CREDIT still holds the feature's total off (club cabinets: CREDIT
+/// rises only when the win is taken, y8c8lEdPW8Y 1045.933, 1bAevGz0K2k
+/// 368.300; STRONG), until the gamble's offer holds it.
+fn fg_end_queued(presentation: &Presentation, show: &FeatureShow) -> bool {
+    show.stage == Stage::FreeGamesDone && !presentation.queue.is_empty()
 }
 
 /// The credits CREDIT shows (before any cents a change to a larger
@@ -3439,7 +4433,7 @@ fn credit_shown(
     show: &FeatureShow,
     gamble: &GambleShow,
 ) -> u64 {
-    if credit_held(sim, show) {
+    if credit_held(sim, presentation, show) {
         return presentation
             .shown_credits
             .saturating_sub(presentation.shown_win);
@@ -3467,6 +4461,32 @@ fn bet_meter(last_bet_cents: Option<u64>, in_credits: bool, total_bet: u64, cent
         None => money(total_bet, cents),
     }
 }
+
+/// The status line a base game's Hold & Spin leaves once it is counted and
+/// the machine is at rest, before any gamble: with its win `offered`, PLAY
+/// ON and "Free Spins Completed" in turn (`first_turn`: the first two
+/// seconds of each four from the offer's start), PLAY ON first (the owner's
+/// Happy & Prosperous club recording: 60 frames each, VERIFIED there; two
+/// Golden Century club recordings show PLAY ON first, then the win taken
+/// within 0.1-0.2 s: 1bAevGz0K2k 165.3-165.7, f5sMl9a5jds 282.5; PARTIAL
+/// for Golden Century). A win that `stands` unoffered (a progressive won,
+/// or past the gamble limit) keeps "Free Spins Completed" until the next
+/// game (HYPOTHESIS: the line the offer turns with). A win taken leaves the
+/// bet line (f5sMl9a5jds 282.6-283.9; `None`).
+fn hold_and_spin_end_line(offered: bool, stands: bool, first_turn: bool) -> Option<&'static str> {
+    match (offered, stands) {
+        (true, _) if first_turn => Some(PLAY_ON),
+        (true, _) | (false, true) => Some(FREE_SPINS_COMPLETED),
+        (false, false) => None,
+    }
+}
+
+/// The offer while a win may be gambled.
+const PLAY_ON: &str = "PLAY ON, GAMBLE or TAKE WIN";
+/// The status line at Hold & Spin's end.
+const FREE_SPINS_COMPLETED: &str = "Free Spins Completed";
+/// The status line as the free games end.
+const FEATURE_COMPLETED: &str = "Feature Completed";
 
 /// The cabinet's credit, bet and win meters.
 #[allow(clippy::too_many_arguments)]
@@ -3515,11 +4535,34 @@ pub fn update_meters(
             money(credits, cents)
         }
     };
+    // A feature's own status line, if it has one now: a Grand's, the end of
+    // a base game's Hold & Spin at rest, or the feature's caption.
+    let hs_end = (at_rest && show.hold_and_spin_over() && gamble.ended.is_none())
+        .then(|| {
+            hold_and_spin_end_line(
+                gamble_open(&sim.game, cents, &show),
+                sim.game.can_gamble(),
+                rest.bet_line_turn(t),
+            )
+        })
+        .flatten()
+        .map(str::to_string);
+    // FEATURE COMPLETED: "Feature Completed" on the status line a moment,
+    // then the offer (club cabinets: one frame, y8c8lEdPW8Y 1044.267, then
+    // PLAY ON; a one-frame crossfade, 1bAevGz0K2k 367.567; VERIFIED on
+    // y8c8). Here while the free games' last events are queued (an event
+    // interval).
+    let fg_end = fg_end_queued(&presentation, &show).then(|| FEATURE_COMPLETED.to_string());
+    let feature_caption = show
+        .grand_caption(cents)
+        .or(hs_end)
+        .or(fg_end)
+        .or_else(|| show.caption());
     for (meter, mut text, mut colour, spacing) in &mut meters {
         let value = match meter {
             CabMeter::Credit => {
                 let credits = credit_shown(&sim, &presentation, &rollup, &show, &gamble);
-                if in_credits || residue == 0 || credit_held(&sim, &show) {
+                if in_credits || residue == 0 || credit_held(&sim, &presentation, &show) {
                     amount(credits, cents)
                 } else {
                     money(credits.saturating_mul(cents).saturating_add(residue), 1)
@@ -3545,7 +4588,7 @@ pub fn update_meters(
             CabMeter::MinBet => format!("MIN BET {}", sim.game.lines()),
             CabMeter::Lines => lines_text(sim.game.lines()).0,
             CabMeter::LinesWord => lines_text(sim.game.lines()).1.to_string(),
-            CabMeter::Multiplier => show.caption().unwrap_or_else(|| {
+            CabMeter::Multiplier => feature_caption.clone().unwrap_or_else(|| {
                 let per_line = sim.game.credits_per_line();
                 let bet_line = match deck.profile {
                     Profile::Club if per_line == 1 => "1 credit per line".to_string(),
@@ -3561,7 +4604,7 @@ pub fn update_meters(
                     bet_line
                 } else if gamble_open(&sim.game, cents, &show) {
                     // The offer while a win can be gambled.
-                    "PLAY ON, GAMBLE or TAKE WIN".to_string()
+                    PLAY_ON.to_string()
                 } else if let Some(lost) = gamble.ended {
                     // Footage: the gamble's end message in turn with the bet.
                     match (turn, lost) {
@@ -3594,7 +4637,13 @@ pub fn update_meters(
         // FEATURE button", "Free Game 1 of 6") are the bet line's yellow and
         // spacing too (club cabinet: 1bAevGz0K2k, their brightest pixels
         // blue/red 0.64-0.70 like the bet line's; STRONG).
-        let feature_line = show.caption().is_some_and(|c| !c.is_empty());
+        // So are "Free Spins Completed" and a Grand's line (club cabinets:
+        // the same yellow, 1bAevGz0K2k, f5sMl9a5jds, Wc7QU1C2jWo; VERIFIED
+        // for the first, STRONG for the second). The offer keeps its own
+        // look here.
+        let feature_line = feature_caption
+            .as_deref()
+            .is_some_and(|c| !c.is_empty() && c != PLAY_ON);
         let bet_line =
             deck.profile == Profile::Club && (text.0.ends_with("per line") || feature_line);
         let (want, gap) = match (bet_line, deck.profile) {
@@ -4513,6 +5562,20 @@ impl Rollup {
         self.to.saturating_sub(self.from)
     }
 
+    /// Done with the last count as a free game starts: it counts nothing
+    /// more (`win` is 0) until this game's win arrives, which then counts
+    /// from what WIN shows. Without it the banner showed the last game's
+    /// amount for the event interval between this game's line wins and its
+    /// credit
+    /// (our recording: "WIN $1.00 WIN" for 4 frames before $0.01), and the
+    /// first free game the scatter's; club cabinets never do (y8c8lEdPW8Y
+    /// 1027.4). What WIN shows and the total seen stay; no tune plays in
+    /// the free games, so nothing stops.
+    pub fn settle(&mut self) {
+        self.from = self.to;
+        self.t = self.t.max(self.duration);
+    }
+
     /// The win shown on the meter now.
     pub fn shown(&self) -> u64 {
         if self.duration <= 0.0 {
@@ -5217,11 +6280,15 @@ pub struct FeatureShow {
     /// count-up, while it runs.
     started: bool,
     count_up: Option<f32>,
+    /// A respin of this Hold & Spin has been presented (the start prompt's
+    /// status line lasts until the first).
+    respun: bool,
     /// Flame bursts: position and start time on `clock`.
     bursts: Vec<(u8, u8, f32)>,
     /// Seconds of feature presentation, for the animations.
     clock: f32,
-    transition_at: Option<f32>,
+    /// The transition fire: when it began (`clock`) and its frame rate.
+    transition_at: Option<(f32, f32)>,
     /// The WINNER total while the coins are counted.
     pub winner: Option<u64>,
     /// After the count: until when (`clock`) the WINNER box stays, and the
@@ -5238,6 +6305,12 @@ pub struct FeatureShow {
     /// A full grid's Grand jackpot, while it is shown and after.
     pub grand: Option<u64>,
     grand_done: bool,
+    /// The Major this Hold & Spin won (credits), shown on its own plaque
+    /// before the coins; its own count while it runs; and what that count
+    /// has put on WIN.
+    major: Option<u64>,
+    major_pay: Option<Pay>,
+    major_paid: u64,
     /// This game won a progressive jackpot (the Major or the Grand).
     progressive: bool,
     /// The progressive jackpots this game won whose amounts the count has
@@ -5340,6 +6413,9 @@ impl FeatureShow {
                 self.resuming = false;
                 self.grand = None;
                 self.grand_done = false;
+                self.major = None;
+                self.major_pay = None;
+                self.major_paid = 0;
                 self.progressive = false;
                 self.link_won.clear();
                 self.win_lines.clear();
@@ -5426,11 +6502,12 @@ impl FeatureShow {
                     number: *number,
                     total: number + remaining,
                 };
-                // The first free game: the banner, its total counting up and
-                // the music come with the reels (club cabinet: the banner 2
-                // frames after the first motion).
+                // The first free game: the banner, its total counting up from
+                // 0 and the music come with the reels (club cabinet: the
+                // banner 2 frames after the first motion, "FREE GAME 1 OF 0"
+                // for 5 frames).
                 if *number == 1 {
-                    self.fg_count = Some((0.0, 1));
+                    self.fg_count = Some((0.0, 0));
                 }
                 self.fg_cut = None;
             }
@@ -5474,12 +6551,16 @@ impl FeatureShow {
                 self.counter = 0;
                 self.pending_left = *respins;
                 self.started = false;
+                self.respun = false;
                 self.bursts.clear();
                 self.winner = None;
                 self.winner_hold = None;
                 self.transition_at = None;
                 self.bolt = None;
                 self.splash_at = None;
+                self.major = None;
+                self.major_pay = None;
+                self.major_paid = 0;
             }
             Event::HoldAndSpinRespin {
                 respins_left,
@@ -5487,6 +6568,7 @@ impl FeatureShow {
                 ..
             } => {
                 self.respin_landed = Some(landed.iter().map(|o| (o.reel, o.row)).collect());
+                self.respun = true;
                 self.pending_left = *respins_left;
                 self.stage = Stage::HoldSpin {
                     respins_left: *respins_left,
@@ -5546,6 +6628,12 @@ impl FeatureShow {
         self.respin.is_some()
     }
 
+    /// A Hold & Spin respin has been presented and is not over: about to
+    /// turn, or turning.
+    pub fn respin_in_flight(&self) -> bool {
+        self.respin.is_some() || self.respin_landed.is_some()
+    }
+
     /// A feature is under way: the credit meter holds still and its wins
     /// collect on the win meter, paid to credit when the feature completes
     /// (footage: CREDIT unchanged through the free games, then raised by the
@@ -5589,6 +6677,9 @@ impl FeatureShow {
         self.winner = None;
         self.flares_at = None;
         self.grand = None;
+        self.major = None;
+        self.major_pay = None;
+        self.major_paid = 0;
         self.jackpots.clear();
         self.counter = 0;
         self.scatter_paid = false;
@@ -5636,23 +6727,113 @@ impl FeatureShow {
         // (club cabinets: y8c8lEdPW8Y 791.67-793.70 and 946.10-948.08,
         // 1bAevGz0K2k 326.77; VERIFIED).
         let won_turn = ((self.waited / PROMPT_TURN) as u32) % 2 == 1;
+        // Hold & Spin's end: "Free Spins Completed" from FREE SPINS
+        // COMPLETED through the tally and the count, inside the free games
+        // too (club cabinets: 1bAevGz0K2k 142.6-164.3, f5sMl9a5jds
+        // 256.5-281.1, rwatCLs3QO0; inside the free games y8c8lEdPW8Y 999.5,
+        // 1006.0, 1018.7; VERIFIED). Then the base game's bet line, or the
+        // free game again.
+        if self.stage == Stage::HoldSpinDone && self.hold_and_spin_ending() {
+            return Some(FREE_SPINS_COMPLETED.into());
+        }
         match (self.awaiting, self.stage) {
             (Some(Await::Start(Feature::FreeGames)), _) if won_turn => {
                 Some(format!("{} FREE GAMES WON!", self.games_won))
             }
             (Some(Await::Start(_)), _) => Some("Press START FEATURE button".into()),
+            // In the base game the prompt's line stays through the counter's
+            // count-up, until the first respin starts (club cabinets:
+            // 1bAevGz0K2k 113.9-116.30, gone at 116.37 as the reels move;
+            // f5sMl9a5jds 212.1-213.20; VERIFIED). Inside the free games the
+            // free game shows from the press (below).
+            (None, Stage::HoldSpin { .. })
+                if self.fg_return.is_none()
+                    && self.started
+                    && !self.respun
+                    && self.respin.is_none() =>
+            {
+                Some("Press START FEATURE button".into())
+            }
             (Some(Await::Respin), _) if self.respin.is_none() => Some("Press SPIN button".into()),
-            (_, Stage::FreeGames { number, total }) => Some(format!(
-                "Free Game {number} of {}",
-                self.counter_total(total)
-            )),
+            // Blank while the banner's total counts up, until one step after
+            // it reaches the total (club cabinets: y8c8lEdPW8Y 951.567,
+            // 1bAevGz0K2k 330.333; VERIFIED).
+            (_, Stage::FreeGames { .. }) if self.fg_count.is_some() => Some(String::new()),
+            (_, Stage::FreeGames { number, total }) => {
+                Some(format!("Free Game {number} of {total}"))
+            }
             // A Hold & Spin inside the free games keeps the free game on the
-            // status line (cabinet footage: "Free Game 3 of 6" over its board).
+            // status line through its intro, count-up and respins (cabinet
+            // footage: "Free Game 3 of 6" over its board, y8c8lEdPW8Y 962.0-
+            // 968.6, 970.8, 971.9; STRONG, one recording).
             (_, Stage::HoldSpin { .. } | Stage::HoldSpinDone) if self.fg_return.is_some() => self
                 .fg_return
                 .map(|(number, total)| format!("Free Game {number} of {total}")),
+            // In the base game the line is blank through the intro (bell,
+            // burst, fire and board) and while a respin runs (club cabinets:
+            // 1bAevGz0K2k 107.6-113.0, 116.6, 120.0; f5sMl9a5jds 206.5-211.5,
+            // 213.6, 214.5; VERIFIED).
+            (_, Stage::HoldSpin { .. }) => Some(String::new()),
             _ => None,
         }
+    }
+
+    /// Hold & Spin's end is showing: FREE SPINS COMPLETED, the tally on the
+    /// WINNER box, or the count still counting.
+    fn hold_and_spin_ending(&self) -> bool {
+        self.completed_wait.is_some()
+            || self.collect_start
+            || self.collect.is_some()
+            || self.pay.as_ref().is_some_and(|p| p.t < p.seconds)
+    }
+
+    /// A base game's Hold & Spin has been counted and the next game has not
+    /// begun (free games that follow it clear it first).
+    pub fn hold_and_spin_over(&self) -> bool {
+        self.stage == Stage::HoldSpinDone
+            && self.fg_return.is_none()
+            && !self.hold_and_spin_ending()
+    }
+
+    /// The Grand this game won, in credits: from its award on the WINNER
+    /// display until the next game (or the free games it started).
+    pub fn grand_awarded(&self) -> Option<u64> {
+        self.grand.filter(|_| {
+            self.grand_done
+                || self.pay.is_some()
+                || self.collect.as_ref().is_some_and(|c| c.grand_up)
+        })
+    }
+
+    /// The status line after a Grand, at `cents` a credit: "GRAND JACKPOT
+    /// Win $24122.63", centred in the bet line's yellow, the dollars never
+    /// grouped, from the award until the next game, over the coins' tally
+    /// and the count (club cabinet: Wc7QU1C2jWo 3.6 s, one legible frame;
+    /// STRONG). The amount is the award in whole credits (the meter's odd
+    /// cent at 2c is held over). A casino build filmed other words
+    /// ("GRAND JACKPOT $13566.04", OL6Pu1AI-cQ 161-163.5 s; a conflict
+    /// recorded); the club's are used in both profiles.
+    pub fn grand_caption(&self, cents: u64) -> Option<String> {
+        self.grand_awarded().map(|g| {
+            format!(
+                "GRAND JACKPOT Win {}",
+                plain_dollars(g.saturating_mul(cents))
+            )
+        })
+    }
+
+    /// The system message after a Grand, at `cents` a credit: "Call
+    /// Attendant : JACKPOT HIT $24122.63" (club cabinet: Wc7QU1C2jWo 3.6 s,
+    /// STRONG; the casino build's "Call Attendant - You have won a ..." is
+    /// recorded as a conflict). It implies a hand pay; the app still
+    /// credits the Grand (the owner's call), and shows the line as filmed.
+    pub fn grand_call(&self, cents: u64) -> Option<String> {
+        self.grand_awarded().map(|g| {
+            format!(
+                "Call Attendant : JACKPOT HIT {}",
+                plain_dollars(g.saturating_mul(cents))
+            )
+        })
     }
 
     /// The message at the right, in place of the start prompts.
@@ -5683,10 +6864,13 @@ impl FeatureShow {
     }
 
     /// Whether `front`, the next event to show, waits for a win's count to
-    /// finish: a feature's trigger, the free games' prompt and their return
-    /// after a Hold & Spin do. Not the free games' own trigger once its
-    /// count has begun: the cabinet shows that prompt as the scatter win
-    /// starts counting, and the count goes on under it.
+    /// finish: a feature's trigger, the free games' prompt, their return
+    /// after a Hold & Spin and their end do. Not the free games' own trigger
+    /// once its count has begun: the cabinet shows that prompt as the
+    /// scatter win starts counting, and the count goes on under it. FEATURE
+    /// COMPLETED comes the frame after the last free game's count reaches
+    /// the feature's total (club cabinets: y8c8lEdPW8Y 1044.233-1044.267,
+    /// 1bAevGz0K2k 367.567; STRONG), not while it counts.
     pub fn waits_for_count(&self, front: Option<&Event>) -> bool {
         let waits = matches!(
             front,
@@ -5694,6 +6878,7 @@ impl FeatureShow {
                 Event::FeatureTriggered { .. }
                     | Event::FreeGamesStarted { .. }
                     | Event::FreeGamesResumed { .. }
+                    | Event::FreeGamesCompleted { .. }
             )
         );
         let prompt_now = self.trigger_counting()
@@ -5799,15 +6984,37 @@ pub struct HsCell {
     reel: u8,
     row: u8,
 }
-/// The Hold & Spin grid lines over the reels.
+/// The Hold & Spin grid lines over the reels: our row lines under the
+/// pack's frame.
 #[derive(Component)]
 pub struct HsFrame;
+/// One of the Hold & Spin grid's two row lines.
+#[derive(Component)]
+pub struct HsRowLine;
+
+/// The Hold & Spin grid's row lines as club cabinets show them: about
+/// 2.5-3 px on our canvas, far paler and less saturated than the gold
+/// dividers (15-16 px, the base frame's own, as ours are; VERIFIED on two
+/// venues, f5sMl9a5jds 212.8 and y8c8lEdPW8Y 973.0); a pale cream-gold
+/// (PARTIAL: the hue depends on the camera, estimated after removing one
+/// camera's blue cast; the 'lavender' read on that camera alone is its
+/// cast, HYPOTHESIS). The pack's frame (the official app's) draws them
+/// 2 px of its art, stretched to 5-6.5 px of saturated gold; they are
+/// cleared from it (`clear_row_lines`) and drawn here under its dividers.
+const HS_ROW_LINE: Color = Color::srgb(0.94, 0.82, 0.58);
+const HS_ROW_LINE_H: f32 = 3.0;
 /// The message at the right of the meter band during a feature.
 #[derive(Component)]
 pub struct FeatureMessage;
 
 const BANNER_SIZE: (f32, f32) = (760.0, 96.0);
-const BANNER_Y: f32 = GRID_CENTER.1 - 1.5 * PITCH.1 + 6.0;
+/// The banner's middle line: its gold rim (the node's top, canvas y 124.5)
+/// clear of the Major's and Minor's values above it, whose ink ends at
+/// about y 122 (shadow included). At + 6 the rim hid their bottom 7-8 px
+/// whenever a banner showed (measured on a capture). The cabinet has no
+/// overlap (separate screens); the official app's banner sits wholly below
+/// its bar (VERIFIED, official mobile app).
+const BANNER_Y: f32 = GRID_CENTER.1 - 1.5 * PITCH.1 + 16.0;
 /// Where the counter's two numbers sit across the banner, and their height.
 const COUNTER_X: [f32; 2] = [0.59, 0.795];
 const COUNTER_DIGIT_H: f32 = 52.0;
@@ -5865,17 +7072,41 @@ pub fn spawn_feature_layer(
     let (gx, gy) = GRID_CENTER;
     c.spawn((
         HsFrame,
+        Node {
+            position_type: PositionType::Absolute,
+            left: Val::Px(0.0),
+            top: Val::Px(0.0),
+            ..default()
+        },
+        Visibility::Hidden,
+    ))
+    .with_children(|f| {
+        // The row lines between the rows, under the frame's dividers and
+        // border.
+        for k in [-0.5, 0.5] {
+            f.spawn((
+                HsRowLine,
+                Node {
+                    position_type: PositionType::Absolute,
+                    left: Val::Px(gx - 2.5 * PITCH.0),
+                    top: Val::Px(gy + k * PITCH.1 - HS_ROW_LINE_H / 2.0),
+                    width: Val::Px(5.0 * PITCH.0),
+                    height: Val::Px(HS_ROW_LINE_H),
+                    ..default()
+                },
+                BackgroundColor(HS_ROW_LINE),
+            ));
+        }
         // The grid art is the reel panel's own size (749 x 380): laid exactly
         // over the panel, so its border is the panel's border.
-        sprite(
+        f.spawn(sprite(
             ui("hs_frame"),
             gx,
             gy + 4.5 * PANEL_SCALE.1,
             1240.0 * PANEL_SCALE.0,
             629.0 * PANEL_SCALE.1,
-        ),
-        Visibility::Hidden,
-    ));
+        ));
+    });
     let (bw, bh) = BANNER_SIZE;
     c.spawn((
         FeatureBanner,
@@ -6032,7 +7263,9 @@ const FG_WIN_HOLD: f32 = 1.0;
 
 /// What the WIN banner over the reels shows: a free game's big win while it
 /// counts and a moment after, or a Hold & Spin's payment (always shown:
-/// "WIN $0.29 WIN" at 1bAevGz0K2k 164.3).
+/// "WIN $0.29 WIN" at 1bAevGz0K2k 164.3). The count is this free game's win
+/// alone: each free game's start settles the last count (`Rollup::settle`)
+/// and its credit arrives in one step.
 fn banner_win(show: &FeatureShow, rollup: &Rollup, total_bet: u64) -> Option<u64> {
     let big = rollup.win() >= FG_WIN_BANNER_X.saturating_mul(total_bet.max(1));
     let held = rollup.active() || rollup.after < FG_WIN_HOLD;
@@ -6155,6 +7388,7 @@ pub fn feature_screen(
         ),
     >,
     sim: Res<Sim>,
+    gamble: Res<GambleShow>,
 ) {
     if !fidelity.0 {
         return;
@@ -6184,8 +7418,12 @@ pub fn feature_screen(
         .as_deref()
         .filter(|_| !prompt)
         .and_then(|k| art.ui.get(k));
+    // Nothing of the base screen shows over the gamble: its banner (FEATURE
+    // COMPLETED) stands above the gamble screen's top and comes back by
+    // itself after a loss (club cabinets: LwC3hVqFRMg 18:30.4-18:33.7,
+    // _XHUzg4qDXI 1:13.00; VERIFIED).
     for mut vis in &mut banner {
-        let want = if handle.is_some() || prompt {
+        let want = if !gamble.active && (handle.is_some() || prompt) {
             Visibility::Inherited
         } else {
             Visibility::Hidden
@@ -6330,14 +7568,22 @@ const INTRO_GRID: f32 = INTRO_TRANSITION + 27.0 / FIRE_FPS;
 /// The prompt (the music starts with it; its onset on the cabinet is not
 /// measurable, and with the prompt is the official app's order).
 const INTRO_END: f32 = INTRO_BURST + 3.5;
-/// The counter's count-up after START FEATURE (real game: a SND_Fea_Inc tick
-/// a step, the first 0.27 s after the press, then every 0.2 s; a burst on the
-/// banner's 3), and the pause before the first respin, which starts by
-/// itself 1.9 s after the count reaches 3 (the feature's step pause of 0.5 s
-/// follows this).
+/// The counter's count-up after START FEATURE (the official app: a
+/// SND_Fea_Inc tick a step, the first 0.27 s after the press, then every
+/// 0.2 s; a burst on the banner's 3), and how long the count holds the 3.
+/// The START FEATURE press plays the first respin at once (`feature_press`
+/// zeroes the step timer), and its start, queued, shows the frame the count
+/// ends: so the hold is the time from the 3 to the first respin. Club
+/// cabinets start it by itself 0.55-0.63 s after the 3, mean 0.59 s
+/// (VERIFIED, four features on three recordings at two venues: y8c8lEdPW8Y
+/// 970.93 to 971.53 and 2522.15 to 2522.70, 1bAevGz0K2k 115.78 to 116.37,
+/// f5sMl9a5jds 212.67 to 213.30; the counter drops to 2 a frame or two
+/// before the reels move). The official app waits about 1.9 s; the cabinet
+/// outranks it. (The earlier hold of 1.4 s was thought to be followed by the
+/// 0.5 s step pause; it was not, and gave about 1.4 s.)
 const COUNT_FIRST: f32 = 0.27;
 const COUNT_STEP: f32 = 0.2;
-const COUNT_HOLD: f32 = 1.4;
+const COUNT_HOLD: f32 = 0.59;
 /// A respin, from the real game (9 position stops measured frame by frame):
 /// every open position of a reel stops together. The first reel passes its
 /// stop 16 frames (0.53 s) after the press and each further reel 14 frames
@@ -6404,53 +7650,118 @@ pub struct RespinAnim {
     sounds: Vec<(f32, &'static str)>,
 }
 
-/// The coins being added to the WIN banner, then the Grand.
+/// A coin of the collection: its position, amount, whether it is a jackpot
+/// and which.
+type CollectCoin = (u8, u8, u64, bool, Option<JackpotTier>);
+
+/// The coins being added to the WINNER box, then the Grand.
 #[derive(Clone, Debug, Default)]
 pub struct Collect {
     t: f32,
-    /// Each step's coin position, amount, whether it is a jackpot and which,
-    /// in order; the Grand, last, has no position (`GRAND_STEP`).
-    coins: Vec<(u8, u8, u64, bool, Option<JackpotTier>)>,
+    /// Each step's coin, in order; the Grand, last, has no position
+    /// (`GRAND_STEP`).
+    coins: Vec<CollectCoin>,
     /// Steps begun, and amounts added to the banner.
     launched: usize,
     counted: usize,
-    /// The Grand's step has begun (its plaque shows).
+    /// The Grand's step has begun (its plaque shows), and its fire.
     grand_up: bool,
+    grand_fire: bool,
+    /// A Major's step has begun and its plaque shows, until its own count
+    /// is over.
+    major_up: bool,
 }
 
 /// The position of the Grand's step (it has no coin).
 const GRAND_STEP: u8 = u8::MAX;
 
+/// The collection's order: a Major first, on its own plaque with its own
+/// count, then the other coins reel by reel, top to bottom (club cabinet:
+/// Autumn Moon 5Z1-hFzpyh0 525-590 s, the Major's amount green on WINNER
+/// with a coin shower, then the coins tallied without it; its Hold & Spin
+/// scenes are Golden Century's in the mobile build: STRONG, PARTIAL for
+/// Golden Century itself). The owner chose coins first for the Grand; for
+/// the Major the cabinet's order is followed.
+fn majors_first(coins: Vec<CollectCoin>) -> Vec<CollectCoin> {
+    let (mut first, rest): (Vec<CollectCoin>, Vec<CollectCoin>) = coins
+        .into_iter()
+        .partition(|coin| coin.4 == Some(JackpotTier::Major));
+    first.extend(rest);
+    first
+}
+
+/// The Grand's fire. On the cabinet a fire wipes both screens, from the
+/// bottom up, and clears, bottom first, to reveal WINNER / GRAND JACKPOT
+/// (OL6Pu1AI-cQ 3.4-4.4 s at 0.1 s steps: first flames 3.4-3.5 s, the main
+/// screen covered 3.6-3.7, the top 3.8-4.1, clear at 4.2 and 4.3-4.4; one
+/// Golden Century machine, VERIFIED there). The pack's transition fire
+/// (the intro's) has the same shape: frames 15-20 fill from the bottom,
+/// 21-35 cover, 36-41 clear (alpha coverage measured), 26 frames from fill
+/// to clear, 0.87 s at 30 fps against the cabinet's 0.9-1.0 s (STRONG that
+/// it is the same fire). It starts `GRAND_FIRE_LEAD` before the Grand's
+/// step, so the plaque switches on under full cover (frame 27) and shows as
+/// the fire clears (our coins-first order: its timing HYPOTHESIS).
+const GRAND_FIRE_FPS: f32 = ANIM_FPS;
+const GRAND_FIRE_LEAD: f32 = 27.0 / GRAND_FIRE_FPS;
+
 /// The end of Hold & Spin. "FREE SPINS COMPLETED" with SND_Fea_End (3 s),
 /// then the collection, as club cabinets show it (VERIFIED: 1bAevGz0K2k
-/// 2:25-2:45, y8c8lEdPW8Y 1001.9-1019.9, f5sMl9a5jds 4:18-4:38): 0.1 s after
-/// the banner goes, the jackpot meters give way to an empty flame-bordered
-/// WINNER box, with a line of the live Grand and Major under it, and nothing
-/// shows over the reels; each coin in turn, reel by reel and top to bottom,
-/// 1.35 s apart (the first 0.4 s after the box), flares and its fire comet
-/// (the game's bolt animations) flies up to the box, which adds its value
-/// 0.6 s later with a splash, to SND_Small_5 (SND_Medium_1 for a big coin);
-/// after the last value the count begins: the WIN banner over the reels,
-/// counting up from nothing with WIN, its letters bursting from its first
-/// moment (again every 59 frames until the next game), the payout music and
-/// a coin shower, WIN counting the total up over the music's length (SPIN
-/// completes it; the music stops); the box keeps the total and gives way to
-/// the meters 0.55 s after the count is complete. The official app instead
-/// tallies onto an empty WIN banner over the reels (2.86 s after FREE SPINS
-/// COMPLETED, its first coin a frame later, 0.45 s comets, the letters 0.8 s
-/// after the last value); the app follows the cabinet. The rumble
+/// 2:25-2:45, y8c8lEdPW8Y 1001.9-1019.9, f5sMl9a5jds 4:18-4:38, rwatCLs3QO0):
+/// in the frame the banner goes (3.07-3.10 s after it showed), the jackpot
+/// meters give way to an empty flame-bordered WINNER box, with a line of the
+/// live Grand and Major under it, and nothing shows over the reels; each
+/// coin in turn, reel by reel and top to bottom, 1.33-1.37 s apart (the
+/// first 0.33-0.43 s after the box), flares and its fire comet (the game's
+/// bolt animations) flies up to the box, which adds its value 0.57-0.73 s
+/// later (mean 0.67; the first coin's 0.70-0.73) with a splash, to
+/// SND_Small_5 (SND_Medium_1 for a big coin); after the last value the count
+/// begins: the WIN banner over the reels, counting up from nothing with WIN,
+/// its letters bursting from its first moment (again every 59 frames until
+/// the next game), the payout music and a coin shower, WIN counting the total
+/// up over the music's length (SPIN completes it; the music stops); the box
+/// keeps the total and gives way to the meters 0.55 s after the count is
+/// complete. Measured at 30 fps on four club recordings (1bAevGz0K2k 145.200
+/// box, 145.533 first flare, 146.267 value; y8c8lEdPW8Y 998.867 COMPLETED,
+/// 1001.933, 1002.267, 1003.000; f5sMl9a5jds 255.700, 258.800, 259.233,
+/// 259.933; rwatCLs3QO0 clip 1.95, 5.033, 5.467, 6.167). The official app
+/// instead tallies onto an empty WIN banner over the reels (2.86 s after FREE
+/// SPINS COMPLETED, its first coin a frame later, 0.45 s comets, the letters
+/// 0.8 s after the last value); the app follows the cabinet. The rumble
 /// (SND_Rumble, 0.37 s in) and the pause before the count (0.87 s) are the
-/// official app's: the cabinet copies have no sound, and the cabinets
+/// official app's: the cabinet copies have no sound (whether the cabinet
+/// rumbles there is UNKNOWN; its place here HYPOTHESIS), and the cabinets
 /// disagree on the pause (1.6 s and 3.8 s). Our cabinet keeps its own
 /// meters; a Grand is added to the box after the coins, its plaque on the
 /// box while it is (owner: coins first).
 const COMPLETED_SECONDS: f32 = 3.0;
 const COLLECT_RUMBLE: f32 = 0.37;
-const COLLECT_BANNER: f32 = 0.1;
-const COLLECT_FIRST: f32 = COLLECT_BANNER + 0.4;
+const COLLECT_FIRST: f32 = 0.38;
 const COLLECT_STEP: f32 = 1.347;
 /// From a coin's flare to its value on the box (the comet's flight).
-const BOLT_FLIGHT: f32 = 0.6;
+const BOLT_FLIGHT: f32 = 0.67;
+/// The frame at which each of the game's five bolt animations (bolt0 to
+/// bolt4, 30 fps) reaches the box: its comet's first opaque pixels in the
+/// frame's top row (measured on the frames, the same in every title's pack;
+/// bolt2 grazes the top at frame 16). The frames up to it are stretched over
+/// `BOLT_FLIGHT`, so the comet lands as the value does; the rest play at
+/// 30 fps.
+const BOLT_ARRIVE: [f32; 5] = [16.0, 13.0, 17.0, 12.0, 12.0];
+
+/// The frame of bolt animation `k` to show `since` seconds after its coin
+/// flared.
+fn bolt_frame(k: usize, since: f32) -> usize {
+    let arrive = BOLT_ARRIVE
+        .get(k)
+        .copied()
+        .unwrap_or(BOLT_FLIGHT * ANIM_FPS);
+    let since = since.max(0.0);
+    let n = if since < BOLT_FLIGHT {
+        since * arrive / BOLT_FLIGHT
+    } else {
+        arrive + (since - BOLT_FLIGHT) * ANIM_FPS
+    };
+    n as usize
+}
 /// From the last value to the count, and the WIN letters' bursts' period.
 const PAY_DELAY: f32 = 0.87;
 const FLARE_EVERY: f32 = 59.0 / 30.0;
@@ -6491,32 +7802,58 @@ struct CollectStep {
     rumble: bool,
     sounds: Vec<&'static str>,
     done: Option<u64>,
+    /// A Major's amount has shown on its plaque: its own count begins.
+    major: Option<u64>,
 }
 
 impl FeatureShow {
-    /// Run the collection on by `dt` seconds (at `self.clock`): the box,
-    /// each coin's comet and its value on the box with a splash, then the
-    /// count.
+    /// Begin the collection of `coins` (in order; the Grand last), WIN
+    /// standing at `pay_base`: the empty WINNER box shows from this frame,
+    /// the one FREE SPINS COMPLETED goes (club cabinets).
+    fn begin_collect(&mut self, coins: Vec<CollectCoin>, pay_base: u64) {
+        self.winner = Some(0);
+        self.paid = 0;
+        self.pay_base = pay_base;
+        self.flares_at = None;
+        self.collect = Some(Collect { coins, ..default() });
+    }
+
+    /// Run the collection on by `dt` seconds (at `self.clock`): each coin's
+    /// comet and its value on the box with a splash, a Major's plaque and
+    /// its own count, the Grand's fire and plaque, then the count.
     fn advance_collect(&mut self, dt: f32, total_bet: u64) -> CollectStep {
         let mut step = CollectStep::default();
+        // A Major's own count holds the collection until it is over.
+        if self.major_pay.is_some() {
+            return step;
+        }
         let Some(mut c) = self.collect.take() else {
             return step;
         };
         let clock = self.clock;
         let t0 = c.t;
         c.t += dt;
-        let crossed = |at: f32| t0 < at && c.t >= at;
-        step.rumble = crossed(COLLECT_RUMBLE);
-        // The empty WINNER box over the jackpot bar.
-        if crossed(COLLECT_BANNER) {
-            self.winner = Some(0);
+        step.rumble = crossed(t0, c.t, COLLECT_RUMBLE);
+        // The Grand's fire starts ahead of its plaque.
+        let next_at = COLLECT_FIRST + c.launched as f32 * COLLECT_STEP;
+        if !c.grand_fire
+            && c.coins
+                .get(c.launched)
+                .is_some_and(|coin| coin.0 == GRAND_STEP)
+            && c.t >= next_at - GRAND_FIRE_LEAD
+        {
+            c.grand_fire = true;
+            self.transition_at = Some((clock, GRAND_FIRE_FPS));
         }
-        // Each coin in turn flares and sends its comet to the box.
+        // Each coin in turn flares and sends its comet to the box; a Major
+        // and the Grand show their plaques instead.
         while c.launched < c.coins.len() && c.t >= COLLECT_FIRST + c.launched as f32 * COLLECT_STEP
         {
-            let (reel, row, amount, jackpot, _) = c.coins[c.launched];
+            let (reel, row, amount, jackpot, tier) = c.coins[c.launched];
             if reel == GRAND_STEP {
                 c.grand_up = true;
+            } else if tier == Some(JackpotTier::Major) {
+                c.major_up = true;
             } else {
                 self.bolt = Some((reel, row, clock));
             }
@@ -6529,18 +7866,25 @@ impl FeatureShow {
             });
             c.launched += 1;
         }
-        // Its value on the box as the comet arrives, with a splash.
+        // Its value on the box as the comet arrives, with a splash; a
+        // Major's amount on its plaque, where its own count begins.
         while c.counted < c.launched
             && c.t >= COLLECT_FIRST + c.counted as f32 * COLLECT_STEP + BOLT_FLIGHT
         {
             let (_, _, amount, _, tier) = c.coins[c.counted];
-            self.winner = Some(self.winner.unwrap_or(0) + amount);
-            self.splash_at = Some(clock);
-            // A progressive's meter restarts as its amount is counted.
+            c.counted += 1;
+            // A progressive's meter restarts as its amount is shown.
             if let Some(tier @ (JackpotTier::Major | JackpotTier::Grand)) = tier {
                 self.link_won.push(tier);
             }
-            c.counted += 1;
+            if tier == Some(JackpotTier::Major) {
+                self.major = Some(amount);
+                step.major = Some(amount);
+                self.collect = Some(c);
+                return step;
+            }
+            self.winner = Some(self.winner.unwrap_or(0) + amount);
+            self.splash_at = Some(clock);
         }
         let last =
             COLLECT_FIRST + c.coins.len().saturating_sub(1) as f32 * COLLECT_STEP + BOLT_FLIGHT;
@@ -6552,15 +7896,55 @@ impl FeatureShow {
         step
     }
 
+    /// A Major's own count is over: its plaque gives way to the empty
+    /// WINNER box and the tally goes on, the next coin `COLLECT_FIRST`
+    /// after (club cabinet: the box empty again as a comet leaves the reels,
+    /// Autumn Moon 5Z1-hFzpyh0 560 s).
+    fn end_major(&mut self, amount: u64) {
+        self.major_paid += amount;
+        self.winner = Some(0);
+        if let Some(c) = self.collect.as_mut() {
+            c.major_up = false;
+            c.t = c.counted as f32 * COLLECT_STEP;
+        }
+    }
+
+    /// A Major's plaque shows (from its step until its own count is over),
+    /// and its amount on it once that count has begun.
+    pub fn major_showing(&self) -> bool {
+        self.collect.as_ref().is_some_and(|c| c.major_up)
+    }
+
+    fn major_amount(&self) -> Option<u64> {
+        self.major
+            .filter(|_| self.major_showing() && self.major_pay.is_some())
+    }
+
+    /// What a Major's own count has put on WIN so far.
+    fn major_counted(&self) -> Option<u64> {
+        match &self.major_pay {
+            Some(p) => {
+                let k = (p.t / p.seconds).clamp(0.0, 1.0);
+                Some(self.major_paid + (p.amount as f32 * k) as u64)
+            }
+            None => (self.major_paid > 0).then_some(self.major_paid),
+        }
+    }
+
     /// The Grand's plaque shows (from its step until the count is over).
     pub fn grand_showing(&self) -> bool {
         self.grand.is_some()
             && (self.collect.as_ref().is_some_and(|c| c.grand_up) || self.pay.is_some())
     }
 
-    /// What WIN shows while the feature's total is counted onto it.
+    /// What WIN shows while the feature's total is counted onto it: a
+    /// Major's own count, then the coins' (and the Grand's) on top.
     pub fn grand_win(&self) -> Option<u64> {
-        self.pay_banner().map(|w| self.pay_base + w)
+        let major = self.major_counted();
+        match self.pay_banner() {
+            Some(w) => Some(self.pay_base + major.unwrap_or(0) + w),
+            None => major.map(|m| self.pay_base + m),
+        }
     }
 
     /// What the WIN banner over the reels shows: nothing while the coins
@@ -6599,11 +7983,10 @@ impl FeatureShow {
         self.winner.or(self.held_winner()).filter(|w| *w > 0)
     }
 
-    /// A big payment is counting (coins rain).
+    /// A big payment is counting (coins rain): the count, or a Major's own.
     pub fn pay_shower(&self, bet: u64) -> bool {
-        self.pay
-            .as_ref()
-            .is_some_and(|p| p.t < p.seconds && p.amount >= PAY_SHOWER_RATIO * bet)
+        let big = |p: &Pay| p.t < p.seconds && p.amount >= PAY_SHOWER_RATIO * bet;
+        self.pay.as_ref().is_some_and(big) || self.major_pay.as_ref().is_some_and(big)
     }
 
     /// Seconds into the coins' collection.
@@ -6680,7 +8063,7 @@ fn bolt_for(reel: u8, row: u8) -> (usize, bool, f32, f32, f32, f32) {
 }
 
 /// The top of the WINNER total's flame box (y 33-113, above the WIN
-/// banner's top at 114.5).
+/// banner's top at 124.5).
 const WINNER_TOP: f32 = 33.0;
 /// The WINNER total's flame box: the pack's own flame-bordered box (536 x
 /// 128), its inner aspect about 5.6 as on the cabinet.
@@ -6693,7 +8076,7 @@ const SPLASH_BOX: (f32, f32, f32, f32) = (40.0, 145.0, 432.0, 78.0);
 
 /// The WINNER plate covers the whole jackpot bar (its bottom at canvas y
 /// 147.2), so none of the meters' digits show under it; the WIN banner
-/// (from y 114.5) draws over its foot while the count runs. Our single
+/// (from y 124.5) draws over its foot while the count runs. Our single
 /// canvas has no top screen: the plate standing in for it is our layout
 /// (the owner's call; the suggested default).
 const WINNER_PLATE_H: f32 = 148.0;
@@ -6706,6 +8089,326 @@ const WINNER_GREEN: Color = Color::srgb(0.86, 0.93, 0.36);
 /// The total's size in the box: the box's inner black is about 36 px tall,
 /// and on the cabinet the amount's caps are about 0.6 of it.
 const WINNER_AMOUNT_SIZE: f32 = 40.0;
+
+/// The Hold & Spin top screen's stand-in over the jackpot bar.
+#[derive(Component)]
+pub struct HsCollectedPlate;
+/// The number on the collected-coin disc.
+#[derive(Component)]
+pub struct HsCollectedCount;
+/// A fire dragon beside the disc (mirrored on the right).
+#[derive(Component)]
+pub struct HsDragon;
+
+/// The disc's diameter (its lettering clear of the feature banner's rim,
+/// canvas y 124.5) and the corner boxes' height on the plate.
+const HS_DISC: f32 = 140.0;
+const HS_BOX_H: f32 = 68.0;
+/// Each corner box's place: (tier, right-hand side, bottom row).
+const HS_CORNERS: [(JackpotTier, bool, bool); 4] = [
+    (JackpotTier::Grand, false, false),
+    (JackpotTier::Major, true, false),
+    (JackpotTier::Minor, false, true),
+    (JackpotTier::Mini, true, true),
+];
+/// The corner boxes' largest value size.
+const HS_BOX_VALUE: f32 = 34.0;
+/// The fire dragons' size and their centres' distance from the disc's.
+const HS_DRAGON: (f32, f32) = (70.0, 140.0);
+const HS_DRAGON_OFFSET: f32 = 330.0;
+
+/// Through every Hold & Spin the cabinet's top screen shows a sun disc
+/// reading "N COLLECTED / 15 WIN / GRAND JACKPOT", the count including the
+/// coins held (it steps as each coin lands), with the four jackpots in
+/// small boxes at its corners, Grand and Minor at the left, Major and Mini
+/// at the right, and fire dragons either side (VERIFIED: 1bAevGz0K2k
+/// 141.5 s, OL6Pu1AI-cQ 0.5 s and 130 s, Happy & Prosperous bUbSjAGwqs8
+/// 2.5-3.0 s; Autumn Moon 5Z1-hFzpyh0 by the research notes). Our single
+/// canvas has no top screen: as for the WINNER display, a plate over the
+/// jackpot bar stands in for it (our layout, the owner's call: HYPOTHESIS),
+/// with the game's own coin, its "GRAND JACKPOT" lettering (the bottom band
+/// of its COLLECT 15 TO WIN art), each box cropped from its jackpot bar
+/// with the live value, and its fire dragon. The wording is the cabinet's
+/// in a substitute face. The official app shows instead an "N COLLECTED"
+/// badge (VERIFIED for the app only).
+fn spawn_hs_collected(c: &mut ChildSpawnerCommands, art: &ArtPack, fonts: &CabFonts) {
+    let plate_left = 960.0 - JACKPOT_BAR_W / 2.0;
+    let disc_left = JACKPOT_BAR_W / 2.0 - HS_DISC / 2.0;
+    let ink = Color::srgb(0.12, 0.02, 0.02);
+    let red = Color::srgba(0.85, 0.05, 0.02, 0.9);
+    let heavy = |text: &str, size: f32, top: f32| {
+        (
+            Text::new(text),
+            TextFont {
+                font: bevy::text::FontSource::Handle(fonts.heavy.clone()),
+                font_size: FontSize::Px(size),
+                ..default()
+            },
+            TextColor(ink),
+            TextShadow {
+                offset: Vec2::new(1.5, 1.5),
+                color: red,
+            },
+            TextLayout::justify(Justify::Center),
+            Node {
+                position_type: PositionType::Absolute,
+                left: Val::Px(0.0),
+                top: Val::Px(top),
+                width: Val::Px(HS_DISC),
+                ..default()
+            },
+        )
+    };
+    let bar = art.ui.get("jackpot_bar").cloned();
+    let bar_size = art
+        .sizes
+        .get("jackpot_bar")
+        .copied()
+        .unwrap_or((1224.0, 104.0));
+    c.spawn((
+        HsCollectedPlate,
+        Node {
+            position_type: PositionType::Absolute,
+            left: Val::Px(plate_left),
+            top: Val::Px(0.0),
+            width: Val::Px(JACKPOT_BAR_W),
+            height: Val::Px(WINNER_PLATE_H),
+            border_radius: BorderRadius::bottom(Val::Px(14.0)),
+            ..default()
+        },
+        BackgroundColor(Color::srgb(0.06, 0.05, 0.20)),
+        GlobalZIndex(4),
+        Visibility::Hidden,
+    ))
+    .with_children(|p| {
+        // The fire dragons, facing the disc.
+        for right in [false, true] {
+            let side = if right { 1.0 } else { -1.0 };
+            let cx = JACKPOT_BAR_W / 2.0 + side * HS_DRAGON_OFFSET;
+            p.spawn((
+                HsDragon,
+                Node {
+                    position_type: PositionType::Absolute,
+                    left: Val::Px(cx - HS_DRAGON.0 / 2.0),
+                    top: Val::Px((WINNER_PLATE_H - HS_DRAGON.1) / 2.0),
+                    width: Val::Px(HS_DRAGON.0),
+                    height: Val::Px(HS_DRAGON.1),
+                    ..default()
+                },
+                ImageNode {
+                    flip_x: right,
+                    image_mode: NodeImageMode::Stretch,
+                    ..default()
+                },
+            ));
+        }
+        // The four jackpots in boxes cropped from the bar, the live values
+        // in their panels.
+        let k = bar_size.0 / 1225.0;
+        let scale = HS_BOX_H / bar_size.1.max(1.0);
+        for (tier, right, bottom) in HS_CORNERS {
+            let Some(&(_, (left, right_edge))) = JACKPOT_BOXES.iter().find(|(t, _)| *t == tier)
+            else {
+                continue;
+            };
+            let (x0, x1) = (
+                (left - 7.0).max(0.0) * k,
+                (right_edge + 7.0).min(1225.0) * k,
+            );
+            let w = (x1 - x0) * scale;
+            let x = if right {
+                JACKPOT_BAR_W - 24.0 - w
+            } else {
+                24.0
+            };
+            let y = if bottom {
+                WINNER_PLATE_H - 4.0 - HS_BOX_H
+            } else {
+                4.0
+            };
+            if let Some(bar) = &bar {
+                p.spawn((
+                    Node {
+                        position_type: PositionType::Absolute,
+                        left: Val::Px(x),
+                        top: Val::Px(y),
+                        width: Val::Px(w),
+                        height: Val::Px(HS_BOX_H),
+                        ..default()
+                    },
+                    ImageNode {
+                        image: bar.clone(),
+                        rect: Some(Rect::new(x0, 0.0, x1, bar_size.1)),
+                        image_mode: NodeImageMode::Stretch,
+                        ..default()
+                    },
+                ));
+            }
+            // The value in the box's black under its title (the bar art's
+            // y 40-95 of 104).
+            let width = (right_edge - left) * k * scale;
+            p.spawn((
+                JackpotMeter { tier },
+                JackpotFit {
+                    width,
+                    max: HS_BOX_VALUE,
+                },
+                label(
+                    "-",
+                    &fonts.heavy,
+                    HS_BOX_VALUE,
+                    jackpot_value_colour(tier),
+                    x + w / 2.0,
+                    y + HS_BOX_H * 67.0 / 104.0,
+                    width,
+                ),
+                TextShadow {
+                    offset: Vec2::new(1.5, 1.5),
+                    color: Color::srgba(0.03, 0.03, 0.05, 0.9),
+                },
+            ));
+        }
+        // The disc: the game's coin with the count, COLLECTED, 15 WIN and
+        // the GRAND JACKPOT lettering.
+        p.spawn((
+            Node {
+                position_type: PositionType::Absolute,
+                left: Val::Px(disc_left),
+                top: Val::Px(0.0),
+                width: Val::Px(HS_DISC),
+                height: Val::Px(HS_DISC),
+                ..default()
+            },
+            ImageNode {
+                image: art
+                    .symbols
+                    .get(&art.roles.coin)
+                    .cloned()
+                    .unwrap_or_default(),
+                image_mode: NodeImageMode::Stretch,
+                ..default()
+            },
+        ))
+        .with_children(|d| {
+            d.spawn((HsCollectedCount, heavy("", 52.0, 2.0)));
+            d.spawn(heavy("COLLECTED", 16.0, 62.0));
+            d.spawn(heavy("15 WIN", 12.0, 82.0));
+            if let Some(lettering) = art.ui.get("collect_grand") {
+                let (lw, lh) = art
+                    .sizes
+                    .get("collect_grand")
+                    .copied()
+                    .unwrap_or((510.0, 255.0));
+                let band = Rect::new(0.0, lh * 200.0 / 255.0, lw, lh);
+                let bw = HS_DISC * 0.72;
+                let bh = bw * band.height() / band.width().max(1.0);
+                d.spawn((
+                    Node {
+                        position_type: PositionType::Absolute,
+                        left: Val::Px((HS_DISC - bw) / 2.0),
+                        top: Val::Px(99.0),
+                        width: Val::Px(bw),
+                        height: Val::Px(bh),
+                        ..default()
+                    },
+                    ImageNode {
+                        image: lettering.clone(),
+                        rect: Some(band),
+                        image_mode: NodeImageMode::Stretch,
+                        ..default()
+                    },
+                ));
+            }
+        });
+    });
+}
+
+impl FeatureShow {
+    /// Coins presented but still to land on the screen: a respin's coins
+    /// not yet at their stops (the board's labels already carry them).
+    fn coins_to_land(&self) -> Vec<(u8, u8)> {
+        if let Some(landed) = &self.respin_landed {
+            return landed.clone();
+        }
+        self.respin
+            .as_ref()
+            .map(|a| {
+                a.stops
+                    .iter()
+                    .enumerate()
+                    .filter(|(i, s)| s.3 && *i >= a.done)
+                    .map(|(_, s)| (s.0, s.1))
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+
+    /// The collected-coin disc shows: the Hold & Spin board is up, until
+    /// the WINNER display takes the top over.
+    pub fn collected_showing(&self) -> bool {
+        self.grid && self.hold_and_spin() && !self.winner_showing()
+    }
+}
+
+/// The disc's count: the coins on the board (`coins`, held and landed),
+/// less those still to land.
+fn coins_collected(coins: &[(u8, u8)], to_land: &[(u8, u8)]) -> usize {
+    coins.iter().filter(|c| !to_land.contains(c)).count()
+}
+
+/// Show the collected-coin disc through Hold & Spin, its count stepping as
+/// each coin lands, its dragons' fire running.
+#[allow(clippy::type_complexity, clippy::too_many_arguments)]
+pub fn hs_collected(
+    fidelity: Res<Fidelity>,
+    time: Res<Time>,
+    show: Res<FeatureShow>,
+    gamble: Res<GambleShow>,
+    art: Res<ArtPack>,
+    labels: Query<(&CellLabel, &Text), Without<HsCollectedCount>>,
+    mut plate: Query<&mut Visibility, With<HsCollectedPlate>>,
+    mut count: Query<&mut Text, (With<HsCollectedCount>, Without<CellLabel>)>,
+    mut dragons: Query<&mut ImageNode, With<HsDragon>>,
+) {
+    if !fidelity.0 {
+        return;
+    }
+    let on = show.collected_showing() && !gamble.active;
+    for mut v in &mut plate {
+        let want = if on {
+            Visibility::Inherited
+        } else {
+            Visibility::Hidden
+        };
+        if *v != want {
+            *v = want;
+        }
+    }
+    if !on {
+        return;
+    }
+    let coins: Vec<(u8, u8)> = labels
+        .iter()
+        .filter(|(_, t)| t.0.starts_with("ORB\n"))
+        .map(|(l, _)| (l.reel, l.row))
+        .collect();
+    let n = coins_collected(&coins, &show.coins_to_land()).to_string();
+    for mut t in &mut count {
+        if t.0 != n {
+            t.0.clone_from(&n);
+        }
+    }
+    if let Some(frames) = art.anims.get("dragon") {
+        let i = (time.elapsed_secs() * ANIM_FPS) as usize % frames.len().max(1);
+        if let Some(h) = frames.get(i) {
+            for mut image in &mut dragons {
+                if image.image != *h {
+                    image.image = h.clone();
+                }
+            }
+        }
+    }
+}
 
 /// The slate under the Hold & Spin grid.
 #[derive(Component)]
@@ -7395,7 +9098,7 @@ pub fn hold_and_spin_motion(
             }
         }
         if crossed(t0, t, INTRO_TRANSITION) {
-            show.transition_at = Some(clock);
+            show.transition_at = Some((clock, FIRE_FPS));
         }
         if crossed(t0, t, INTRO_GRID) {
             show.grid = true;
@@ -7416,21 +9119,8 @@ pub fn hold_and_spin_motion(
         show.started = true;
         show.count_up = Some(0.0);
     }
-    if let Some(t0) = show.count_up {
-        let t = t0 + dt;
-        show.count_up = Some(t);
-        let target = show.pending_left;
-        let step_at = |n: u8| COUNT_FIRST + f32::from(n) * COUNT_STEP;
-        while show.counter < target && t >= step_at(show.counter) {
-            show.counter += 1;
-            sounds.play(&mut commands, "SND_Fea_Inc");
-            if show.counter == target {
-                show.banner_burst = Some(clock);
-            }
-        }
-        if show.counter >= target && t >= step_at(target.saturating_sub(1)) + COUNT_HOLD {
-            show.count_up = None;
-        }
+    for _ in 0..show.advance_count_up(dt) {
+        sounds.play(&mut commands, "SND_Fea_Inc");
     }
 
     // A respin was presented: every open position spins and stops in turn.
@@ -7608,6 +9298,7 @@ pub fn hold_and_spin_motion(
                 ));
             }
         }
+        let mut coins = majors_first(coins);
         // A full grid's Grand jackpot is added after the coins.
         let grand = jackpots
             .iter()
@@ -7617,11 +9308,7 @@ pub fn hold_and_spin_motion(
             coins.push((GRAND_STEP, GRAND_STEP, g, true, Some(JackpotTier::Grand)));
         }
         show.grand = grand;
-        show.winner = None;
-        show.paid = 0;
-        show.pay_base = rollup.to;
-        show.flares_at = None;
-        show.collect = Some(Collect { coins, ..default() });
+        show.begin_collect(coins, rollup.to);
     }
     let step = show.advance_collect(dt, total_bet);
     if step.rumble {
@@ -7629,6 +9316,24 @@ pub fn hold_and_spin_motion(
     }
     for name in step.sounds {
         sounds.play(&mut commands, name);
+    }
+    // A Major's own count: the payout music and a coin shower for a big
+    // one (or the long win tune), WIN counting it up over the music's
+    // length; SPIN completes it (the cabinet held the plaque about 20 s).
+    if let Some(amount) = step.major {
+        let name = if amount >= PAY_SHOWER_RATIO * total_bet {
+            let n = PAYOUT_MUSIC[show.payout_track % PAYOUT_MUSIC.len()];
+            show.payout_track += 1;
+            n
+        } else {
+            PAY_TUNE
+        };
+        show.pay_sound = sounds.play(&mut commands, name);
+        show.major_pay = Some(Pay {
+            amount,
+            t: 0.0,
+            seconds: sounds.seconds(name).unwrap_or(20.0).max(1.0),
+        });
     }
     let mut done = step.done;
     if done.is_some()
@@ -7657,16 +9362,32 @@ pub fn hold_and_spin_motion(
         });
         done = None;
     }
+    let unattended = |p: &Option<Pay>| {
+        smoke.frames_left.is_some() && p.as_ref().is_some_and(|p| p.t > 3.0 && p.t < p.seconds)
+    };
     let slam = input.spin
         || keys.just_pressed(KeyCode::Space)
         || keys.just_pressed(KeyCode::Enter)
-        || (smoke.frames_left.is_some()
-            && show
-                .pay
-                .as_ref()
-                .is_some_and(|p| p.t > 3.0 && p.t < p.seconds));
-    if show.pay.is_some() && slam {
+        || unattended(&show.pay)
+        || unattended(&show.major_pay);
+    if (show.pay.is_some() || show.major_pay.is_some()) && slam {
         input.skip_spin = true;
+    }
+    if let Some(mut p) = show.major_pay.take() {
+        p.t += dt;
+        if p.t < p.seconds && slam {
+            p.t = p.seconds;
+        }
+        if p.t >= p.seconds
+            && let Some(id) = show.pay_sound.take()
+        {
+            commands.entity(id).try_despawn();
+        }
+        if p.t >= p.seconds + PAY_AFTER {
+            show.end_major(p.amount);
+        } else {
+            show.major_pay = Some(p);
+        }
     }
     if let Some(mut p) = show.pay.take() {
         p.t += dt;
@@ -7693,6 +9414,31 @@ pub fn hold_and_spin_motion(
 }
 
 impl FeatureShow {
+    /// Run the counter's count-up on by `dt` seconds (at `self.clock`): its
+    /// steps (each a tick), the burst on its last, and its end `COUNT_HOLD`
+    /// after that. Returns the steps taken.
+    fn advance_count_up(&mut self, dt: f32) -> u32 {
+        let Some(t0) = self.count_up else {
+            return 0;
+        };
+        let t = t0 + dt;
+        self.count_up = Some(t);
+        let target = self.pending_left;
+        let step_at = |n: u8| COUNT_FIRST + f32::from(n) * COUNT_STEP;
+        let mut steps = 0;
+        while self.counter < target && t >= step_at(self.counter) {
+            self.counter += 1;
+            steps += 1;
+            if self.counter == target {
+                self.banner_burst = Some(self.clock);
+            }
+        }
+        if self.counter >= target && t >= step_at(target.saturating_sub(1)) + COUNT_HOLD {
+            self.count_up = None;
+        }
+        steps
+    }
+
     /// The count's total has been paid (`PAY_AFTER` after the count was
     /// complete): the WINNER box stays until `WINNER_HOLD` after the count
     /// was complete.
@@ -7910,7 +9656,7 @@ pub fn hold_and_spin_draw(
     for (mut image, mut vis) in &mut fx {
         match show
             .transition_at
-            .and_then(|s| frame("transition", (clock - s) * FIRE_FPS / ANIM_FPS, false))
+            .and_then(|(s, fps)| frame("transition", (clock - s) * fps / ANIM_FPS, false))
         {
             Some(h) => {
                 if image.image != h {
@@ -7922,11 +9668,14 @@ pub fn hold_and_spin_draw(
         }
     }
 
-    // The collection bolt and the splash it makes on the WINNER box.
+    // The collection bolt and the splash it makes on the WINNER box. Its
+    // comet reaches the box as the value lands (`bolt_frame`).
     for (mut image, mut vis, mut node) in &mut bolt {
         let f = show.bolt.and_then(|(reel, row, s)| {
             let (k, flip, left, top, w, h) = bolt_for(reel, row);
-            frame(&format!("bolt{k}"), clock - s, false).map(|f| (f, flip, left, top, w, h))
+            let frames = art.anims.get(&format!("bolt{k}"))?;
+            let f = frames.get(bolt_frame(k, clock - s))?.clone();
+            Some((f, flip, left, top, w, h))
         });
         match f {
             Some((f, flip, left, top, w, h)) => {
@@ -7960,18 +9709,35 @@ pub fn hold_and_spin_draw(
 
     // The WINNER total in the pack's flame-bordered box (its flames looped);
     // on a Grand, the GRAND JACKPOT plaque (its own 729 x 108 shape, the
-    // title across its top, the amount below). The gamble shows the
-    // jackpots, not the box.
+    // title across its top, the amount below), on a Major the MAJOR JACKPOT
+    // plaque, its amount green (club cabinet: Autumn Moon 5Z1-hFzpyh0
+    // 530-555 s; a pack without the plaque keeps the flame box). The gamble
+    // shows the jackpots, not the box.
     let grand = show.grand_showing();
+    let major = !grand && show.major_showing();
+    let plaque = if grand {
+        art.ui
+            .get("grand_plaque")
+            .map(|h| (h.clone(), "grand_plaque"))
+    } else if major {
+        art.ui
+            .get("major_plaque")
+            .map(|h| (h.clone(), "major_plaque"))
+    } else {
+        None
+    };
     let boxed = show.winner_showing() && !gamble.active;
+    let (w, h) = WINNER_BOX;
+    let plaque_w = plaque.as_ref().map(|(_, key)| {
+        let (pw, ph) = art.sizes.get(*key).copied().unwrap_or((729.0, 108.0));
+        h * pw / ph.max(1.0)
+    });
     for (mut image, mut node, mut vis) in &mut winner {
-        let key = if grand {
-            art.ui.get("grand_plaque").cloned()
-        } else {
-            frame("flameborder_sm", clock, true)
+        let key = match &plaque {
+            Some((handle, _)) => Some(handle.clone()),
+            None => frame("flameborder_sm", clock, true),
         };
-        let (w, h) = WINNER_BOX;
-        let w = if grand { h * 729.0 / 108.0 } else { w };
+        let w = plaque_w.unwrap_or(w);
         if node.width != Val::Px(w) {
             node.width = Val::Px(w);
             node.left = Val::Px(960.0 - w / 2.0);
@@ -7988,29 +9754,35 @@ pub fn hold_and_spin_draw(
     }
     let amount = if grand {
         show.grand
+    } else if major {
+        show.major_amount()
     } else {
         show.winner_amount()
     }
     .filter(|_| boxed)
     .map(|w| money(w, denom.cents()))
     .unwrap_or_default();
-    let red = grand;
     for (mut t, mut color, mut font, mut node) in &mut winner_text {
         if t.0 != amount {
             t.0 = amount.clone();
         }
-        // On the plaque the amount sits in the band under GRAND JACKPOT.
-        let (size, drop) = if red {
+        // On a plaque the amount sits in the band under its title.
+        let (size, drop) = if plaque.is_some() {
             (WINNER_BOX.1 * 0.5, WINNER_BOX.1 * 0.17)
         } else {
             (WINNER_AMOUNT_SIZE, 0.0)
         };
+        // (The plaque's size equals the box's, so the drop is set apart.)
         if font.font_size != FontSize::Px(size) {
             font.font_size = FontSize::Px(size);
+        }
+        if node.top != Val::Px(drop) {
             node.top = Val::Px(drop);
         }
-        let want = if red {
+        let want = if grand {
             Color::srgb(0.95, 0.12, 0.1)
+        } else if major {
+            MAJOR_AMOUNT_GREEN
         } else {
             WINNER_GREEN
         };
@@ -8020,25 +9792,41 @@ pub fn hold_and_spin_draw(
     }
 }
 
+/// A Major's amount on its plaque: green (club cabinet, Autumn Moon
+/// 5Z1-hFzpyh0 540-555 s; the tint from a 160 x 90 storyboard, PARTIAL).
+const MAJOR_AMOUNT_GREEN: Color = Color::srgb(0.30, 0.95, 0.35);
+
 // ---------------------------------------------------------------------------
 // Free games: the doors reveal and the win banner
 // ---------------------------------------------------------------------------
 //
-// Real game (all six free games of a recorded feature, frame by frame and
-// with sound): the doors land with the reels; 3 frames after the last reel is
-// still every door swings open together (the game's own 42-frame sequence at
-// 30 fps, 1.4 s) on the symbol they reveal, to SND_EndMask; the game's wins
-// show 47 frames after the doors begin to open (or FEATURE COMPLETED, after
-// the last game).
+// Club cabinets (motion per door cell at 30 fps, 4 fine and 6 coarse reveals
+// on 1bAevGz0K2k and y8c8lEdPW8Y): the doors land with the reels; about
+// 0.30 s after the last reel is still every door swings open together on the
+// symbol they reveal, to SND_EndMask (the sound placed from the app), their
+// motion visible for 0.60-0.73 s and over by the rest + 0.93-0.97 s (STRONG);
+// the game's wins show at the rest + 1.5 s (PARTIAL: 3 cases, one machine);
+// with no win the next free game spins at the rest + 2.0 s (STRONG: 4 cases,
+// two machines). The app follows the cabinet. The official app, recorded with
+// sound (all six free games of a feature), opens them 3 frames after the
+// rest, the 42-frame sequence at 30 fps (1.4 s), and shows the wins 47
+// frames after they begin to open (VERIFIED for the mobile app only).
 
 /// Seconds after the reveal is presented that the doors open (it is
-/// presented when they open), their frame rate, and the seconds from their
-/// opening to the game's wins.
+/// presented when they open), their frame rate (the game's own 42-frame
+/// sequence then lasts 1.0 s; its motion, frames 1-29, 0.69 s, over by the
+/// rest + 0.99 s as on the cabinet; frames 30-41 a faint fading remnant), and
+/// the seconds from their opening to the game's wins (the rest + 1.5 s).
 const REVEAL_OPEN: f32 = 0.0;
-const REVEAL_FPS: f32 = 30.0;
-const REVEAL_WINS: f32 = 47.0 / 30.0;
-/// The reveal is presented this long after the last reel is still.
-pub const REVEAL_AFTER_REST: f32 = 3.0 / 30.0;
+const REVEAL_FPS: f32 = 42.0;
+const REVEAL_WINS: f32 = 1.2;
+/// The doors' reveal is presented this long after the last reel is still
+/// (club cabinets: 0.22-0.37 s, three of four reveals about 0.30 s).
+pub const REVEAL_AFTER_REST: f32 = 0.30;
+/// A wild filling its reel (Golden Gong's monk) is presented this long after
+/// the last reel is still: the official app's door delay, kept for it (its
+/// cabinet timing was never measured).
+pub const EXPAND_AFTER_REST: f32 = 3.0 / 30.0;
 
 /// The doors opening on one position.
 #[derive(Component)]
@@ -8079,6 +9867,15 @@ pub fn spawn_door_fx(cell: &mut ChildSpawnerCommands, art: &ArtPack, reel: u8, r
     ));
 }
 
+/// The WIN banner's amount: white with a faint cool tint, between its gold
+/// WIN words, for Hold & Spin's count and a free game's win alike (club
+/// cabinets: the digits' brightest pixels as bright and as neutral as white
+/// text on the same screen, the WIN words gold, the WINNER total yellow in
+/// the same frames; f5sMl9a5jds 278.6, 281.1, 282.6, 795.8; y8c8lEdPW8Y
+/// 1018.7, 1019.5, 1029.8; 1bAevGz0K2k 164.3, 165.5; VERIFIED). The official
+/// app's is yellow.
+const BANNER_AMOUNT_WHITE: Color = Color::srgb(0.93, 0.94, 1.0);
+
 /// The amount text inside the feature banner.
 pub fn spawn_banner_amount(b: &mut ChildSpawnerCommands, font: &Handle<Font>, w: f32, h: f32) {
     b.spawn((
@@ -8089,7 +9886,7 @@ pub fn spawn_banner_amount(b: &mut ChildSpawnerCommands, font: &Handle<Font>, w:
             font_size: FontSize::Px(h * 0.62),
             ..default()
         },
-        TextColor(Color::srgb(1.0, 0.9, 0.35)),
+        TextColor(BANNER_AMOUNT_WHITE),
         TextLayout::justify(Justify::Center),
         Node {
             position_type: PositionType::Absolute,
@@ -8294,17 +10091,213 @@ pub fn denom_text(cents: u64) -> String {
     }
 }
 
-/// Build the GAMES MENU (hidden until touched).
+/// The chooser's layout on the canvas, by homography from the reel frame on
+/// two club recordings of one Queensland venue (1bAevGz0K2k 0:13.0,
+/// y8c8lEdPW8Y 0:09.0; agreeing within about 30 px; STRONG): the panel about
+/// 980-1010 x 190-200 with its centre near y 755 (the width for five keys;
+/// six widen it by their own share), opaque black-brown in a thin gold frame
+/// with small corners.
+const CHOOSER_PANEL: (f32, f32, f32) = (995.0, 195.0, 657.0);
+/// The header's capitals: their centre line (cabinet about 700-707) and the
+/// type size that gives them a cap of about 34 px (the cabinet's about 36:
+/// "CHOOSE YOUR DENOMINATION" about 751 px wide, "TOUCH SCREEN TO MAKE
+/// SELECTION" about 913) in our bold sans, a substitute for its decorative
+/// cream serif.
+const CHOOSER_HEADER: (f32, f32) = (703.0, 48.0);
+const CHOOSER_HEADER_COLOUR: Color = Color::srgb(0.90, 0.80, 0.64);
+/// The denomination keys: width, height, gap and top (cabinet about 157-162
+/// x 80-81, 25-29 apart, y 738-820).
+const CHOOSER_KEY: (f32, f32, f32, f32) = (162.0, 80.0, 26.0, 739.0);
+/// The panel's margin either side of its row of keys (995 against a row of
+/// five, 914).
+const CHOOSER_MARGIN: f32 = (CHOOSER_PANEL.0 - (5.0 * CHOOSER_KEY.0 + 4.0 * CHOOSER_KEY.2)) / 2.0;
+/// ARE YOU SURE?: width, height and the gap left above the panel (cabinet:
+/// wholly above it, about 10 px clear; 1bAevGz0K2k 0:14.4, y8c8lEdPW8Y
+/// 0:11.30; about 325 x 180 from one weak homography, PARTIAL).
+const CHOOSER_CONFIRM: (f32, f32, f32) = (325.0, 180.0, 10.0);
+/// Its YES and NO keys: width, height, gap (about 128 x 49, 23 apart;
+/// PARTIAL).
+const CHOOSER_ANSWER: (f32, f32, f32) = (128.0, 48.0, 24.0);
+/// Club: the chooser keeps COLLECT, moved to the screen's bottom right
+/// corner, the denomination box's place (y8c8lEdPW8Y 0:08-0:11; STRONG for
+/// this layout, one machine; a 2018 layout, etaH-vbYBKY, keeps it at the
+/// left).
+const CHOOSER_COLLECT: (f32, f32) = (1830.0, 1016.0);
+/// The drawn title standing in for the cabinet's logo: the centre of its
+/// capitals (cabinet logo y about 485-640, directly above the panel), its
+/// largest size and letter spacing, and the widest it may run (cabinet logo
+/// about 1560 px wide; 1bAevGz0K2k 0:13.0, y8c8lEdPW8Y 0:09.0; STRONG).
+const CHOOSER_TITLE: (f32, f32, f32, f32) = (562.0, 195.0, 20.0, 1600.0);
+/// The meters' face's (Impact's) mean advance over capitals and spaces, in
+/// ems (the title "GOLDEN CENTURY" at 150 px measured 1000 px on a capture).
+const IMPACT_CAPS_ADVANCE: f32 = 0.476;
+
+/// The chooser title's type size: the largest up to the cabinet logo's
+/// width, smaller for a longer name.
+fn chooser_title_size(name: &str) -> f32 {
+    let (_, max, gap, widest) = CHOOSER_TITLE;
+    let n = name.chars().count().max(1) as f32;
+    max.min((widest - n * gap) / (n * IMPACT_CAPS_ADVANCE))
+}
+
+/// A chooser key's colours: its face, the lighter inner face of its bevel
+/// and its rim (cabinet camera colour, PARTIAL: cent keys red-orange about
+/// (247, 85, 44) with a darker red-brown rim, the dollar keys amber).
+#[derive(Clone, Copy)]
+enum ChooserFace {
+    Cents,
+    Dollars,
+}
+
+impl ChooserFace {
+    fn colours(self) -> (Color, Color, Color, Color) {
+        match self {
+            ChooserFace::Cents => (
+                Color::srgb_u8(245, 95, 45),
+                Color::srgb_u8(252, 140, 92),
+                Color::srgb_u8(247, 104, 54),
+                Color::srgb_u8(120, 35, 15),
+            ),
+            ChooserFace::Dollars => (
+                Color::srgb_u8(246, 205, 75),
+                Color::srgb_u8(252, 230, 140),
+                Color::srgb_u8(247, 210, 88),
+                Color::srgb_u8(150, 95, 20),
+            ),
+        }
+    }
+}
+
+/// The chooser keys' figures: white with a dark navy outline all round
+/// (eight copies 2 px off each way, as the status texts' edge).
+const KEY_FIGURE: Color = Color::srgb(0.97, 0.97, 1.0);
+const KEY_OUTLINE: Color = Color::srgb(0.05, 0.07, 0.22);
+const KEY_OUTLINE_OFFSETS: [(f32, f32); 8] = [
+    (-2.0, -2.0),
+    (0.0, -2.0),
+    (2.0, -2.0),
+    (-2.0, 0.0),
+    (2.0, 0.0),
+    (-2.0, 2.0),
+    (0.0, 2.0),
+    (2.0, 2.0),
+];
+/// The cent sign's size as a share of the digits' (the cabinet's is visibly
+/// smaller than the figures).
+const CENT_SIGN: f32 = 0.7;
+
+/// A denomination as the chooser's keys write it: the figures, and a cent
+/// sign drawn smaller after them.
+fn chooser_figure(cents: u64) -> (String, Option<&'static str>) {
+    if cents >= 100 {
+        (format!("${}", cents / 100), None)
+    } else {
+        (cents.to_string(), Some("¢"))
+    }
+}
+
+/// A bevelled chooser key, `w` x `h`: a dark rim, the face, and a lighter
+/// inner face shading to it.
+fn chooser_key<'a>(
+    row: &'a mut ChildSpawnerCommands,
+    w: f32,
+    h: f32,
+    face: ChooserFace,
+) -> EntityCommands<'a> {
+    let (base, light, low, rim) = face.colours();
+    let mut key = row.spawn((
+        Node {
+            width: Val::Px(w),
+            height: Val::Px(h),
+            border: UiRect::all(Val::Px(4.0)),
+            border_radius: BorderRadius::all(Val::Px(8.0)),
+            justify_content: JustifyContent::Center,
+            align_items: AlignItems::Center,
+            ..default()
+        },
+        BackgroundColor(base),
+        BorderColor::all(rim),
+    ));
+    key.with_children(|k| {
+        k.spawn((
+            Node {
+                position_type: PositionType::Absolute,
+                left: Val::Px(4.0),
+                right: Val::Px(4.0),
+                top: Val::Px(3.0),
+                bottom: Val::Px(5.0),
+                border_radius: BorderRadius::all(Val::Px(5.0)),
+                ..default()
+            },
+            bevy::ui::BackgroundGradient(vec![bevy::ui::Gradient::Linear(
+                bevy::ui::LinearGradient::to_bottom(vec![
+                    bevy::ui::ColorStop::new(light, Val::Percent(0.0)),
+                    bevy::ui::ColorStop::new(low, Val::Percent(100.0)),
+                ]),
+            )]),
+        ));
+    });
+    key
+}
+
+/// A key's figures, white in a navy outline, with an optional smaller tail
+/// (the cent sign) on the same baseline.
+fn spawn_key_figure(
+    k: &mut ChildSpawnerCommands,
+    font: &Handle<Font>,
+    size: f32,
+    (main, tail): (String, Option<&'static str>),
+) {
+    let face = |px: f32| TextFont {
+        font: bevy::text::FontSource::Handle(font.clone()),
+        font_size: FontSize::Px(px),
+        ..default()
+    };
+    k.spawn(Node::default()).with_children(|w| {
+        let mut one = |at: Option<(f32, f32)>, colour: Color| {
+            let node = match at {
+                Some((dx, dy)) => Node {
+                    position_type: PositionType::Absolute,
+                    left: Val::Px(dx),
+                    top: Val::Px(dy),
+                    ..default()
+                },
+                None => Node::default(),
+            };
+            w.spawn((
+                Text::new(main.clone()),
+                face(size),
+                TextColor(colour),
+                TextLayout::no_wrap(),
+                node,
+            ))
+            .with_children(|t| {
+                if let Some(tail) = tail {
+                    t.spawn((
+                        TextSpan::new(tail),
+                        face(size * CENT_SIGN),
+                        TextColor(colour),
+                    ));
+                }
+            });
+        };
+        for at in KEY_OUTLINE_OFFSETS {
+            one(Some(at), KEY_OUTLINE);
+        }
+        one(None, KEY_FIGURE);
+    });
+}
+
+/// Build the GAMES MENU (hidden until touched), with `title` drawn on its
+/// splash.
 fn spawn_games_menu(
     c: &mut ChildSpawnerCommands,
     art: &ArtPack,
     fonts: &CabFonts,
     profile: Profile,
+    title: &str,
 ) {
     let top = JACKPOT_BAR_TOP + JACKPOT_BAR_W * 104.0 / 1225.0 + 4.0;
-    // The title and panel are placed on the screen above the band; the
-    // splash itself runs down over the band to the screen's foot (footage).
-    let h = band_top(profile) - top;
     c.spawn((
         ChooserRoot,
         Node {
@@ -8335,16 +10328,21 @@ fn spawn_games_menu(
                 ..default()
             },
         ));
-        // The title (drawn: the cabinet's logo is not in the mobile build).
+        // The title (drawn: the cabinet's logo is not in the mobile build),
+        // its capitals where the logo stands, right over the panel.
+        let (title_y, _, gap, _) = CHOOSER_TITLE;
+        let size = chooser_title_size(title);
+        let (caps_top, caps_h) = IMPACT_CAPS;
         m.spawn((
-            Text::new("GOLDEN CENTURY"),
+            Text::new(title),
             TextFont {
                 font: bevy::text::FontSource::Handle(fonts.meter.clone()),
-                font_size: FontSize::Px(150.0),
+                font_size: FontSize::Px(size),
                 ..default()
             },
             TextColor(Color::srgb(1.0, 0.82, 0.25)),
             TextLayout::justify(Justify::Center),
+            LetterSpacing::Px(gap),
             TextShadow {
                 offset: Vec2::new(4.0, 6.0),
                 color: Color::srgba(0.35, 0.05, 0.0, 0.9),
@@ -8352,177 +10350,190 @@ fn spawn_games_menu(
             Node {
                 position_type: PositionType::Absolute,
                 left: Val::Px(0.0),
-                top: Val::Px(h * 0.16),
+                top: Val::Px(title_y - (caps_top + caps_h / 2.0) * size - top),
                 width: Val::Percent(100.0),
                 ..default()
             },
         ));
-        // The panel: header over the row of denominations.
-        let (pw, ph) = (1360.0, 250.0);
+        // The panel: header over the row of denominations, each placed on
+        // the canvas (a frame drawn under them, so no border shifts them).
+        let denoms = profile.denoms();
+        let (kw, kh, kgap, ktop) = CHOOSER_KEY;
+        let n = denoms.len() as f32;
+        let row_w = n * kw + (n - 1.0).max(0.0) * kgap;
+        let (pw0, ph, ptop) = CHOOSER_PANEL;
+        let pw = pw0.max(row_w + 2.0 * CHOOSER_MARGIN);
         m.spawn((
             ChooserPanel,
             Node {
                 position_type: PositionType::Absolute,
                 left: Val::Px((CANVAS_W - pw) / 2.0),
-                top: Val::Px(h * 0.6),
+                top: Val::Px(ptop - top),
                 width: Val::Px(pw),
                 height: Val::Px(ph),
-                border: UiRect::all(Val::Px(5.0)),
-                border_radius: BorderRadius::all(Val::Px(16.0)),
-                flex_direction: FlexDirection::Column,
-                justify_content: JustifyContent::SpaceEvenly,
-                align_items: AlignItems::Center,
                 ..default()
             },
-            BackgroundColor(Color::srgba(0.05, 0.02, 0.02, 0.86)),
-            BorderColor::all(Color::srgb(0.9, 0.68, 0.22)),
         ))
         .with_children(|p| {
+            p.spawn((
+                Node {
+                    position_type: PositionType::Absolute,
+                    left: Val::Px(0.0),
+                    top: Val::Px(0.0),
+                    width: Val::Percent(100.0),
+                    height: Val::Percent(100.0),
+                    border: UiRect::all(Val::Px(5.0)),
+                    border_radius: BorderRadius::all(Val::Px(4.0)),
+                    ..default()
+                },
+                BackgroundColor(Color::srgb(0.12, 0.08, 0.08)),
+                BorderColor::all(Color::srgb(0.9, 0.68, 0.22)),
+            ));
+            // Arial Bold's capitals are centred 0.59 of the size below its
+            // line's top.
+            let (header_y, header_size) = CHOOSER_HEADER;
             p.spawn((
                 ChooserHeader,
                 Text::new("CHOOSE YOUR DENOMINATION"),
                 TextFont {
                     font: bevy::text::FontSource::Handle(fonts.sans.clone()),
-                    font_size: FontSize::Px(40.0),
+                    font_size: FontSize::Px(header_size),
                     ..default()
                 },
-                TextColor(Color::srgb(1.0, 0.9, 0.55)),
+                TextColor(CHOOSER_HEADER_COLOUR),
+                TextLayout::justify(Justify::Center),
+                Node {
+                    position_type: PositionType::Absolute,
+                    left: Val::Px(0.0),
+                    top: Val::Px(header_y - 0.59 * header_size - ptop),
+                    width: Val::Percent(100.0),
+                    ..default()
+                },
             ));
             p.spawn(Node {
+                position_type: PositionType::Absolute,
+                left: Val::Px(0.0),
+                top: Val::Px(ktop - ptop),
+                width: Val::Percent(100.0),
+                height: Val::Px(kh),
                 flex_direction: FlexDirection::Row,
-                column_gap: Val::Px(26.0),
+                justify_content: JustifyContent::Center,
+                column_gap: Val::Px(kgap),
                 ..default()
             })
             .with_children(|row| {
-                for &cents in profile.denoms() {
+                for &cents in denoms {
                     let face = if cents >= 100 {
-                        Color::srgb(1.0, 0.8, 0.22)
+                        ChooserFace::Dollars
                     } else {
-                        Color::srgb(0.96, 0.5, 0.1)
+                        ChooserFace::Cents
                     };
-                    row.spawn((
-                        Node {
-                            width: Val::Px(186.0),
-                            height: Val::Px(112.0),
-                            border: UiRect::all(Val::Px(3.0)),
-                            border_radius: BorderRadius::all(Val::Px(16.0)),
-                            justify_content: JustifyContent::Center,
-                            align_items: AlignItems::Center,
-                            ..default()
-                        },
-                        BackgroundColor(face),
-                        BorderColor::all(Color::srgb(0.55, 0.3, 0.05)),
-                    ))
-                    .with_children(|b| {
-                        b.spawn((
-                            Text::new(denom_text(cents)),
-                            TextFont {
-                                font: bevy::text::FontSource::Handle(fonts.meter.clone()),
-                                font_size: FontSize::Px(68.0),
-                                ..default()
+                    chooser_key(row, kw, kh, face)
+                        .with_children(|b| {
+                            spawn_key_figure(b, &fonts.meter, 56.0, chooser_figure(cents));
+                        })
+                        .observe(
+                            move |_press: On<PointerPress>,
+                                  mut input: ResMut<CabinetInput>,
+                                  mut menu: ResMut<GamesMenu>| {
+                                if !menu.open || menu.pending.is_some() {
+                                    return;
+                                }
+                                if profile.confirms() {
+                                    menu.pending = Some(cents);
+                                } else {
+                                    input.denom = Some(cents);
+                                }
                             },
-                            TextColor(Color::srgb(0.9, 0.95, 1.0)),
-                            TextShadow {
-                                offset: Vec2::new(2.0, 3.0),
-                                color: Color::srgba(0.25, 0.08, 0.0, 0.85),
-                            },
-                        ));
-                    })
-                    .observe(
-                        move |_press: On<PointerPress>,
-                              mut input: ResMut<CabinetInput>,
-                              mut menu: ResMut<GamesMenu>| {
-                            if !menu.open || menu.pending.is_some() {
-                                return;
-                            }
-                            if profile.confirms() {
-                                menu.pending = Some(cents);
-                            } else {
-                                input.denom = Some(cents);
-                            }
-                        },
-                    );
+                        );
                 }
             });
         });
-        // Club: "<denomination> GAME / ARE YOU SURE?", centred over the row.
-        let (cw, ch) = (330.0, 190.0);
+        // Club: "<denomination> GAME / ARE YOU SURE?", wholly above the panel.
+        let (cw, ch, clear) = CHOOSER_CONFIRM;
         m.spawn((
             ChooserConfirm,
             Node {
                 position_type: PositionType::Absolute,
                 left: Val::Px((CANVAS_W - cw) / 2.0),
-                top: Val::Px(h * 0.6 - ch + 40.0),
+                top: Val::Px(ptop - clear - ch - top),
                 width: Val::Px(cw),
                 height: Val::Px(ch),
                 border: UiRect::all(Val::Px(4.0)),
-                border_radius: BorderRadius::all(Val::Px(12.0)),
+                border_radius: BorderRadius::all(Val::Px(8.0)),
                 flex_direction: FlexDirection::Column,
                 justify_content: JustifyContent::SpaceEvenly,
                 align_items: AlignItems::Center,
                 ..default()
             },
-            BackgroundColor(Color::srgba(0.05, 0.02, 0.02, 0.95)),
+            BackgroundColor(Color::srgb(0.05, 0.02, 0.02)),
             BorderColor::all(Color::srgb(0.9, 0.68, 0.22)),
             GlobalZIndex(13),
             Visibility::Hidden,
         ))
         .with_children(|q| {
+            let face = |px: f32| TextFont {
+                font: bevy::text::FontSource::Handle(fonts.sans.clone()),
+                font_size: FontSize::Px(px),
+                ..default()
+            };
+            // "<denomination> GAME" in bold yellow, "ARE YOU SURE?" in the
+            // header's cream.
             q.spawn((
                 ChooserQuestion,
                 Text::new(""),
-                TextFont {
-                    font: bevy::text::FontSource::Handle(fonts.sans.clone()),
-                    font_size: FontSize::Px(30.0),
-                    ..default()
-                },
-                TextColor(Color::srgb(1.0, 0.9, 0.55)),
+                face(30.0),
+                TextColor(Color::srgb(1.0, 0.86, 0.2)),
                 TextLayout::justify(Justify::Center),
-            ));
+            ))
+            .with_children(|t| {
+                t.spawn((
+                    TextSpan::new("ARE YOU SURE?"),
+                    face(30.0),
+                    TextColor(CHOOSER_HEADER_COLOUR),
+                ));
+            });
+            let (aw, ah, agap) = CHOOSER_ANSWER;
             q.spawn(Node {
                 flex_direction: FlexDirection::Row,
-                column_gap: Val::Px(30.0),
+                column_gap: Val::Px(agap),
                 ..default()
             })
             .with_children(|row| {
                 for yes in [true, false] {
-                    row.spawn((
-                        Node {
-                            width: Val::Px(120.0),
-                            height: Val::Px(62.0),
-                            border: UiRect::all(Val::Px(3.0)),
-                            border_radius: BorderRadius::all(Val::Px(12.0)),
-                            justify_content: JustifyContent::Center,
-                            align_items: AlignItems::Center,
-                            ..default()
-                        },
-                        BackgroundColor(Color::srgb(0.96, 0.5, 0.1)),
-                        BorderColor::all(Color::srgb(0.55, 0.3, 0.05)),
-                    ))
-                    .with_children(|b| {
-                        b.spawn((
-                            Text::new(if yes { "YES" } else { "NO" }),
-                            TextFont {
-                                font: bevy::text::FontSource::Handle(fonts.meter.clone()),
-                                font_size: FontSize::Px(40.0),
-                                ..default()
+                    let word = if yes { "YES" } else { "NO" };
+                    chooser_key(row, aw, ah, ChooserFace::Cents)
+                        .with_children(|b| {
+                            spawn_key_figure(b, &fonts.sans, 30.0, (word.to_string(), None));
+                        })
+                        .observe(
+                            move |_press: On<PointerPress>,
+                                  mut input: ResMut<CabinetInput>,
+                                  mut menu: ResMut<GamesMenu>| {
+                                let chosen = menu.pending.take();
+                                if yes {
+                                    input.denom = chosen;
+                                }
                             },
-                            TextColor(Color::srgb(0.9, 0.95, 1.0)),
-                        ));
-                    })
-                    .observe(
-                        move |_press: On<PointerPress>,
-                              mut input: ResMut<CabinetInput>,
-                              mut menu: ResMut<GamesMenu>| {
-                            let chosen = menu.pending.take();
-                            if yes {
-                                input.denom = chosen;
-                            }
-                        },
-                    );
+                        );
                 }
             });
         });
+        // Club: COLLECT stays, moved to the corner (inert, as on the band).
+        if profile == Profile::Club {
+            let (x, y) = CHOOSER_COLLECT;
+            pill(
+                m,
+                fonts,
+                "COLLECT",
+                x,
+                y - top,
+                176.0,
+                42.0,
+                32.0,
+                TabLook::Club,
+            );
+        }
     });
     // Over the splash only a rounded panel holding CREDIT stays (footage:
     // BET, WIN, the tabs and the denomination box give way).
@@ -8580,6 +10591,16 @@ pub fn games_menu(
             Without<ChooserCredit>,
         ),
     >,
+    mut tabs: Query<
+        &mut Visibility,
+        (
+            With<BandTab>,
+            Without<ChooserRoot>,
+            Without<ChooserCredit>,
+            Without<ChooserPanel>,
+            Without<ChooserConfirm>,
+        ),
+    >,
 ) {
     if !fidelity.0 {
         return;
@@ -8600,6 +10621,13 @@ pub fn games_menu(
     for mut v in &mut covers {
         if *v != vis(showing) {
             *v = vis(showing);
+        }
+    }
+    // The band's raised tabs give way to the splash: the chooser shows no
+    // GAMES MENU, and its COLLECT stands in the corner (spawn_games_menu).
+    for mut v in &mut tabs {
+        if *v != vis(!showing) {
+            *v = vis(!showing);
         }
     }
     for mut v in &mut panel {
@@ -8624,7 +10652,8 @@ pub fn games_menu(
         }
     }
     if let Some(cents) = menu.pending {
-        let q = format!("{} GAME\nARE YOU SURE?", denom_text(cents));
+        // "ARE YOU SURE?" is the question's own second span.
+        let q = format!("{} GAME\n", denom_text(cents));
         for mut t in &mut question {
             if t.0 != q {
                 t.0.clone_from(&q);
@@ -8740,6 +10769,16 @@ impl GambleShow {
             history,
             ..default()
         }
+    }
+
+    /// The choice whose screen button shows filled: from the frame its card
+    /// turns face up until the card goes (club cabinets: the fill comes with
+    /// the face, once a frame early; _XHUzg4qDXI 0:07.87 and 1:16.800,
+    /// iHDxUc1dlKs 0:12.433; STRONG), not at the press.
+    pub fn picked(&self) -> Option<GamblePick> {
+        self.card
+            .filter(|(_, _, t)| *t >= GAMBLE_FACE_DELAY)
+            .and(self.last.map(|(p, _)| p))
     }
 
     /// Testing: the gamble autoplay holds the unattended spin while a win can
@@ -9236,10 +11275,15 @@ pub fn spawn_gamble_screen(
             GlobalZIndex(13),
             Visibility::Hidden,
         ));
-        // The prompt takes the status line's place and style.
-        g.spawn((
-            GambleText::Prompt,
-            status_text("", fonts, profile, Justify::Center),
+        // The prompt takes the status line's place and style; on the club
+        // machines the bet line's yellow, spaced wider (see
+        // `GAMBLE_PROMPT_CLUB`).
+        let prompt = spawn_edged_text(
+            g,
+            "",
+            fonts,
+            profile,
+            Justify::Center,
             Node {
                 position_type: PositionType::Absolute,
                 left: Val::Px(STATUS_X - 600.0),
@@ -9247,9 +11291,27 @@ pub fn spawn_gamble_screen(
                 width: Val::Px(1200.0),
                 ..default()
             },
-        ));
+            None,
+            GambleText::Prompt,
+        );
+        if profile == Profile::Club {
+            let (colour, gap) = GAMBLE_PROMPT_CLUB;
+            g.commands()
+                .entity(prompt)
+                .insert((TextColor(colour), LetterSpacing::Px(gap)));
+        }
     });
 }
+
+/// The club gamble prompt's colour and letter spacing: yellow like the bet
+/// line and spaced so "Select a SUIT, RED/BLACK or TAKE WIN" spans about 730
+/// canvas px (club cabinets: a steady yellow, never white, on _XHUzg4qDXI
+/// 1:11.3-1:15.4 spanning x 589-1320, and on LwC3hVqFRMg 18:30-18:33;
+/// VERIFIED per machine). An NSW machine with a video deck (iHDxUc1dlKs
+/// 0:12.43) and the owner's Happy & Prosperous (00:13.53) show it white: a
+/// conflict, recorded in GOLDEN_CENTURY_CABINET_DECK.md.
+const GAMBLE_PROMPT_CLUB: (Color, f32) =
+    (Color::srgb(225.0 / 255.0, 225.0 / 255.0, 80.0 / 255.0), 6.0);
 
 /// A gamble button on the screen: the silver RED / BLACK capsules and the
 /// suit ovals, gold-capped (`cy` is relative to the gamble screen's top).
@@ -9410,7 +11472,7 @@ pub fn gamble_screen(
     };
     // The chosen button fills pale yellow while its card shows; suits not
     // offered show their blank capsule.
-    let chosen = shown.and(gamble.last.map(|(p, _)| p));
+    let chosen = gamble.picked();
     for (b, mut image) in &mut buttons {
         let base = button_art(b.0);
         let want = if !is_colour(b.0) && !suits_open {
@@ -9477,17 +11539,22 @@ pub fn gamble_screen(
 //
 // Cabinet footage of a line win: the line is drawn with the game's own
 // pieces, a numbered badge over the line tab at each end and a short dash in
-// each gap between the reels, at the line's rows; it blinks (on about three
-// quarters of a second in each second), each winning line in turn, and the
-// message at the right reads "Line 1 wins 2".
+// each gap between the reels, at the line's rows; it blinks with its winning
+// symbols in turn (each lit about a third of a second), each winning line
+// for two blinks in turn, and the message at the right reads "Line 1 wins 2".
 
-/// Seconds each winning line shows (real game: 43-45 frames, each line in
-/// turn, round and round until the next game). Within it the line's badges
-/// light twice, and its winning symbols that do not animate blink out twice,
-/// in between (measured frame by frame).
-const WIN_LINE_SECONDS: f32 = 1.45;
-const WIN_LINE_LIT: [(f32, f32); 2] = [(0.0, 0.33), (0.70, 0.93)];
-const WIN_LINE_BLINK: [(f32, f32); 2] = [(0.33, 0.63), (0.97, 1.37)];
+/// Seconds each winning line shows, each line in turn, round and round
+/// until the next game: two even cycles of about 0.66 s, each starting lit.
+/// The line's badges and dashes are lit exactly while its winning symbols
+/// show; the symbols that do not animate blink out exactly while the badges
+/// are off, with no gap and no overlap (club cabinets, frame by frame:
+/// y8c8lEdPW8Y 21.93-24.23 s, cycles of 19-20 frames; CAM8vranI9Y, a
+/// multi-line win, its message moving to the next line every 1.333 s;
+/// STRONG). The official app's lines are uneven, 43-45 frames each with
+/// gaps (VERIFIED for the mobile app only).
+const WIN_LINE_SECONDS: f32 = 1.32;
+const WIN_LINE_LIT: [(f32, f32); 2] = [(0.0, 0.34), (0.66, 0.99)];
+const WIN_LINE_BLINK: [(f32, f32); 2] = [(0.34, 0.66), (0.99, 1.32)];
 
 /// Whether `phase` (seconds into a line's showing) falls in one of `spans`.
 fn in_spans(phase: f32, spans: &[(f32, f32)]) -> bool {
@@ -10055,13 +12122,16 @@ pub fn big_art(
     labels: Query<(&CellLabel, &Text), Without<BigValue>>,
     mut big: Query<(&mut Node, &mut ImageNode, &mut Visibility), With<BigArt>>,
     mut value: Query<&mut Text, With<BigValue>>,
+    gamble: Res<GambleShow>,
 ) {
     if !fidelity.0 {
         return;
     }
+    // Not over the gamble (see `feature_screen`).
     let shown = show
         .big
         .as_ref()
+        .filter(|_| !gamble.active)
         .filter(|(_, first, width)| !(*first..first + width).any(|reel| reels.moving(reel)));
     let image = shown.and_then(|(key, _, _)| art.symbols.get(&format!("big_{key}")));
     for (mut node, mut img, mut vis) in &mut big {
@@ -10189,13 +12259,15 @@ pub fn wild_talls(
     art: Res<ArtPack>,
     stacks: Res<WildStacks>,
     show: Res<FeatureShow>,
+    gamble: Res<GambleShow>,
     mut talls: Query<(&WildTall, &mut Node, &mut ImageNode, &mut Visibility)>,
 ) {
     if !fidelity.0 {
         return;
     }
-    // Not over a Hold & Spin board.
-    if show.hold_and_spin() {
+    // Not over a Hold & Spin board, nor over the gamble (its head stands
+    // above the gamble screen's top; see `feature_screen`).
+    if show.hold_and_spin() || gamble.active {
         for (_, _, _, mut vis) in &mut talls {
             if *vis != Visibility::Hidden {
                 *vis = Visibility::Hidden;
@@ -10279,11 +12351,28 @@ pub fn symbol_fx(
     sim: Res<Sim>,
     art: Res<ArtPack>,
     stacks: Res<WildStacks>,
+    gamble: Res<GambleShow>,
     labels: Query<(&CellLabel, &Text)>,
     mut fx: Query<(&SymbolFx, &mut Node, &mut ImageNode, &mut Visibility), Without<CellImage>>,
     mut images: Query<(&CellImage, &mut Visibility), Without<SymbolFx>>,
 ) {
     if !fidelity.0 {
+        return;
+    }
+    // Over the gamble no symbol shows, still or animated: the tall ones
+    // overhang the gamble screen's top (see `feature_screen`); they come back
+    // with the last line win after a loss.
+    if gamble.active {
+        for (_, _, _, mut vis) in &mut fx {
+            if *vis != Visibility::Hidden {
+                *vis = Visibility::Hidden;
+            }
+        }
+        for (_, mut vis) in &mut images {
+            if *vis != Visibility::Hidden {
+                *vis = Visibility::Hidden;
+            }
+        }
         return;
     }
     // The positions animating now.
@@ -10564,8 +12653,13 @@ const FG_FIRST_SPIN: f32 = 0.52;
 /// The cut: the first free game is played then, and its start is shown one
 /// event interval later, with its reels.
 const FG_CUT: f32 = FG_FIRST_SPIN - TIMING.event_interval;
-/// Seconds per step of the banner's total counting up after the cut.
-const FG_TICK: f32 = 4.0 / 30.0;
+/// Seconds per step of the banner's total counting up after the cut: it
+/// shows "FREE GAME 1 OF 0" for one step, then 1 to the total a step each,
+/// and the status line stays blank until one step after the total (club
+/// cabinets, frame by frame: y8c8lEdPW8Y 950.400-951.567, 1bAevGz0K2k
+/// 329.167-330.333, 5 video frames a step on both; VERIFIED). The official
+/// app counts from 1, 4 frames a step.
+const FG_TICK: f32 = 5.0 / 30.0;
 /// From the WIN plaque going to the next free game, after a Hold & Spin
 /// inside the free games: 0.37-0.43 s on a club cabinet (y8c8lEdPW8Y
 /// 1019.93-1020.37, 2562.93-2563.37, 3046.57-3046.93; VERIFIED, one
@@ -10573,10 +12667,22 @@ const FG_TICK: f32 = 4.0 / 30.0;
 /// the event interval the next free game's start waits.
 const FG_RESUME: f32 = 0.43 - TIMING.event_interval;
 
+/// A free game with no win: the pause before the next one, so that its reels
+/// start 0.5 s after the doors' reveal ends, at the rest + 2.0 s as on club
+/// cabinets (1bAevGz0K2k 333.67-335.63, 346.57-348.57, 359.60-361.60;
+/// y8c8lEdPW8Y 954.90-956.87; STRONG). The game's last event shows as the
+/// reveal ends (its interval runs out under the reveal), and the next
+/// game's start shows an event interval after the pause. With no doors the
+/// next game spins about 0.67 s after the rest (the cabinet's one case
+/// 0.5 s; HYPOTHESIS). The official app waited 0.85 s (about 2.5 s after
+/// its doors opened).
+const FG_NO_WIN_PAUSE: f32 = 0.5 - TIMING.event_interval;
+
 impl FeatureShow {
-    /// Seconds before a feature's next step (real game): a free game starts
-    /// 1.25 s after its win has counted, or, with no win, about 2.5 s after
-    /// its doors opened (0.85 s after the reveal's end); a respin's step 0.5 s.
+    /// Seconds before a feature's next step: a free game starts 1.25 s
+    /// after its win has counted (the official app), or, with no win, 0.5 s
+    /// after its doors' reveal ends (club cabinets, `FG_NO_WIN_PAUSE`); a
+    /// respin's step 0.5 s.
     pub fn step_pause(&self) -> f32 {
         match self.stage {
             // Back from a Hold & Spin inside the free games: the next free
@@ -10585,7 +12691,7 @@ impl FeatureShow {
             Stage::HoldSpinDone if self.fg_return.is_some() => FG_RESUME,
             Stage::FreeGames { .. } if self.resuming => FG_RESUME,
             Stage::FreeGames { .. } if self.game_won => 1.25,
-            Stage::FreeGames { .. } => 0.85,
+            Stage::FreeGames { .. } => FG_NO_WIN_PAUSE,
             _ => 0.5,
         }
     }
@@ -10668,6 +12774,18 @@ impl FeatureShow {
     }
 }
 
+/// The banner's total counting up to `total`, `t` seconds after it began
+/// from 0, having shown `n`: the count-up's state now (none once it is over,
+/// one step after the total) and how many steps it took since.
+fn fg_count_step(n: u32, total: u32, t: f32) -> (Option<(f32, u32)>, u32) {
+    let mut shown = n;
+    while shown < total && t >= (shown + 1) as f32 * FG_TICK {
+        shown += 1;
+    }
+    let next = (shown < total || t < (total + 1) as f32 * FG_TICK).then_some((t, shown));
+    (next, shown - n)
+}
+
 /// Run the free games' trigger sequence and the cut into the free games.
 pub fn free_games_trigger(
     fidelity: Res<Fidelity>,
@@ -10710,14 +12828,13 @@ pub fn free_games_trigger(
             Stage::FreeGames { total, .. } => total,
             _ => 0,
         };
-        let t = t0 + dt;
-        let mut n = n;
-        // One tick a step, just before the banner's digit changes.
-        while n < total && t >= n as f32 * FG_TICK {
-            n += 1;
+        let (next, ticks) = fg_count_step(n, total, t0 + dt);
+        for _ in 0..ticks {
+            // One tick a step, as the banner's digit changes (one a step is
+            // HYPOTHESIS: the cabinet's sound was not measured).
             sounds.play(&mut commands, "SND_Fea_Inc");
         }
-        show.fg_count = if n >= total { None } else { Some((t, n)) };
+        show.fg_count = next;
     }
 }
 
@@ -10733,20 +12850,156 @@ pub fn free_games_trigger(
 #[derive(Component)]
 pub struct BannerBurst;
 
+/// The counter's burst as club cabinets show it: a white to blue-white star
+/// flash with sparks on the digit for about 0.23 s, then a thin ring round
+/// it, gone by about 0.37-0.43 s (VERIFIED, four features on three
+/// recordings at two venues: y8c8lEdPW8Y 970.967-971.30 and 2522.167-
+/// 2522.567, 1bAevGz0K2k 115.867-116.233, f5sMl9a5jds 212.700-213.133), about
+/// 1.9 banner heights across with its sparks (PARTIAL, camera-measured). The
+/// pack has no white flash, so its orange burst is drawn recoloured
+/// blue-white (`BannerBurstFrames`), its visible frames (0-17) at 40 fps, on
+/// a square whose ring (0.81 of the frame) spans about 1.9 banner heights.
+/// The official app's is the orange burst at 30 fps, larger.
+const COUNTER_BURST_FPS: f32 = 40.0;
+const COUNTER_BURST_LAST: usize = 17;
+const COUNTER_BURST_SIZE: f32 = 230.0;
+
+/// The frame of the counter's burst `since` seconds after the 3 showed,
+/// while it shows.
+fn counter_burst_frame(since: f32) -> Option<usize> {
+    let n = (since.max(0.0) * COUNTER_BURST_FPS) as usize;
+    (n <= COUNTER_BURST_LAST).then_some(n)
+}
+
+/// The pack's burst frames recoloured blue-white for the counter's flash,
+/// built once they have loaded (the pack itself is untouched; empty until
+/// then, or when the pack has no burst).
+#[derive(Resource, Default)]
+pub struct BannerBurstFrames(pub Vec<Handle<Image>>);
+
+/// A burst pixel made blue-white: its alpha kept, its colour from pale blue
+/// (200, 215, 255) to white by its brightness.
+fn blue_white(px: [u8; 4]) -> [u8; 4] {
+    let k = f32::from(px[0].max(px[1]).max(px[2])) / 255.0;
+    let lerp = |from: f32| (from + (255.0 - from) * k).round().clamp(0.0, 255.0) as u8;
+    [lerp(200.0), lerp(215.0), 255, px[3]]
+}
+
+/// Prepare the feature art once it has loaded: the counter's blue-white
+/// burst frames (copies), and the Hold & Spin frame without its own row
+/// lines (`clear_row_lines`; ours are drawn thinner and paler).
+pub fn prepare_feature_art(
+    fidelity: Res<Fidelity>,
+    art: Res<ArtPack>,
+    mut images: ResMut<Assets<Image>>,
+    mut flash: ResMut<BannerBurstFrames>,
+    mut frame_done: Local<bool>,
+) {
+    if !fidelity.0 {
+        return;
+    }
+    if flash.0.is_empty()
+        && let Some(src) = art.anims.get("burst")
+        && !src.is_empty()
+        && src.iter().all(|h| images.get(h).is_some())
+    {
+        let copies: Vec<Image> = src
+            .iter()
+            .filter_map(|h| images.get(h).cloned())
+            .map(|mut image| {
+                if image.texture_descriptor.format
+                    == bevy::render::render_resource::TextureFormat::Rgba8UnormSrgb
+                    && let Some(data) = image.data.as_mut()
+                    && data.len() % 4 == 0
+                {
+                    for px in data.as_chunks_mut::<4>().0 {
+                        *px = blue_white(*px);
+                    }
+                }
+                image
+            })
+            .collect();
+        flash.0 = copies.into_iter().map(|i| images.add(i)).collect();
+    }
+    if !*frame_done && let Some(handle) = art.ui.get("hs_frame") {
+        if let Some(image) = images.get(handle)
+            && image.texture_descriptor.format
+                != bevy::render::render_resource::TextureFormat::Rgba8UnormSrgb
+        {
+            *frame_done = true;
+        } else if let Some(mut image) = images.get_mut(handle) {
+            let (w, h) = (image.width() as usize, image.height() as usize);
+            if let Some(data) = image.data.as_mut() {
+                clear_row_lines(data, w, h);
+            }
+            *frame_done = true;
+        }
+    }
+}
+
+/// Clear an RGBA image's inner row lines: rows opaque across most of its
+/// width, away from its top and bottom tenths (its border), with two pixels'
+/// margin for anti-aliasing each side. Where an upright line (a divider or a
+/// side border) runs through, shown by pixels just above and below the
+/// cleared band, its pixels stay. Returns the number of lines cleared.
+fn clear_row_lines(data: &mut [u8], w: usize, h: usize) -> usize {
+    const MARGIN: usize = 2;
+    if w == 0 || h == 0 || data.len() != w.saturating_mul(h).saturating_mul(4) {
+        return 0;
+    }
+    let alpha = |data: &[u8], x: usize, y: usize| data[(y * w + x) * 4 + 3];
+    let line = |data: &[u8], y: usize| {
+        let opaque = (0..w).filter(|&x| alpha(data, x, y) > 128).count();
+        opaque * 10 > w * 6
+    };
+    let mut bands = Vec::new();
+    let mut y = h / 10;
+    while y < h - h / 10 {
+        if line(data, y) {
+            let start = y;
+            while y + 1 < h - h / 10 && line(data, y + 1) {
+                y += 1;
+            }
+            bands.push((start.saturating_sub(MARGIN), (y + MARGIN).min(h - 1)));
+        }
+        y += 1;
+    }
+    for &(top, bottom) in &bands {
+        for x in 0..w {
+            let above = top.checked_sub(1).map_or(0, |y| alpha(data, x, y));
+            let below = if bottom + 1 < h {
+                alpha(data, x, bottom + 1)
+            } else {
+                0
+            };
+            let keep = if above > 0 && below > 0 {
+                above.max(below)
+            } else {
+                0
+            };
+            for y in top..=bottom {
+                let a = &mut data[(y * w + x) * 4 + 3];
+                *a = (*a).min(keep);
+            }
+        }
+    }
+    bands.len()
+}
+
 /// Spawn the banner's burst (hidden).
 pub fn spawn_counter_burst(c: &mut ChildSpawnerCommands) {
     // The banner's counter digit sits near its left end (real game).
     let bw = BANNER_SIZE.0;
-    let (sw, sh) = (1.2 * PITCH.0, 1.4 * PITCH.1);
+    let s = COUNTER_BURST_SIZE;
     let (x, y) = (GRID_CENTER.0 - bw / 2.0 + bw * 0.083, BANNER_Y);
     c.spawn((
         BannerBurst,
         Node {
             position_type: PositionType::Absolute,
-            left: Val::Px(x - sw / 2.0),
-            top: Val::Px(y - sh / 2.0),
-            width: Val::Px(sw),
-            height: Val::Px(sh),
+            left: Val::Px(x - s / 2.0),
+            top: Val::Px(y - s / 2.0),
+            width: Val::Px(s),
+            height: Val::Px(s),
             ..default()
         },
         ImageNode {
@@ -10758,10 +13011,12 @@ pub fn spawn_counter_burst(c: &mut ChildSpawnerCommands) {
     ));
 }
 
-/// Show the banner's burst as the counter reaches 3.
+/// Show the banner's burst as the counter reaches 3: the blue-white flash
+/// (the pack's orange burst until its copies are made).
 pub fn counter_burst(
     fidelity: Res<Fidelity>,
     art: Res<ArtPack>,
+    flash: Res<BannerBurstFrames>,
     show: Res<FeatureShow>,
     mut burst: Query<(&mut ImageNode, &mut Visibility), With<BannerBurst>>,
 ) {
@@ -10769,8 +13024,12 @@ pub fn counter_burst(
         return;
     }
     let f = show.banner_burst.and_then(|s| {
-        let frames = art.anims.get("burst")?;
-        let n = ((show.clock - s).max(0.0) * ANIM_FPS) as usize;
+        let n = counter_burst_frame(show.clock - s)?;
+        let frames = if flash.0.is_empty() {
+            art.anims.get("burst")?
+        } else {
+            &flash.0
+        };
         frames.get(n).cloned()
     });
     for (mut image, mut vis) in &mut burst {
@@ -11040,7 +13299,7 @@ mod tests {
                 "$15,000.00",
                 "$150,000.00",
             ] {
-                let size = jackpot_value_size(text, width);
+                let size = jackpot_value_size(text, width, JACKPOT_VALUE_SIZE);
                 assert!(size <= JACKPOT_VALUE_SIZE);
                 assert!(
                     meter_ems(text) * size <= width * JACKPOT_VALUE_FILL + 0.01,
@@ -11050,16 +13309,16 @@ mod tests {
         }
         // A value too wide for its box is set smaller, to fit.
         let mini = (1209.0 - 975.0) * k;
-        let size = jackpot_value_size("$1,234,567.89", mini);
+        let size = jackpot_value_size("$1,234,567.89", mini, JACKPOT_VALUE_SIZE);
         assert!(size < JACKPOT_VALUE_SIZE);
         assert!(meter_ems("$1,234,567.89") * size <= mini * JACKPOT_VALUE_FILL + 0.01);
         // The values the bar shows today keep the full size.
         assert_eq!(
-            jackpot_value_size("$250.00", (1209.0 - 975.0) * k),
+            jackpot_value_size("$250.00", (1209.0 - 975.0) * k, JACKPOT_VALUE_SIZE),
             JACKPOT_VALUE_SIZE
         );
         assert_eq!(
-            jackpot_value_size("$15,000.00", (351.0 - 14.0) * k),
+            jackpot_value_size("$15,000.00", (351.0 - 14.0) * k, JACKPOT_VALUE_SIZE),
             JACKPOT_VALUE_SIZE
         );
     }
@@ -11136,6 +13395,247 @@ mod tests {
         // No change pending: the bet itself.
         assert_eq!(bet_meter(None, true, 50, 2), "50");
         assert_eq!(bet_meter(None, false, 50, 2), "$1.00");
+    }
+
+    /// A club deck at 1c, 1 credit a line on 10 lines (credits keys 1, 2, 3,
+    /// 5, 10; lines keys 1, 5, 10, 30, 50).
+    fn club_look(mode: DeckMode) -> DeckLook {
+        DeckLook {
+            deck: DeckState {
+                mode,
+                profile: Profile::Club,
+                cents: 1,
+                ..Default::default()
+            },
+            idle: true,
+            suits_open: true,
+            lines: 10,
+            bet: 1,
+            ..Default::default()
+        }
+    }
+
+    fn key(row: u8, col: u8) -> CabButton {
+        CabButton::Slot { row, col }
+    }
+
+    /// Club footage: GOOD LUCK on every Hold & Spin respin, the teardrop
+    /// keeping SPIN on its dark face.
+    #[test]
+    fn a_hold_and_spin_respin_spins_the_deck() {
+        assert_eq!(deck_mode(false, false, false, true), DeckMode::Spinning);
+        assert_eq!(deck_mode(false, false, true, false), DeckMode::Spinning);
+        assert_eq!(deck_mode(false, false, false, false), DeckMode::Base);
+        assert_eq!(deck_mode(false, true, false, true), DeckMode::Gamble);
+        assert_eq!(deck_mode(true, false, true, false), DeckMode::Menu);
+        let mut look = club_look(DeckMode::Spinning);
+        look.hold_and_spin = true;
+        look.deck.since = 0.6;
+        assert_eq!(look.shown(key(0, 1)), Role::Letter('G'));
+        assert_eq!(look.shown(key(1, 4)), Role::Letter('K'));
+        assert_eq!(look.words(CabButton::Spin)[0].0, "SPIN");
+        assert_eq!(look.face(CabButton::Spin), "spin_dim");
+    }
+
+    /// Club footage, four wipes: GAMBLE and TAKE WIN go dark first; every
+    /// other key keeps its idle face and legend until its letter arrives, a
+    /// letter every 0.1 s, the bottom row a frame behind, the right column
+    /// dark 0.1 s after the D.
+    #[test]
+    fn good_luck_wipes_in_over_the_idle_faces() {
+        let mut look = club_look(DeckMode::Spinning);
+        look.deck.since = 0.0;
+        assert_eq!(look.shown(key(0, 0)), Role::Off);
+        assert_eq!(look.shown(key(1, 0)), Role::Off);
+        assert_eq!(look.shown(key(0, 1)), Role::Credits(1));
+        assert_eq!(look.face(key(0, 1)), "key_pale");
+        assert_eq!(look.shown(key(1, 3)), Role::Lines(10));
+        assert!(!look.words(key(1, 3)).is_empty());
+        look.deck.since = 0.105;
+        assert_eq!(look.shown(key(0, 1)), Role::Letter('G'));
+        assert_eq!(look.face(key(0, 1)), "key_dark");
+        assert_eq!(look.shown(key(1, 1)), Role::Lines(1));
+        assert_eq!(look.shown(key(0, 2)), Role::Credits(2));
+        look.deck.since = 0.14;
+        assert_eq!(look.shown(key(1, 1)), Role::Letter('L'));
+        look.deck.since = 0.41;
+        assert_eq!(look.shown(key(0, 4)), Role::Letter('D'));
+        assert_eq!(look.shown(key(0, 5)), Role::Credits(10));
+        look.deck.since = 0.51;
+        assert_eq!(look.shown(key(0, 5)), Role::Off);
+        assert_eq!(look.shown(key(1, 5)), Role::Lines(50));
+        look.deck.since = 0.54;
+        assert_eq!(look.shown(key(1, 5)), Role::Off);
+    }
+
+    /// Club footage, two stops: the idle faces come back from the left, a
+    /// column every 0.08 s, on the mode's own clock (the offer does not
+    /// restart it).
+    #[test]
+    fn the_idle_faces_wipe_back_from_the_left_as_the_reels_stop() {
+        let mut look = club_look(DeckMode::Base);
+        look.deck.prev = DeckMode::Spinning;
+        look.deck.mode_t = 0.0;
+        assert_eq!(look.shown(key(0, 0)), Role::Gamble);
+        assert_eq!(look.shown(key(0, 1)), Role::Letter('G'));
+        assert_eq!(look.shown(key(1, 5)), Role::Off);
+        look.deck.mode_t = 0.17;
+        assert_eq!(look.shown(key(0, 2)), Role::Credits(2));
+        assert_eq!(look.shown(key(1, 3)), Role::Letter('C'));
+        look.deck.offer = true;
+        look.deck.since = 0.0;
+        assert_eq!(look.shown(key(1, 3)), Role::Letter('C'));
+        look.deck.mode_t = 0.41;
+        assert_eq!(look.shown(key(1, 3)), Role::Lines(10));
+        assert_eq!(look.shown(key(1, 5)), Role::Lines(50));
+        // After the gamble or the menu nothing wipes.
+        look.deck.prev = DeckMode::Gamble;
+        look.deck.mode_t = 0.0;
+        assert_eq!(look.shown(key(1, 3)), Role::Lines(10));
+    }
+
+    /// Club footage: a dark smoky teardrop with a pale-blue legend at rest
+    /// and while the reels spin, lit steadily for START FEATURE with the
+    /// legend turning like a coin; the casino's deck B blinks.
+    #[test]
+    fn the_teardrop_is_dark_but_for_start_feature() {
+        let mut look = club_look(DeckMode::Base);
+        assert_eq!(look.face(CabButton::Spin), "spin_dim");
+        assert_eq!(look.words(CabButton::Spin)[0].0, "PLAY");
+        let pale = look.ink(CabButton::Spin).to_srgba();
+        assert!(pale.blue > 0.9 && pale.red < 0.6);
+        look.deck.mode = DeckMode::Spinning;
+        assert_eq!(look.face(CabButton::Spin), "spin_dim");
+        look.deck.mode = DeckMode::Base;
+        look.start_wait = true;
+        for wait in [0.1, 0.7, 1.6, 2.3] {
+            look.deck.wait_t = wait;
+            assert_eq!(look.face(CabButton::Spin), "spin_lit", "at {wait} s");
+        }
+        assert_eq!(look.ink(CabButton::Spin), Color::WHITE);
+        assert_eq!(look.words(CabButton::Spin)[0].0, "START");
+        look.deck.wait_t = 0.5;
+        assert_eq!(look.legend_turn(), 1.0);
+        look.deck.wait_t = 1.13;
+        assert!(look.legend_turn() < 0.05);
+        look.deck.wait_t = 1.27;
+        assert!(look.legend_turn() > 0.9);
+        look.deck.profile = Profile::Casino;
+        look.deck.wait_t = 0.2;
+        assert_eq!(look.face(CabButton::Spin), "spin_lit");
+        look.deck.wait_t = 0.7;
+        assert_eq!(look.face(CabButton::Spin), "spin_dim");
+        look.deck.wait_t = 1.13;
+        assert_eq!(look.legend_turn(), 1.0);
+        // The legend sits on the ring, 0.55 of the way down (cabinet
+        // 0.52-0.57 from the apex).
+        assert!((0.52..=0.57).contains(&((1.0 + TEARDROP_LEGEND_PAD) / 2.0)));
+    }
+
+    /// Club footage: every key lit at full brightness; GAMBLE purple and
+    /// TAKE WIN pale khaki with blue letters with no gamble offered; the
+    /// selected lines key light blue with white ink, the selected credits key
+    /// pale with a pink-red numeral, unoffered credits keys lit orange.
+    #[test]
+    fn every_key_is_lit_with_the_cabinets_faces() {
+        let look = club_look(DeckMode::Base);
+        let pack = |k: &str| {
+            matches!(
+                k,
+                "key_white" | "key_blue" | "key_red" | "key_purple" | "key_dark" | "card_back"
+            )
+        };
+        assert!(!look.deck.offer);
+        assert_eq!(
+            resolve_face(look.face(key(0, 0)), pack),
+            ("key_purple", Color::WHITE)
+        );
+        let (image, tint) = resolve_face(look.face(key(1, 0)), pack);
+        assert_eq!(image, "key_white");
+        let khaki = tint.to_srgba();
+        assert!(khaki.red > khaki.green && khaki.green > khaki.blue && khaki.blue > 0.5);
+        let ink = look.ink(key(1, 0)).to_srgba();
+        assert!(ink.blue > 0.9 && ink.red < 0.3);
+        assert_eq!(look.face(key(1, 3)), "key_lightblue");
+        assert_eq!(look.ink(key(1, 3)), Color::WHITE);
+        let (image, tint) = resolve_face("key_lightblue", pack);
+        assert_eq!(image, "key_white");
+        assert!(tint.to_srgba().red < 0.7);
+        assert_eq!(
+            resolve_face("key_lightblue", |_| true),
+            ("key_lightblue", Color::WHITE)
+        );
+        assert_eq!(look.face(key(0, 1)), "key_pale");
+        let numeral = look.ink(key(0, 1)).to_srgba();
+        assert!(numeral.red > 0.8 && numeral.green < 0.4);
+        assert_eq!(look.face(key(0, 2)), "key_red");
+        assert!(look.ink(key(0, 2)).to_srgba().blue > 0.9);
+        let mut dollar = look;
+        dollar.deck.cents = 100;
+        assert_eq!(dollar.shown(key(0, 5)), Role::Blank);
+        assert_eq!(
+            resolve_face(dollar.face(key(0, 5)), pack),
+            ("key_red", Color::WHITE)
+        );
+        assert!(dollar.words(key(0, 5)).is_empty());
+    }
+
+    /// Club footage: on the flash's plain half the pressable keys turn light
+    /// blue (the gamble's red choices lavender) with faint legends; on the
+    /// vivid half the gamble's red choices are orange and the black ones
+    /// dark, light-blue icons on both; a chosen key is steady light blue;
+    /// suits past the limit stay dark and still.
+    #[test]
+    fn the_flash_shows_light_blue_faces_with_faint_legends() {
+        let mut look = club_look(DeckMode::Base);
+        look.deck.offer = true;
+        look.deck.since = 0.2;
+        assert_eq!(look.face(key(1, 2)), "key_blue");
+        look.deck.since = 0.7;
+        assert_eq!(look.face(key(1, 2)), "key_lightblue");
+        assert_eq!(look.face(key(0, 0)), "key_lightblue");
+        assert_eq!(look.face(key(1, 0)), "key_lightblue");
+        assert!(!look.words(key(1, 2)).is_empty());
+        assert!((look.ink(key(1, 2)).alpha() - PLAIN_LEGEND_ALPHA).abs() < 1e-6);
+        assert_eq!(look.face(key(0, 3)), "key_red");
+        let mut g = club_look(DeckMode::Gamble);
+        let (hearts, clubs, black) = (key(0, 1), key(0, 4), key(1, 5));
+        g.deck.since = 0.2;
+        assert_eq!(g.face(hearts), "key_red");
+        assert_eq!(g.face(clubs), "key_dark");
+        assert_eq!(g.face(black), "key_dark");
+        let icon = g.ink(clubs).to_srgba();
+        assert!(icon.blue > 0.9 && icon.red > 0.5);
+        g.deck.since = 0.7;
+        assert_eq!(g.face(hearts), "key_lavender");
+        assert_eq!(g.face(clubs), "key_lightblue");
+        assert_eq!(g.face(key(0, 3)), "key_lattice");
+        g.chosen = Some(GamblePick::Clubs);
+        assert_eq!(g.face(clubs), "key_lightblue");
+        assert_eq!(g.face(hearts), "key_red");
+        g.chosen = None;
+        g.suits_open = false;
+        assert_eq!(g.face(hearts), "key_dark");
+        assert!(g.words(hearts).is_empty());
+        assert_eq!(g.face(key(1, 1)), "key_lavender");
+        // A pack without the lattice key shows the card back.
+        assert_eq!(
+            resolve_face("key_lattice", |k| k == "card_back"),
+            ("card_back", Color::WHITE)
+        );
+    }
+
+    /// Cabinet footage: keys about a tenth of a key apart, the teardrop
+    /// about 1.7 keys wide a quarter of a key clear of them.
+    #[test]
+    fn the_deck_keys_and_teardrop_are_spaced_as_on_the_cabinet() {
+        let (kw, _, gx, _) = DECK_KEY;
+        assert!((0.09..=0.14).contains(&(gx / kw)));
+        let shown = TEARDROP_VISIBLE * DECK_TEARDROP.0 / kw;
+        assert!((1.6..=1.75).contains(&shown));
+        assert!((0.2..=0.4).contains(&TEARDROP_GAP));
+        // Its node starts right of the keys.
+        assert!(TEARDROP_GAP * kw >= TEARDROP_INSET * DECK_TEARDROP.0);
     }
 
     /// Step a system message `secs` seconds in frames of 0.05 s.
@@ -11598,12 +14098,15 @@ mod tests {
             full_grid: false,
         });
         assert!(!show.winner_showing());
+        assert_eq!(show.caption().as_deref(), Some("Free Spins Completed"));
         show.completed_wait = None;
-        show.pay_base = 1_000;
-        show.collect = Some(Collect {
-            coins: vec![(0, 0, 60, false, None), (1, 1, 40, false, None)],
-            ..default()
-        });
+        // The box shows from the collection's first frame, empty.
+        show.begin_collect(
+            vec![(0, 0, 60, false, None), (1, 1, 40, false, None)],
+            1_000,
+        );
+        assert!(show.winner_showing());
+        assert_eq!(show.winner_amount(), None);
         let dt = 1.0 / 60.0;
         let mut t = 0.0;
         let mut first_value = None;
@@ -11620,8 +14123,9 @@ mod tests {
             // are collected.
             assert_eq!(show.pay_banner(), None);
             assert_eq!(show.grand_win(), None);
-            // The box arrives 0.1 s in, empty until the first value.
-            assert_eq!(show.winner_showing(), t >= COLLECT_BANNER, "{t}");
+            // The box stays, empty until the first value.
+            assert!(show.winner_showing(), "{t}");
+            assert_eq!(show.caption().as_deref(), Some("Free Spins Completed"));
             if show.winner_amount().is_some() && first_value.is_none() {
                 first_value = Some(t);
                 assert!(show.splash_at.is_some(), "a splash with each value");
@@ -11630,9 +14134,11 @@ mod tests {
             assert!(show.flares_at.is_none());
             assert!(t < 10.0);
         };
-        // The first value 0.4 s after the box plus the comet's 0.6 s.
+        // The first value 0.38 s after the box plus the comet's 0.67 s (club
+        // cabinets: 1.03-1.13 s).
         let first = first_value.unwrap_or_default();
-        assert!((first - 1.1).abs() < 0.03, "{first}");
+        assert!((first - 1.05).abs() < 0.03, "{first}");
+        assert!((1.03..=1.13).contains(&(COLLECT_FIRST + BOLT_FLIGHT)));
         assert_eq!(total, 100);
         assert_eq!(sounds, ["SND_Small_5", "SND_Small_5"]);
         // The count: the banner from nothing in step with WIN; the box keeps
@@ -11645,6 +14151,7 @@ mod tests {
         assert!(show.winner_showing());
         assert_eq!(show.pay_banner(), Some(0));
         assert_eq!(show.grand_win(), Some(1_000));
+        assert_eq!(show.caption().as_deref(), Some("Free Spins Completed"));
         if let Some(p) = show.pay.as_mut() {
             p.t = 2.5;
         }
@@ -11662,6 +14169,8 @@ mod tests {
         show.hold_winner(total);
         assert_eq!(show.winner, None);
         assert_eq!(show.collected, Some(total));
+        // The base game's bet line returns after the count.
+        assert_eq!(show.caption(), None);
         assert_eq!(show.pay_banner(), Some(100));
         assert_eq!(show.grand_win(), Some(1_100));
         assert!(show.winner_showing());
@@ -11712,6 +14221,214 @@ mod tests {
         );
     }
 
+    /// Each comet reaches the box as its value lands: its animation's frames
+    /// up to its arrival stretched over the flight, the rest at 30 fps (club
+    /// cabinets: flare to value 0.57-0.73 s, the first flare 0.33-0.43 s after
+    /// the box).
+    #[test]
+    fn each_comet_lands_with_its_value() {
+        assert!((0.33..=0.43).contains(&COLLECT_FIRST));
+        assert!((0.57..=0.73).contains(&BOLT_FLIGHT));
+        assert!((1.33..=1.37).contains(&COLLECT_STEP));
+        for (k, &arrive) in BOLT_ARRIVE.iter().enumerate() {
+            let arrive = arrive as usize;
+            assert_eq!(bolt_frame(k, 0.0), 0);
+            assert_eq!(bolt_frame(k, -0.1), 0);
+            assert!(bolt_frame(k, BOLT_FLIGHT - 0.01) < arrive, "bolt{k}");
+            assert_eq!(bolt_frame(k, BOLT_FLIGHT + 0.001), arrive, "bolt{k}");
+            // After the arrival, one frame each 30th of a second.
+            assert_eq!(bolt_frame(k, BOLT_FLIGHT + 0.25), arrive + 7, "bolt{k}");
+        }
+        // An unknown animation falls back to 30 fps.
+        assert_eq!(bolt_frame(9, 0.5), 15);
+    }
+
+    /// The first respin starts by itself 0.59 s after the counter's 3 (club
+    /// cabinets 0.55-0.63 s, four features): the count holds the 3 that
+    /// long (blocking what follows), and the respin the press played shows
+    /// as it ends.
+    #[test]
+    fn the_first_respin_follows_the_count_in_0_59_s() {
+        let mut show = FeatureShow::default();
+        show.on_event(&Event::HoldAndSpinStarted {
+            respins: 3,
+            locked: Vec::new(),
+        });
+        show.intro = None;
+        show.started = true;
+        show.count_up = Some(0.0);
+        let dt = 1.0 / 60.0;
+        let (mut ticks, mut three, mut end) = (0, None, None);
+        for _ in 0..240 {
+            show.clock += dt;
+            ticks += show.advance_count_up(dt);
+            if show.counter == 3 && three.is_none() {
+                three = Some(show.clock);
+                assert_eq!(show.banner_burst, Some(show.clock), "the burst on the 3");
+            }
+            if show.count_up.is_none() {
+                end = Some(show.clock);
+                break;
+            }
+            assert!(show.blocks());
+        }
+        assert_eq!(ticks, 3);
+        let (three, end) = (three.unwrap_or_default(), end.unwrap_or_default());
+        assert!(
+            (three - (COUNT_FIRST + 2.0 * COUNT_STEP)).abs() < dt,
+            "{three}"
+        );
+        assert!((0.55..=0.63).contains(&(end - three)), "{}", end - three);
+        assert!(!show.blocks());
+    }
+
+    /// The status line through a base game's Hold & Spin: blank through the
+    /// intro, the prompt from its start through the count-up until the
+    /// first respin, blank while a respin runs, "Press SPIN button" between,
+    /// "Free Spins Completed" from the end through the count, then the bet
+    /// line (club cabinets: 1bAevGz0K2k 107.6-165.5, f5sMl9a5jds 204-282.6).
+    #[test]
+    fn the_status_line_follows_a_hold_and_spin() {
+        let press = Some("Press START FEATURE button".to_string());
+        let blank = Some(String::new());
+        let mut show = FeatureShow::default();
+        assert_eq!(show.caption(), None, "the bet line while the reels spin");
+        show.on_event(&Event::HoldAndSpinStarted {
+            respins: 3,
+            locked: Vec::new(),
+        });
+        assert_eq!(show.caption(), blank, "the intro");
+        show.intro = None;
+        show.grid = true;
+        show.wait_for(Await::Start(Feature::HoldAndSpin));
+        assert_eq!(show.caption(), press);
+        // The press: the counter counts up under the same line.
+        show.awaiting = None;
+        show.started = true;
+        show.count_up = Some(0.0);
+        assert_eq!(show.caption(), press);
+        show.count_up = None;
+        assert_eq!(show.caption(), press, "until the first respin");
+        // The first respin starts: blank while it runs.
+        show.on_event(&Event::HoldAndSpinRespin {
+            respin: 1,
+            landed: Vec::new(),
+            respins_left: 2,
+            locked_total: 6,
+        });
+        show.respin_landed = None;
+        show.respin = Some(RespinAnim::default());
+        assert_eq!(show.caption(), blank);
+        show.respin = None;
+        assert_eq!(show.caption().as_deref(), Some("Press SPIN button"));
+        // The last respin, then the end.
+        show.awaiting = None;
+        show.stage = Stage::HoldSpin { respins_left: 0 };
+        show.respin = Some(RespinAnim::default());
+        assert_eq!(show.caption(), blank);
+        show.respin = None;
+        show.on_event(&Event::HoldAndSpinCompleted {
+            total_award: 100,
+            full_grid: false,
+        });
+        assert_eq!(show.caption().as_deref(), Some("Free Spins Completed"));
+        // Inside the free games the free game shows from the press on, the
+        // end still "Free Spins Completed", and the free game after it.
+        let game = Some("Free Game 3 of 6".to_string());
+        let mut show = FeatureShow::default();
+        show.on_event(&Event::FreeGameStarted {
+            number: 3,
+            remaining: 3,
+        });
+        show.on_event(&Event::HoldAndSpinStarted {
+            respins: 3,
+            locked: Vec::new(),
+        });
+        assert_eq!(show.caption(), game, "the intro");
+        show.intro = None;
+        show.grid = true;
+        show.wait_for(Await::Start(Feature::HoldAndSpin));
+        assert_eq!(show.caption(), press);
+        show.awaiting = None;
+        show.started = true;
+        show.count_up = Some(0.0);
+        assert_eq!(show.caption(), game, "the count-up");
+        show.count_up = None;
+        show.respin = Some(RespinAnim::default());
+        assert_eq!(show.caption(), game, "a respin");
+        show.respin = None;
+        show.on_event(&Event::HoldAndSpinCompleted {
+            total_award: 100,
+            full_grid: false,
+        });
+        assert_eq!(show.caption().as_deref(), Some("Free Spins Completed"));
+        show.completed_wait = None;
+        show.collected = Some(100);
+        assert_eq!(show.caption(), game, "after the count");
+    }
+
+    /// The counter's burst is a blue-white flash of the pack's burst frames
+    /// 0-17 at 40 fps (gone after about 0.45 s; club cabinets 0.37-0.43 s),
+    /// on a square about 1.9 banner heights across its ring.
+    #[test]
+    fn the_counter_burst_is_a_short_blue_white_flash() {
+        assert_eq!(counter_burst_frame(0.0), Some(0));
+        assert_eq!(counter_burst_frame(0.2), Some(8));
+        assert_eq!(counter_burst_frame(0.44), Some(17));
+        assert_eq!(counter_burst_frame(0.46), None);
+        let ring = COUNTER_BURST_SIZE * 0.81 / BANNER_SIZE.1;
+        assert!((1.8..=2.1).contains(&ring), "{ring}");
+        // The burst's orange becomes near white; its alpha is kept; a dark
+        // pixel pale blue.
+        let [r, g, b, a] = blue_white([249, 100, 35, 77]);
+        assert!(r >= 250 && g >= 250 && b == 255 && a == 77, "{r} {g} {b}");
+        assert_eq!(blue_white([0, 0, 0, 255]), [200, 215, 255, 255]);
+        assert_eq!(blue_white([10, 255, 0, 0]), [255, 255, 255, 0]);
+    }
+
+    /// The pack frame's own row lines are cleared, anti-aliasing included,
+    /// leaving its border and the dividers that cross them.
+    #[test]
+    fn the_hold_and_spin_frame_loses_its_row_lines() {
+        let (w, h) = (40usize, 30usize);
+        let mut data = vec![0u8; w * h * 4];
+        let mut put = |x: usize, y: usize, a: u8| data[(y * w + x) * 4 + 3] = a;
+        for x in 0..w {
+            // The border, top and bottom, and a row line with soft edges.
+            for y in [0, 1, 28, 29] {
+                put(x, y, 255);
+            }
+            put(x, 13, 60);
+            put(x, 14, 255);
+            put(x, 15, 255);
+            put(x, 16, 40);
+        }
+        for y in 0..h {
+            // The side borders and a divider.
+            for x in [0, 1, 19, 20, 38, 39] {
+                put(x, y, 255);
+            }
+        }
+        let alpha = |data: &[u8], x: usize, y: usize| data[(y * w + x) * 4 + 3];
+        assert_eq!(clear_row_lines(&mut data, w, h), 1);
+        for y in 12..=17 {
+            for x in [2, 10, 18, 21, 37] {
+                assert_eq!(alpha(&data, x, y), 0, "{x},{y}");
+            }
+            for x in [0, 1, 19, 20, 38, 39] {
+                assert_eq!(alpha(&data, x, y), 255, "{x},{y}");
+            }
+        }
+        // The border rows stay; a second pass finds nothing.
+        assert_eq!(alpha(&data, 10, 0), 255);
+        assert_eq!(alpha(&data, 10, 29), 255);
+        assert_eq!(clear_row_lines(&mut data, w, h), 0);
+        // A buffer of the wrong size is left alone.
+        assert_eq!(clear_row_lines(&mut data, w + 1, h), 0);
+        // Our row lines sit on the grid's row boundaries, thin.
+        const { assert!(HS_ROW_LINE_H <= 3.0) };
+    }
+
     /// START FEATURE to the first free game: the flags go still at the press,
     /// nothing moves and nothing shows until the first free game's reels
     /// start 0.52 s after it, with its banner, its total counting up and the
@@ -11753,8 +14470,226 @@ mod tests {
         assert_eq!(show.banner_key(None).as_deref(), Some("banner_free_game"));
         assert_eq!(
             show.counter_numbers(None),
-            Some(["1".to_string(), "1".to_string()])
+            Some(["1".to_string(), "0".to_string()])
         );
+    }
+
+    /// The first free game's banner counts its total up from "1 OF 0", one
+    /// step every 5 video frames, and the status line stays blank until one
+    /// step after the total (club cabinets, frame by frame: y8c8lEdPW8Y
+    /// 950.400-951.567, 1bAevGz0K2k 329.167-330.333).
+    #[test]
+    fn the_free_games_counter_counts_from_nought_and_the_status_waits() {
+        let mut show = FeatureShow::default();
+        show.on_event(&Event::FreeGameStarted {
+            number: 1,
+            remaining: 5,
+        });
+        assert_eq!(show.fg_count, Some((0.0, 0)));
+        let numbers = |show: &FeatureShow| show.counter_numbers(None).map(|[_, of]| of);
+        assert_eq!(numbers(&show).as_deref(), Some("0"));
+        assert_eq!(show.caption().as_deref(), Some(""));
+        let mut ticks = 0;
+        let mut at = |show: &mut FeatureShow, t: f32| {
+            let n = show.fg_count.map_or(6, |(_, n)| n);
+            let (next, steps) = fg_count_step(n, 6, t);
+            show.fg_count = next;
+            ticks += steps;
+        };
+        // "1 OF 0" for one step (0.167 s), then a step each 0.167 s.
+        for (t, want) in [
+            (0.15, "0"),
+            (0.17, "1"),
+            (0.34, "2"),
+            (0.99, "5"),
+            (1.01, "6"),
+        ] {
+            at(&mut show, t);
+            assert_eq!(numbers(&show).as_deref(), Some(want), "at {t} s");
+            assert_eq!(show.caption().as_deref(), Some(""), "status at {t} s");
+        }
+        // One step after the total the status shows the free game.
+        at(&mut show, 1.16);
+        assert!(show.fg_count.is_some());
+        assert_eq!(show.caption().as_deref(), Some(""));
+        at(&mut show, 1.17);
+        assert_eq!(show.fg_count, None);
+        assert_eq!(show.caption().as_deref(), Some("Free Game 1 of 6"));
+        assert_eq!(numbers(&show).as_deref(), Some("6"));
+        // One tick a step (HYPOTHESIS).
+        assert_eq!(ticks, 6);
+        assert!((FG_TICK - 5.0 / 30.0).abs() < 1e-6);
+    }
+
+    /// A free game's WIN banner never shows the last game's amount: as a
+    /// game starts the last count is settled, so nothing is counting until
+    /// this game's win arrives, which counts from what WIN shows (our
+    /// recording showed "WIN $1.00 WIN" for 4 frames; club cabinets never).
+    #[test]
+    fn a_free_game_starts_with_the_last_count_settled() {
+        let mut rollup = Rollup {
+            from: 100,
+            to: 2_000,
+            t: 2.0,
+            duration: 2.0,
+            seen: 2_000,
+            after: 0.5,
+            ..Rollup::default()
+        };
+        let mut show = FeatureShow::default();
+        show.on_event(&Event::FreeGameStarted {
+            number: 3,
+            remaining: 3,
+        });
+        // This game's lines are presented an event interval before its
+        // credit: the banner must not show the last game's 1,900.
+        show.on_event(&Event::LineWin {
+            line: 4,
+            count: 3,
+            symbol: "J".into(),
+            award: 60,
+        });
+        assert_eq!(banner_win(&show, &rollup, 50), Some(1_900), "unsettled");
+        rollup.settle();
+        assert_eq!(rollup.win(), 0);
+        assert_eq!(rollup.shown(), 2_000, "WIN keeps what it shows");
+        assert!(!rollup.active());
+        assert_eq!(banner_win(&show, &rollup, 50), None);
+        assert_eq!(show.banner_key(None).as_deref(), Some("banner_free_game"));
+        // The credit arrives: the count runs from what WIN shows (as
+        // `win_rollup` takes it) to the new total, this game's win alone.
+        let from = rollup.shown();
+        assert_eq!(from, 2_000);
+        rollup.from = from;
+        rollup.to = 2_060;
+        assert_eq!(rollup.win(), 60);
+    }
+
+    /// FEATURE COMPLETED waits for the last free game's count, and while the
+    /// free games' last events are queued CREDIT still holds their total
+    /// off and the status reads "Feature Completed" (club cabinets:
+    /// y8c8lEdPW8Y 1044.233-1044.300, 1bAevGz0K2k 367.567).
+    #[test]
+    fn feature_completed_follows_the_last_count() {
+        let completed = Event::FreeGamesCompleted {
+            games_played: 6,
+            total_award: 900,
+        };
+        let playing = FeatureShow {
+            stage: Stage::FreeGames {
+                number: 6,
+                total: 6,
+            },
+            ..FeatureShow::default()
+        };
+        assert!(playing.waits_for_count(Some(&completed)));
+        let mut done = FeatureShow::default();
+        done.on_event(&completed);
+        assert_eq!(done.stage, Stage::FreeGamesDone);
+        let mut presentation = Presentation::default();
+        presentation.queue.push_back((
+            TIMING.event_interval,
+            Event::SpinCompleted {
+                spin: 1,
+                total_award: 900,
+            },
+        ));
+        assert!(fg_end_queued(&presentation, &done));
+        assert!(!fg_end_queued(&presentation, &playing));
+        presentation.queue.clear();
+        assert!(!fg_end_queued(&presentation, &done), "then the offer");
+    }
+
+    /// The doors open 0.30 s after the reels rest, their 42 frames over a
+    /// second, the wins at the rest + 1.5 s; with no win the next free game
+    /// spins at the rest + 2.0 s (club cabinets: 1bAevGz0K2k, y8c8lEdPW8Y).
+    #[test]
+    fn the_doors_and_the_no_win_pace_follow_the_cabinet() {
+        assert!((REVEAL_AFTER_REST - 0.30).abs() < 1e-6);
+        assert!((REVEAL_AFTER_REST + 42.0 / REVEAL_FPS - 1.30).abs() < 1e-6);
+        // The doors' motion (frames 1-29) is over by the rest + 0.99 s.
+        assert!((REVEAL_AFTER_REST + 29.0 / REVEAL_FPS - 0.99).abs() < 0.01);
+        let wins_at = REVEAL_AFTER_REST + REVEAL_OPEN + REVEAL_WINS;
+        assert!((wins_at - 1.5).abs() < 1e-6);
+        let no_win = FeatureShow {
+            stage: Stage::FreeGames {
+                number: 2,
+                total: 6,
+            },
+            ..FeatureShow::default()
+        };
+        // The game's last event shows as the reveal ends; the pause; the
+        // next game's start an event interval later, with its reels.
+        let next_spin = wins_at + no_win.step_pause() + TIMING.event_interval;
+        assert!((next_spin - 2.0).abs() < 1e-6, "{next_spin}");
+        let won = FeatureShow {
+            game_won: true,
+            ..no_win
+        };
+        assert!((won.step_pause() - 1.25).abs() < 1e-6);
+        // Golden Gong's monk keeps its own (unmeasured) delay.
+        const { assert!(EXPAND_AFTER_REST < REVEAL_AFTER_REST) };
+    }
+
+    /// The winning line's badges and symbols take turns in two even cycles
+    /// of about 0.66 s, lit first, with no gap and no overlap (club
+    /// cabinets: y8c8lEdPW8Y 21.93-24.23 s, CAM8vranI9Y).
+    #[test]
+    fn a_winning_line_blinks_in_two_even_cycles() {
+        let mut t = 0.0;
+        let mut lit_frames = 0;
+        while t < WIN_LINE_SECONDS {
+            let lit = in_spans(t, &WIN_LINE_LIT);
+            let blink = in_spans(t, &WIN_LINE_BLINK);
+            assert!(lit != blink, "exactly one of lit and blanked at {t}");
+            if lit {
+                lit_frames += 1;
+            }
+            t += 1.0 / 300.0;
+        }
+        // Lit about half the time.
+        let share = lit_frames as f32 / (WIN_LINE_SECONDS * 300.0);
+        assert!((share - 0.5).abs() < 0.03, "{share}");
+        assert!(in_spans(0.0, &WIN_LINE_LIT), "each line starts lit");
+        let cycle = WIN_LINE_LIT[1].0 - WIN_LINE_LIT[0].0;
+        assert!((cycle - 0.66).abs() < 0.02, "{cycle}");
+        assert!((WIN_LINE_SECONDS - 2.0 * cycle).abs() < 0.02);
+    }
+
+    /// The club tall pill's icon: two arcs and a half-disc over a trapezoid
+    /// and a bar, each apart, symmetric about the middle.
+    #[test]
+    fn the_club_pill_icon_has_its_five_parts() {
+        let cx = PILL_ICON.0 / 2.0;
+        // Down the middle: the top arc, a gap, the second arc, a gap, the
+        // half-disc, a gap, the trapezoid, a gap, the bar.
+        let column: Vec<bool> = (0..56)
+            .map(|y| pill_icon_covers(cx, y as f32 + 0.5))
+            .collect();
+        let mut parts = 0;
+        let mut was = false;
+        for &on in &column {
+            if on && !was {
+                parts += 1;
+            }
+            was = on;
+        }
+        assert_eq!(parts, 5, "{column:?}");
+        for y in 0..56 {
+            for x in 0..18 {
+                let (x, y) = (x as f32 + 0.5, y as f32 + 0.5);
+                assert_eq!(
+                    pill_icon_covers(x, y),
+                    pill_icon_covers(PILL_ICON.0 - x, y),
+                    "{x},{y}"
+                );
+            }
+        }
+        // Outside its box nothing.
+        assert!(!pill_icon_covers(1.0, 40.0) && !pill_icon_covers(cx, 57.0));
+        let image = club_pill_icon();
+        assert_eq!(image.width(), PILL_ICON.0 as u32 * 2);
+        assert_eq!(image.height(), PILL_ICON.1 as u32 * 2);
     }
 
     /// The free games' prompt shows as the scatter win starts counting, the
@@ -11803,6 +14738,10 @@ mod tests {
         assert!(after.waits_for_count(Some(&started)));
         assert!(after.waits_for_count(Some(&hold_and_spin)));
         assert!(after.waits_for_count(Some(&Event::FreeGamesResumed { remaining: 3 })));
+        assert!(after.waits_for_count(Some(&Event::FreeGamesCompleted {
+            games_played: 6,
+            total_award: 10,
+        })));
         assert!(!after.waits_for_count(Some(&Event::SpinStarted { spin: 2 })));
         assert!(!after.waits_for_count(None));
     }
@@ -11954,6 +14893,94 @@ mod tests {
         assert_eq!(show.caption().as_deref(), Some("Free Game 4 of 6"));
     }
 
+    /// After a denomination choice the message row shows no start prompt
+    /// until the first game starts (club cabinets: y8c8lEdPW8Y 11.8-15.4 s,
+    /// CAM8vranI9Y 11.4-13.8 s).
+    #[test]
+    fn no_start_prompt_from_a_denomination_choice_to_the_first_game() {
+        use bevy::ecs::system::RunSystemOnce;
+        let mut world = World::new();
+        world.insert_resource(Fidelity(true));
+        world.insert_resource(FeatureShow::default());
+        world.insert_resource(GambleShow::default());
+        world.insert_resource(GamesMenu {
+            selecting: true,
+            ..GamesMenu::default()
+        });
+        let prompt = world
+            .spawn((StartPrompt { which: 0 }, Visibility::Inherited))
+            .id();
+        world.run_system_once(start_prompts).unwrap();
+        assert_eq!(world.get::<Visibility>(prompt), Some(&Visibility::Hidden));
+        // The first game starts: the prompt is back.
+        world.resource_mut::<GamesMenu>().selecting = false;
+        world.run_system_once(start_prompts).unwrap();
+        assert_eq!(
+            world.get::<Visibility>(prompt),
+            Some(&Visibility::Inherited)
+        );
+    }
+
+    /// A text's copies (its dark edge, a shaded band) follow its words,
+    /// letter spacing and visibility, and keep their own colour.
+    #[test]
+    fn copies_follow_their_text() {
+        use bevy::ecs::system::RunSystemOnce;
+        let mut world = World::new();
+        let owner = world
+            .spawn((
+                Text::new("Free Game 1 of 6"),
+                LetterSpacing::Px(4.8),
+                Visibility::Hidden,
+                TextColor(Color::WHITE),
+            ))
+            .id();
+        let copy = world
+            .spawn((
+                Echo(owner),
+                Text::new(""),
+                LetterSpacing::Px(0.0),
+                Visibility::Inherited,
+                TextColor(EDGE_COLOUR),
+            ))
+            .id();
+        world.run_system_once(echo_texts).unwrap();
+        assert_eq!(
+            world.get::<Text>(copy).map(|t| t.0.as_str()),
+            Some("Free Game 1 of 6")
+        );
+        assert_eq!(
+            world.get::<LetterSpacing>(copy),
+            Some(&LetterSpacing::Px(4.8))
+        );
+        assert_eq!(world.get::<Visibility>(copy), Some(&Visibility::Hidden));
+        assert_eq!(world.get::<TextColor>(copy), Some(&TextColor(EDGE_COLOUR)));
+        // The edge goes all round the letters, evenly.
+        let (sx, sy) = EDGE_OFFSETS
+            .iter()
+            .fold((0.0, 0.0), |(x, y), (dx, dy)| (x + dx, y + dy));
+        assert!(sx == 0.0 && sy == 0.0);
+        // The labels' shading: smaller shares over larger, orange at the
+        // top of CREDIT, BET and WIN, yellow at the top of the denomination.
+        for shade in [LABEL_SHADE, DENOM_SHADE] {
+            let bands = shade_bands(shade);
+            assert_eq!(bands.len() as u32, shade.3);
+            assert!(bands.windows(2).all(|w| w[0].1 > w[1].1));
+            assert!((bands[0].1 - shade.2).abs() < 1e-6);
+        }
+        let green = |c: Color| c.to_srgba().green;
+        let top = shade_bands(LABEL_SHADE).last().map(|b| b.0).unwrap();
+        assert!(
+            green(top) < green(shade_base(LABEL_SHADE)),
+            "orange over yellow"
+        );
+        let top = shade_bands(DENOM_SHADE).last().map(|b| b.0).unwrap();
+        assert!(
+            green(top) > green(shade_base(DENOM_SHADE)),
+            "yellow over orange"
+        );
+    }
+
     /// A reel starting scrolls the window on screen away, not its stale
     /// landing, and an open position's dimmed symbol keeps its dimming (club
     /// cabinet, y8c8lEdPW8Y 1020.43); a dimmed flag still quiets its reel.
@@ -12019,5 +15046,560 @@ mod tests {
             reels.states[1].quiet,
             "a dimmed flag leaving quiets its reel"
         );
+    }
+
+    /// A Major is awarded first, on its own plaque: no comet, SND_Credit1,
+    /// its amount on the plaque and its meter restarting as it shows, its
+    /// own count on WIN while the coins wait, then the empty box and the
+    /// coins' tally, which leaves it out (club cabinet, Autumn Moon
+    /// 5Z1-hFzpyh0 525-590 s).
+    #[test]
+    fn a_major_is_awarded_first_on_its_own_plaque() {
+        let coins = majors_first(vec![
+            (0, 0, 60, false, None),
+            (2, 1, 30_000, true, Some(JackpotTier::Major)),
+            (4, 2, 40, false, None),
+        ]);
+        assert_eq!(coins[0].4, Some(JackpotTier::Major));
+        assert_eq!((coins[1].0, coins[2].0), (0, 4), "the rest in grid order");
+        let mut show = FeatureShow::default();
+        show.on_event(&Event::HoldAndSpinStarted {
+            respins: 3,
+            locked: Vec::new(),
+        });
+        show.on_event(&Event::HoldAndSpinCompleted {
+            total_award: 30_100,
+            full_grid: false,
+        });
+        show.completed_wait = None;
+        show.begin_collect(coins, 1_000);
+        let dt = 1.0 / 60.0;
+        let mut sounds = Vec::new();
+        let mut major = None;
+        for _ in 0..600 {
+            show.clock += dt;
+            let step = show.advance_collect(dt, 50);
+            sounds.extend(step.sounds);
+            assert!(show.bolt.is_none(), "no comet for the Major");
+            assert_eq!(show.winner_amount(), None, "the box stays empty");
+            if let Some(m) = step.major {
+                major = Some(m);
+                break;
+            }
+        }
+        assert_eq!(major, Some(30_000));
+        assert_eq!(sounds, ["SND_Credit1"]);
+        assert!(show.major_showing());
+        assert!(show.link_won.contains(&JackpotTier::Major));
+        // Its own count (the motion system starts it with the music).
+        assert_eq!(show.major_amount(), None);
+        show.major_pay = Some(Pay {
+            amount: 30_000,
+            t: 0.0,
+            seconds: 10.0,
+        });
+        assert_eq!(show.major_amount(), Some(30_000));
+        assert_eq!(show.grand_win(), Some(1_000));
+        assert!(show.pay_shower(50), "a big Major rains coins");
+        assert_eq!(show.pay_banner(), None, "no banner over the reels");
+        // The collection waits for it.
+        let t = show.collect_t();
+        let step = show.advance_collect(1.0, 50);
+        assert!(step.sounds.is_empty());
+        assert_eq!(show.collect_t(), t);
+        if let Some(p) = show.major_pay.as_mut() {
+            p.t = 5.0;
+        }
+        assert_eq!(show.grand_win(), Some(16_000));
+        // Over: the box empty again, the next coin COLLECT_FIRST later.
+        show.major_pay = None;
+        show.end_major(30_000);
+        assert!(!show.major_showing());
+        assert_eq!(show.winner, Some(0));
+        assert_eq!(show.grand_win(), Some(31_000));
+        let mut first_coin = None;
+        let mut t = 0.0;
+        let total = loop {
+            show.clock += dt;
+            t += dt;
+            let step = show.advance_collect(dt, 50);
+            if show.bolt.is_some() && first_coin.is_none() {
+                first_coin = Some(t);
+            }
+            if let Some(total) = step.done {
+                break total;
+            }
+            assert!(t < 10.0);
+        };
+        let first = first_coin.unwrap_or_default();
+        assert!((first - COLLECT_FIRST).abs() < 0.03, "{first}");
+        // The tally leaves the Major out; WIN keeps it.
+        assert_eq!(total, 100);
+        show.pay = Some(Pay {
+            amount: total,
+            t: 10.0,
+            seconds: 10.0,
+        });
+        assert_eq!(show.pay_banner(), Some(100));
+        assert_eq!(show.grand_win(), Some(31_100));
+    }
+
+    /// The Grand's fire covers the screens as its plaque switches on: it
+    /// starts so that the plaque comes at its frame 27, under full cover
+    /// (frames 21-35), at the cabinet's 30 fps (OL6Pu1AI-cQ 3.4-4.4 s).
+    #[test]
+    fn the_grand_fire_covers_the_screens_as_its_plaque_switches_on() {
+        let mut show = FeatureShow {
+            grand: Some(1_000_000),
+            ..default()
+        };
+        show.begin_collect(
+            vec![
+                (0, 0, 60, false, None),
+                (1, 0, 40, false, None),
+                (
+                    GRAND_STEP,
+                    GRAND_STEP,
+                    1_000_000,
+                    true,
+                    Some(JackpotTier::Grand),
+                ),
+            ],
+            0,
+        );
+        let dt = 1.0 / 120.0;
+        let (mut fire_at, mut plaque_at) = (None, None);
+        for _ in 0..2_000 {
+            show.clock += dt;
+            let step = show.advance_collect(dt, 50);
+            if fire_at.is_none()
+                && let Some((s, fps)) = show.transition_at
+            {
+                assert_eq!(fps, GRAND_FIRE_FPS);
+                fire_at = Some(s);
+            }
+            if plaque_at.is_none() && show.grand_showing() {
+                plaque_at = Some(show.clock);
+            }
+            if step.done.is_some() {
+                break;
+            }
+        }
+        let (Some(fire), Some(plaque)) = (fire_at, plaque_at) else {
+            panic!("a fire and a plaque");
+        };
+        let frame = (plaque - fire) * GRAND_FIRE_FPS;
+        assert!(
+            (21.0..=35.0).contains(&frame) && (frame - 27.0).abs() < 0.6,
+            "{frame}"
+        );
+        // After the last coin's comet has left.
+        assert!(fire > COLLECT_FIRST + COLLECT_STEP);
+        // The intro's fire keeps its own rate.
+        assert!((FIRE_FPS - 22.3).abs() < 1e-3);
+    }
+
+    /// After a base game's Hold & Spin, at rest, the status line alternates
+    /// PLAY ON and "Free Spins Completed" while the win is offered, keeps
+    /// "Free Spins Completed" for a win never offered, and gives way to the
+    /// bet line once the win is taken; a Grand has its own line and its
+    /// call to the attendant, the dollars ungrouped (club cabinets).
+    #[test]
+    fn a_hold_and_spin_end_and_a_grand_have_their_own_status_lines() {
+        assert_eq!(hold_and_spin_end_line(true, true, true), Some(PLAY_ON));
+        assert_eq!(
+            hold_and_spin_end_line(true, true, false),
+            Some(FREE_SPINS_COMPLETED)
+        );
+        assert_eq!(
+            hold_and_spin_end_line(false, true, true),
+            Some(FREE_SPINS_COMPLETED)
+        );
+        assert_eq!(hold_and_spin_end_line(false, false, true), None);
+        let mut show = FeatureShow::default();
+        show.on_event(&Event::HoldAndSpinStarted {
+            respins: 3,
+            locked: Vec::new(),
+        });
+        show.on_event(&Event::HoldAndSpinCompleted {
+            total_award: 100,
+            full_grid: true,
+        });
+        assert!(!show.hold_and_spin_over(), "FREE SPINS COMPLETED shows");
+        show.completed_wait = None;
+        show.collected = Some(100);
+        assert!(show.hold_and_spin_over());
+        show.fg_return = Some((3, 6));
+        assert!(!show.hold_and_spin_over(), "inside the free games");
+        show.fg_return = None;
+        // The Grand's line, from its award until the next game.
+        assert_eq!(show.grand_caption(2), None);
+        show.grand = Some(1_206_131);
+        assert_eq!(show.grand_caption(2), None, "not before its award");
+        show.grand_done = true;
+        assert_eq!(
+            show.grand_caption(2).as_deref(),
+            Some("GRAND JACKPOT Win $24122.62")
+        );
+        assert_eq!(
+            show.grand_call(2).as_deref(),
+            Some("Call Attendant : JACKPOT HIT $24122.62")
+        );
+        show.on_event(&Event::SpinStarted { spin: 2 });
+        assert_eq!(show.grand_caption(2), None);
+        assert_eq!(show.grand_call(2), None);
+    }
+
+    /// The collected-coin disc counts the coins held and landed, each as it
+    /// lands, and shows with the board until the WINNER display.
+    #[test]
+    fn the_collected_disc_counts_each_coin_as_it_lands() {
+        let coins = [(0, 0), (1, 0), (2, 0), (3, 1)];
+        let mut show = FeatureShow::default();
+        assert_eq!(coins_collected(&coins, &show.coins_to_land()), 4);
+        // Presented, not yet turning: its coins are still to land.
+        show.respin_landed = Some(vec![(3, 1)]);
+        assert_eq!(coins_collected(&coins, &show.coins_to_land()), 3);
+        show.respin_landed = None;
+        show.respin = Some(RespinAnim {
+            stops: vec![(3, 1, 0.5, true), (4, 2, 0.9, false)],
+            ..default()
+        });
+        assert_eq!(coins_collected(&coins, &show.coins_to_land()), 3);
+        if let Some(a) = show.respin.as_mut() {
+            a.done = 1;
+        }
+        assert_eq!(coins_collected(&coins, &show.coins_to_land()), 4);
+        show.on_event(&Event::HoldAndSpinStarted {
+            respins: 3,
+            locked: Vec::new(),
+        });
+        assert!(!show.collected_showing(), "not before the board");
+        show.grid = true;
+        assert!(show.collected_showing());
+        show.winner = Some(0);
+        assert!(!show.collected_showing(), "the WINNER display takes over");
+    }
+
+    /// The feature banner's rim clears the jackpot values above it.
+    #[test]
+    fn the_feature_banner_clears_the_jackpot_values() {
+        let k = JACKPOT_BAR_W / 1225.0;
+        let middle = JACKPOT_BAR_TOP + 64.5 * k;
+        // The figures reach about 0.36 of the type size below the middle
+        // line (a capture: digits y 73-117 about 95), their edge 2 px more.
+        let ink_bottom = middle + 0.36 * JACKPOT_VALUE_SIZE + 2.0;
+        let banner_top = BANNER_Y - BANNER_SIZE.1 / 2.0;
+        assert!(banner_top >= ink_bottom + 2.0, "{banner_top} {ink_bottom}");
+        // It still stands across the reels' top edge.
+        assert!(BANNER_Y + BANNER_SIZE.1 / 2.0 > GRID_CENTER.1 - 1.5 * PITCH.1);
+    }
+
+    /// A progressive's changed figures roll up inside the box: the old one
+    /// rises out, the new one rises from below, eased, over 0.37 s; a
+    /// change mid-roll ends it and rolls on (y8c8lEdPW8Y).
+    #[test]
+    fn a_changed_figure_rolls_up_inside_its_box() {
+        assert!((0.35..=0.40).contains(&ROLL_SECONDS));
+        let still = |r: &Roll| r.poses().iter().all(|p| p.now_y == 0.0 && p.old.is_none());
+        let mut roll = Roll::default();
+        roll.follow("-");
+        roll.follow("$603.71");
+        assert!(still(&roll), "the first value shows as it is");
+        roll.follow("$603.72");
+        let p = roll.poses();
+        assert_eq!(p[6].now, '2');
+        assert!((p[6].now_y - 1.0).abs() < 1e-6);
+        assert_eq!(p[6].old, Some(('1', 0.0)));
+        assert!(
+            p[..6].iter().all(|p| p.old.is_none() && p.now_y == 0.0),
+            "only the changed figure rolls"
+        );
+        roll.advance(ROLL_SECONDS / 2.0);
+        let p = roll.poses();
+        assert!((p[6].now_y - 0.5).abs() < 1e-4);
+        assert!(p[6].old.is_some_and(|(_, y)| (y + 0.5).abs() < 1e-4));
+        roll.follow("$603.73");
+        let p = roll.poses();
+        assert_eq!(
+            p[6].old,
+            Some(('2', 0.0)),
+            "on from the value it was rolling to"
+        );
+        roll.advance(1.0);
+        assert!(still(&roll));
+        // Every changed figure rolls; a longer value lines up from the right.
+        roll.follow("$1,000.00");
+        let p = roll.poses();
+        assert_eq!(p[8].old.map(|o| o.0), Some('3'));
+        assert_eq!(p[0].old, None);
+        assert!(p[0].now_y > 0.0);
+        roll.advance(1.0);
+        assert!(still(&roll));
+    }
+
+    /// The cabinet spawned into a world with no pack, for layout tests.
+    fn spawned_cabinet(profile: Profile) -> World {
+        let mut world = World::new();
+        let model = dragonlink_model::fixtures::golden_century_synthetic();
+        let art = ArtPack::default();
+        let fonts = CabFonts {
+            meter: Handle::default(),
+            sans: Handle::default(),
+            symbols: Handle::default(),
+            heavy: Handle::default(),
+            msg: Handle::default(),
+        };
+        {
+            let mut commands = world.commands();
+            spawn(&mut commands, &model, &art, &fonts, profile);
+        }
+        world.flush();
+        world
+    }
+
+    fn px(v: Val) -> f32 {
+        match v {
+            Val::Px(p) => p,
+            other => panic!("not pixels: {other:?}"),
+        }
+    }
+
+    /// Club cabinets: COLLECT and GAMES MENU stay over the gamble screen
+    /// and give way on the chooser, whose own COLLECT stands in the bottom
+    /// right corner (the casino profile unchanged).
+    #[test]
+    fn the_club_tabs_stay_over_the_gamble_and_collect_moves_on_the_chooser() {
+        use bevy::ecs::system::RunSystemOnce;
+        let mut world = spawned_cabinet(Profile::Club);
+        let mut tabs = world.query::<(&BandTab, &GlobalZIndex)>();
+        let found: Vec<(BandTab, i32)> = tabs.iter(&world).map(|(t, z)| (*t, z.0)).collect();
+        assert_eq!(found.len(), 2);
+        for kind in [BandTab::Collect, BandTab::GamesMenu] {
+            assert!(found.contains(&(kind, BAND_TAB_LAYER)), "{kind:?}");
+        }
+        // Over the gamble screen and the chooser's splash (12).
+        const { assert!(BAND_TAB_LAYER > 12) };
+        // The chooser keeps a COLLECT of its own, in the corner.
+        let mut roots = world.query_filtered::<Entity, With<ChooserRoot>>();
+        let root = roots.single(&world).unwrap();
+        let mut texts = world.query::<(Entity, &Text)>();
+        let collects: Vec<Entity> = texts
+            .iter(&world)
+            .filter(|(_, t)| t.0 == "COLLECT")
+            .map(|(e, _)| e)
+            .collect();
+        assert_eq!(collects.len(), 2, "the band's and the chooser's");
+        let in_chooser = |world: &World, mut e: Entity| {
+            while let Some(parent) = world.get::<ChildOf>(e) {
+                e = parent.parent();
+                if e == root {
+                    return true;
+                }
+            }
+            false
+        };
+        let chooser_pill = collects.iter().filter(|e| in_chooser(&world, **e)).count();
+        assert_eq!(chooser_pill, 1);
+        // The tabs hide while the chooser shows, and come back after.
+        world.insert_resource(Fidelity(true));
+        world.insert_resource(Time::<()>::default());
+        world.insert_resource(Smoke {
+            frames_left: None,
+            screenshot: None,
+            frame: 0,
+            hold: 0,
+            real_time: false,
+            capture: None,
+        });
+        world.insert_resource(Reels::default());
+        let mut menu = GamesMenu::default();
+        menu.open_now();
+        world.insert_resource(menu);
+        world.run_system_once(games_menu).unwrap();
+        let mut vis = world.query_filtered::<&Visibility, With<BandTab>>();
+        assert!(vis.iter(&world).all(|v| *v == Visibility::Hidden));
+        world.resource_mut::<GamesMenu>().open = false;
+        world.run_system_once(games_menu).unwrap();
+        assert!(vis.iter(&world).all(|v| *v == Visibility::Inherited));
+        // The casino keeps its tabs as they were.
+        let mut world = spawned_cabinet(Profile::Casino);
+        let mut tabs = world.query::<&BandTab>();
+        assert_eq!(tabs.iter(&world).count(), 0);
+    }
+
+    /// The club gamble prompt is the bet line's yellow, spaced wider (club
+    /// cabinets: _XHUzg4qDXI, LwC3hVqFRMg); the casino's keeps the status
+    /// line's look.
+    #[test]
+    fn the_club_gamble_prompt_is_yellow_and_spaced() {
+        let (yellow, gap) = GAMBLE_PROMPT_CLUB;
+        let c = yellow.to_srgba();
+        assert!(c.red > 0.8 && c.green > 0.8 && c.blue < 0.4);
+        // Verdana Bold 23 writes the 36 letters about 518 px wide; spaced,
+        // about 728 against the cabinet's about 731.
+        let wide = 518.0 + 35.0 * gap;
+        assert!((700.0..=760.0).contains(&wide), "{wide}");
+        for (profile, want) in [
+            (Profile::Club, (yellow, LetterSpacing::Px(gap))),
+            (
+                Profile::Casino,
+                (Color::srgb_u8(210, 220, 245), LetterSpacing::Px(1.5)),
+            ),
+        ] {
+            let mut world = spawned_cabinet(profile);
+            let mut q = world.query::<(&GambleText, &TextColor, &LetterSpacing)>();
+            let prompt: Vec<(Color, LetterSpacing)> = q
+                .iter(&world)
+                .filter(|(t, ..)| **t == GambleText::Prompt)
+                .map(|(_, c, s)| (c.0, *s))
+                .collect();
+            assert_eq!(prompt, vec![want], "{profile:?}");
+        }
+    }
+
+    /// The chooser as two club recordings show it (homography): the panel
+    /// about 995 x 195 centred near y 755 with its keys inside it, the
+    /// header's capitals near y 703, ARE YOU SURE? wholly above the panel
+    /// with a small gap, the drawn title's capitals about y 485-640 and
+    /// about 1560 wide.
+    #[test]
+    fn the_chooser_is_laid_out_as_on_the_club_cabinet() {
+        let (pw, ph, ptop) = CHOOSER_PANEL;
+        assert!((980.0..=1010.0).contains(&pw));
+        assert!((190.0..=200.0).contains(&ph));
+        assert!((750.0..=760.0).contains(&(ptop + ph / 2.0)));
+        let (kw, kh, gap, ktop) = CHOOSER_KEY;
+        assert!((155.0..=165.0).contains(&kw) && (78.0..=82.0).contains(&kh));
+        assert!((25.0..=29.0).contains(&gap));
+        assert!((775.0..=785.0).contains(&(ktop + kh / 2.0)));
+        assert!(ktop > CHOOSER_HEADER.0 && ktop + kh < ptop + ph);
+        const { assert!(CHOOSER_MARGIN > 30.0) };
+        // The title fits the logo's place, and every title's name fits the
+        // canvas.
+        assert_eq!(chooser_title_size("GOLDEN CENTURY"), CHOOSER_TITLE.1);
+        let (title_y, _, spacing, _) = CHOOSER_TITLE;
+        let size = CHOOSER_TITLE.1;
+        let caps = (
+            title_y - IMPACT_CAPS.1 * size / 2.0,
+            title_y + IMPACT_CAPS.1 * size / 2.0,
+        );
+        assert!((475.0..=495.0).contains(&caps.0) && (630.0..=650.0).contains(&caps.1));
+        assert!(caps.1 < ptop, "the title stands over the panel");
+        let wide = |name: &str| {
+            let n = name.chars().count() as f32;
+            n * IMPACT_CAPS_ADVANCE * chooser_title_size(name) + n * spacing
+        };
+        assert!((1500.0..=1620.0).contains(&wide("GOLDEN CENTURY")));
+        for slug in [
+            "golden-century",
+            "autumn-moon",
+            "happy-prosperous",
+            "panda-magic",
+            "genghis-khan",
+            "golden-gong",
+            "peace-long-life",
+            "spring-festival",
+        ] {
+            let name = title_name(slug);
+            assert_ne!(name, title_name("synthetic"), "{slug}");
+            assert!(wide(name) <= CHOOSER_TITLE.3 + 1.0, "{name}");
+        }
+        // The spawned chooser: the confirmation wholly above the panel, a
+        // small gap between; six keys widen the panel to hold them.
+        for profile in [Profile::Club, Profile::Casino] {
+            let mut world = spawned_cabinet(profile);
+            let mut q = world.query_filtered::<&Node, With<ChooserPanel>>();
+            let panel = q.single(&world).unwrap().clone();
+            let mut q = world.query_filtered::<&Node, With<ChooserConfirm>>();
+            let confirm = q.single(&world).unwrap().clone();
+            let gap = px(panel.top) - (px(confirm.top) + px(confirm.height));
+            assert!((5.0..=15.0).contains(&gap), "{gap}");
+            let n = profile.denoms().len() as f32;
+            assert!(px(panel.width) >= n * kw + (n - 1.0) * CHOOSER_KEY.2);
+            assert_eq!(px(panel.width) == pw, n == 5.0, "{profile:?}");
+        }
+        // The cent sign is drawn apart, smaller; dollars whole.
+        assert_eq!(chooser_figure(5), ("5".to_string(), Some("¢")));
+        assert_eq!(chooser_figure(100), ("$1".to_string(), None));
+        const { assert!(CENT_SIGN < 0.8) };
+    }
+
+    /// Club footage: the teardrop shows a card-back lattice through the
+    /// gamble with no legend (a pack without that art keeps the dark
+    /// teardrop), and stays dark on the chooser.
+    #[test]
+    fn the_teardrop_shows_a_lattice_in_the_gamble() {
+        let mut look = club_look(DeckMode::Gamble);
+        assert_eq!(look.face(CabButton::Spin), "spin_lattice");
+        assert!(look.words(CabButton::Spin).is_empty());
+        assert_eq!(
+            resolve_face("spin_lattice", |k| k == "spin_dim"),
+            ("spin_dim", Color::WHITE)
+        );
+        assert_eq!(
+            resolve_face("spin_lattice", |_| true),
+            ("spin_lattice", Color::WHITE)
+        );
+        look.deck.mode = DeckMode::Menu;
+        assert_eq!(look.face(CabButton::Spin), "spin_dim");
+    }
+
+    /// The picked button fills with the card's face, not at the press (club
+    /// cabinets: _XHUzg4qDXI 0:07.87 and 1:16.800, iHDxUc1dlKs 0:12.433).
+    #[test]
+    fn the_picked_button_fills_with_the_card_face() {
+        let mut gamble = GambleShow {
+            active: true,
+            last: Some((GamblePick::Red, 20)),
+            card: Some((3, true, 0.0)),
+            ..GambleShow::default()
+        };
+        assert_eq!(gamble.picked(), None, "the card still face down");
+        gamble.card = Some((3, true, GAMBLE_FACE_DELAY - 0.01));
+        assert_eq!(gamble.picked(), None);
+        gamble.card = Some((3, true, GAMBLE_FACE_DELAY));
+        assert_eq!(gamble.picked(), Some(GamblePick::Red));
+        gamble.card = Some((3, false, GAMBLE_FACE_DELAY + GAMBLE_SHOW_LOSS - 0.01));
+        assert_eq!(gamble.picked(), Some(GamblePick::Red));
+        gamble.card = None;
+        assert_eq!(gamble.picked(), None, "gone with the card");
+    }
+
+    /// Nothing of the base screen stands over the gamble: a tall wild hides
+    /// while it shows and stands again after (club cabinets: LwC3hVqFRMg
+    /// 18:30.4-18:33.7, _XHUzg4qDXI 1:13.00).
+    #[test]
+    fn a_tall_wild_gives_way_to_the_gamble() {
+        use bevy::ecs::system::RunSystemOnce;
+        let mut world = World::new();
+        let mut art = ArtPack::default();
+        art.anims
+            .insert("wild3_intro".to_string(), vec![Handle::default()]);
+        world.insert_resource(art);
+        world.insert_resource(Fidelity(true));
+        world.insert_resource(Time::<()>::default());
+        world.insert_resource(FeatureShow::default());
+        world.insert_resource(WildStacks {
+            list: vec![(1, 0, 3, 0.0)],
+            ..WildStacks::default()
+        });
+        world.insert_resource(GambleShow {
+            active: true,
+            ..GambleShow::default()
+        });
+        let tall = world
+            .spawn((
+                WildTall { reel: 1 },
+                Node::default(),
+                ImageNode::default(),
+                Visibility::Inherited,
+            ))
+            .id();
+        world.run_system_once(wild_talls).unwrap();
+        assert_eq!(world.get::<Visibility>(tall), Some(&Visibility::Hidden));
+        world.resource_mut::<GambleShow>().active = false;
+        world.run_system_once(wild_talls).unwrap();
+        assert_eq!(world.get::<Visibility>(tall), Some(&Visibility::Inherited));
     }
 }

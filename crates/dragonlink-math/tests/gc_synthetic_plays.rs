@@ -138,7 +138,7 @@ fn returns_at(
 fn the_return_is_flat_across_stakes_and_denominations() {
     for (title, meters) in all_titles()
         .iter()
-        .flat_map(|(_, t)| [(50_000, 500_000), (120_000, 1_200_000)].map(|m| (*t, m)))
+        .flat_map(|(_, t)| [(50_000, 1_000_000), (120_000, 1_500_000)].map(|m| (*t, m)))
     {
         let r = returns_at(title, 150_000, meters, 7);
         for (label, x) in &r {
@@ -157,7 +157,7 @@ fn the_return_is_flat_across_stakes_and_denominations() {
 #[test]
 #[ignore = "a long measurement, run by hand"]
 fn measure_the_return_across_stakes() {
-    for meters in [(50_000, 500_000), (120_000, 1_200_000)] {
+    for meters in [(50_000, 1_000_000), (120_000, 1_500_000)] {
         eprintln!("meters {meters:?}");
         let spins = std::env::var("GC_RTP_SPINS")
             .ok()

@@ -57,8 +57,8 @@ const FEATURE_TEST_SCATTER: usize = 6;
 
 /// Testing only (`DRAGONLINK_SCENARIO`, Golden Century): prepared runs whose
 /// first spin lands three flags, and in most of them six coins too, so Hold &
-/// Spin plays and the free games follow; the free games' reels carry the
-/// mystery doors often.
+/// Spin plays and the free games follow; in the `doors` run the free games'
+/// reels carry the mystery doors often, in short vertical runs.
 /// The outcome source is left alone: its first spin's reel stops are worked
 /// out from the seed and the synthetic strips are dressed at those stops.
 /// Changes to that run's synthetic model only, never a claim about the
@@ -112,6 +112,9 @@ impl Scenario {
     /// full chance at every stake, so the run is the same whatever the bet.
     fn model(self, model: MathModel, seed: u64) -> MathModel {
         let mut model = dress_scenario(model, seed, self != Scenario::Doors);
+        if self == Scenario::Doors {
+            door_runs(&mut model);
+        }
         let orb = model.symbols.iter().position(|s| s.kind == SymbolKind::Orb);
         // The runs that promise their jackpots keep coins out of their free
         // games (off the doors and off the reels, a nine in each coin's
@@ -185,8 +188,7 @@ fn scenario(game: GameChoice, model: MathModel, seed: u64) -> (MathModel, u64) {
 }
 
 /// A prepared run's dressing (see [`Scenario`]): the first spin's window with
-/// three flags, and six coins when `coins`, at the stops the seed draws; the
-/// doors on every third stop of the free games' reels.
+/// three flags, and six coins when `coins`, at the stops the seed draws.
 fn dress_scenario(mut model: MathModel, seed: u64, coins: bool) -> MathModel {
     let id = |key: &str| {
         model
@@ -206,7 +208,7 @@ fn dress_scenario(mut model: MathModel, seed: u64, coins: bool) -> MathModel {
             .map(dragonlink_model::SymbolId)
     };
     let doors = model.free_games.as_ref().and_then(|fg| fg.mystery);
-    let (Some(orb), Some(flag), Some(doors)) = (
+    let (Some(orb), Some(flag), Some(_)) = (
         of_kind(SymbolKind::Orb),
         of_kind(SymbolKind::Scatter),
         doors,
@@ -254,17 +256,31 @@ fn dress_scenario(mut model: MathModel, seed: u64, coins: bool) -> MathModel {
             }
         }
     }
-    // The doors on every third stop of the free games' reels.
-    if let Some(fg) = model.free_games.as_mut() {
-        for strip in &mut fg.free_reel_strips {
-            for (i, s) in strip.iter_mut().enumerate() {
-                if i % 3 == 1 {
-                    *s = doors;
-                }
+    model
+}
+
+/// The `doors` run's free reels: the mystery doors in runs of three stops in
+/// every nine, so a window shows none to three doors on a reel, one on
+/// average, mostly in vertical blocks, and now and then a free game none at
+/// all, as club cabinets show them (60 reveals in 9 recordings: 1 to 12
+/// cells a game, whole reels, runs of 2 and singles, 3 games of about 63
+/// with none; the project's notes, research/doors-2026-10-18 under the
+/// source root). The model's own door stacks stay. Synthetic, for the
+/// prepared run only.
+fn door_runs(model: &mut MathModel) {
+    let Some(fg) = model.free_games.as_mut() else {
+        return;
+    };
+    let Some(doors) = fg.mystery else {
+        return;
+    };
+    for strip in &mut fg.free_reel_strips {
+        for (i, s) in strip.iter_mut().enumerate() {
+            if (1..=3).contains(&(i % 9)) {
+                *s = doors;
             }
         }
     }
-    model
 }
 
 /// The model with extra orbs and scatters spread through its base reels (see
@@ -727,11 +743,13 @@ struct Sim {
 /// machines the Major and the Grand are running meters that increase during
 /// play (STRONG, claims/family.toml, jackpots.meters-au); the simulation is
 /// told each new value (`Command::SetProgressive`), so a win pays what the
-/// meter shows. How they climb here (small irregular steps at irregular
-/// moments, an occasional jump), where they open and where they stop are
-/// this project's synthetic choices ([`LINK_SPECS`]): no source shows an
-/// increment rate or a ceiling. They draw on their own generator, never the
-/// outcome source.
+/// meter shows. They climb in one- and two-cent steps every few seconds, an
+/// order of magnitude filmed on five club machines (the Grand about 0.1-0.8
+/// cents a second, the Major about 0.25-0.8: p6OesyvM5vA, OL6Pu1AI-cQ,
+/// f5sMl9a5jds, 1bAevGz0K2k, y8c8lEdPW8Y; STRONG); the intervals, the
+/// occasional jump, where they open and where they stop are this project's
+/// synthetic choices ([`LINK_SPECS`]), the real rate following link traffic.
+/// They draw on their own generator, never the outcome source.
 #[derive(Resource, Default)]
 struct Link {
     rng: u64,
@@ -751,9 +769,14 @@ struct LinkMeter {
     held: bool,
 }
 
-/// How a progressive meter starts and climbs (synthetic, the owner's
-/// ranges: the Grand from $5,000 to $15,000, the Major from $500 to $1,500,
-/// opening anywhere up to 80% of the top).
+/// How a progressive meter starts and climbs. It opens between its restart
+/// (the model's: the Grand's $10,000 as filmed, the Major's $500 synthetic)
+/// and `opens_below`, and stops at `ceiling`: the Grand opens below $13,000
+/// (most filmed Australian Grands stood at $10,343 to about $13,000) and
+/// stops at $25,000 (a club Golden Century's Grand was won at $24,122.63,
+/// Wc7QU1C2jWo; the real ceiling is UNKNOWN); the Major opens below $1,200
+/// and stops at $1,500 (the owner's range). Openings, ceilings and rates
+/// are synthetic; the rates' order of magnitude is filmed (see [`Link`]).
 struct LinkSpec {
     tier: JackpotTier,
     /// The meter stops climbing here, in cents.
@@ -771,22 +794,24 @@ struct LinkSpec {
 const LINK_SPECS: [LinkSpec; 2] = [
     LinkSpec {
         tier: JackpotTier::Grand,
-        ceiling: 1_500_000,
-        opens_below: 1_200_000,
-        every: (0.15, 1.6),
-        climb: (1, 12),
-        jump: (25, 90),
+        ceiling: 2_500_000,
+        opens_below: 1_300_000,
+        every: (1.5, 4.5),
+        climb: (1, 2),
+        jump: (3, 10),
     },
     LinkSpec {
         tier: JackpotTier::Major,
         ceiling: 150_000,
         opens_below: 120_000,
-        every: (0.4, 3.0),
-        climb: (1, 4),
-        jump: (5, 20),
+        every: (1.5, 4.5),
+        climb: (1, 2),
+        jump: (3, 10),
     },
 ];
-const LINK_JUMP_ONE_IN: u64 = 15;
+/// One climb in this many is a jump: about 0.54 cents a second on average,
+/// inside what the club machines show (synthetic).
+const LINK_JUMP_ONE_IN: u64 = 40;
 
 impl Link {
     /// The next number of the meters' own generator (splitmix64).
@@ -828,7 +853,7 @@ fn set_progressive(game: &mut Game, tier: JackpotTier, value: u64) -> bool {
 }
 
 /// Open the link for a new game: each progressive the model has starts
-/// somewhere between its restart value and 80% of its ceiling.
+/// somewhere between its restart value and its `opens_below`.
 fn open_link(game: &mut Game, seed: u64) -> Link {
     let mut link = Link {
         rng: seed ^ 0x6C69_6E6B_6D65_7465,
@@ -873,9 +898,35 @@ fn link_creep(
         && presentation.queue.is_empty()
         && !show.in_feature()
         && !show.counting();
-    link.tick(&mut sim.game, smoke.dt(&time), &|tier| {
+    let dt = if respin_in_flight(&presentation.queue, show.respin_in_flight()) {
+        0.0
+    } else {
+        smoke.dt(&time)
+    };
+    link.tick(&mut sim.game, dt, &|tier| {
         shown_all || show.link_won.contains(&tier)
     });
+}
+
+/// A Hold & Spin respin the simulation has resolved is not yet over on the
+/// screen: its events wait in `queue`, or its positions are turning
+/// (`turning`). Every meter holds still meanwhile. The simulation pays a
+/// progressive in the respin that ends the feature and restarts its meter
+/// then, so that meter alone would stop climbing before its coin lands,
+/// giving the outcome away. On club machines the meters stay live through
+/// features (1bAevGz0K2k, f5sMl9a5jds, OL6Pu1AI-cQ; VERIFIED); holding them
+/// through every respin is this project's choice (HYPOTHESIS), unseen at a
+/// climb every few seconds.
+fn respin_in_flight(queue: &VecDeque<(f32, Event)>, turning: bool) -> bool {
+    turning
+        || queue.iter().any(|(_, e)| {
+            matches!(
+                e,
+                Event::HoldAndSpinRespin { .. }
+                    | Event::HoldAndSpinCompleted { .. }
+                    | Event::JackpotAwarded { .. }
+            )
+        })
 }
 
 impl Link {
@@ -1206,6 +1257,7 @@ fn setup(
     profile: Res<cabinet::Profile>,
     pack: Res<PackDir>,
     machines: Res<cabinet::MachineMenu>,
+    mut images: ResMut<Assets<Image>>,
 ) {
     // The initial state's OnEnter runs before Startup systems, so the pack is
     // read here, on first use.
@@ -1213,6 +1265,11 @@ fn setup(
     let model = sim.game.model();
     art.roles = cabinet::Roles::from_model(model);
     if fidelity.0 {
+        // The club tall pill's icon: our own drawing, not the pack's.
+        if !art.ui.contains_key(cabinet::PILL_ICON_KEY) {
+            let icon = images.add(cabinet::club_pill_icon());
+            art.ui.insert(cabinet::PILL_ICON_KEY.to_string(), icon);
+        }
         let cab_fonts = cabinet::load_fonts(&mut fonts);
         if let Some(dir) = &pack.0 {
             *sounds = cabinet::Sounds::load(&asset_server, dir);
@@ -1223,25 +1280,7 @@ fn setup(
         return;
     }
     let art = &*art;
-    let title = if model.id.starts_with("golden-century") {
-        "GOLDEN CENTURY"
-    } else if model.id.starts_with("autumn-moon") {
-        "AUTUMN MOON"
-    } else if model.id.starts_with("happy-prosperous") {
-        "HAPPY & PROSPEROUS"
-    } else if model.id.starts_with("panda-magic") {
-        "PANDA MAGIC"
-    } else if model.id.starts_with("genghis-khan") {
-        "GENGHIS KHAN"
-    } else if model.id.starts_with("golden-gong") {
-        "GOLDEN GONG"
-    } else if model.id.starts_with("peace-long-life") {
-        "PEACE & LONG LIFE"
-    } else if model.id.starts_with("spring-festival") {
-        "SPRING FESTIVAL"
-    } else {
-        "DRAGONLINK (synthetic fixture)"
-    };
+    let title = cabinet::title_name(&model.id);
     let gold = Color::srgb(1.0, 0.80, 0.28);
     let muted = Color::srgb(0.62, 0.66, 0.72);
     let tiers = [
@@ -1553,7 +1592,11 @@ fn input(
     mut menu: ResMut<cabinet::GamesMenu>,
     sounds: Res<cabinet::Sounds>,
     mut commands: Commands,
-    (profile, mut rules): (Res<cabinet::Profile>, ResMut<cabinet::GameRules>),
+    (profile, mut rules, mut menu_shown): (
+        Res<cabinet::Profile>,
+        ResMut<cabinet::GameRules>,
+        Local<bool>,
+    ),
 ) {
     let profile = *profile;
     // Idle means the reels have come to rest on screen too: the last one runs
@@ -1564,13 +1607,29 @@ fn input(
         && !gamble.active
         && reels.rested_for() >= cabinet::SPIN_AFTER_REST;
     // The cabinet's GAMES MENU opens on a touch at rest.
-    // Testing (`DRAGONLINK_SHOW=menu`, an unattended run only): the GAMES
-    // MENU opens by itself two seconds in, so it can be captured.
-    let show_menu = smoke.frames_left.is_some()
-        && smoke.frame == 120
-        && std::env::var("DRAGONLINK_SHOW").as_deref() == Ok("menu");
-    if fidelity.0 && (cabinet_input.menu || show_menu) && at_rest && !menu.showing() {
+    // Testing (an unattended run only): `DRAGONLINK_SHOW=menu` opens the
+    // GAMES MENU by itself once, at the first rest from two seconds in (the
+    // unattended spins wait for it), so it can be captured;
+    // `DRAGONLINK_SHOW=confirm` also touches its second denomination, so the
+    // club's ARE YOU SURE? shows.
+    let show = smoke
+        .frames_left
+        .is_some()
+        .then(|| std::env::var("DRAGONLINK_SHOW").ok())
+        .flatten();
+    let confirm = show.as_deref() == Some("confirm");
+    let menu_pending = fidelity.0
+        && !*menu_shown
+        && smoke.frame >= 120
+        && (confirm || show.as_deref() == Some("menu"));
+    if fidelity.0 && (cabinet_input.menu || menu_pending) && at_rest && !menu.showing() {
         menu.open_now();
+        if menu_pending {
+            *menu_shown = true;
+            if confirm && profile.confirms() {
+                menu.pending = profile.denoms().get(1).copied();
+            }
+        }
     }
     // A denomination: touched on the GAMES MENU, or the next one with D.
     let offered = if fidelity.0 {
@@ -1659,6 +1718,8 @@ fn input(
     // sets the stake.
     let auto =
         auto && !gamble.holds_autospin(cabinet::gamble_open(&sim.game, denom.cents(), &feature));
+    // A GAMES MENU still to open for a capture: the reels come to rest.
+    let auto = auto && !menu_pending;
     let options = sim.game.model().bet.credits_per_line_options.clone();
     let bet_index_of = |credits: u32| options.iter().position(|o| *o == credits);
     // Casino: a bet key sets its multiplier and plays in one press. Club: a
@@ -1882,7 +1943,7 @@ fn present(
     mut presentation: ResMut<Presentation>,
     mut reels_spin: ResMut<ReelAnim>,
     reels_motion: Res<cabinet::Reels>,
-    rollup: Res<cabinet::Rollup>,
+    mut rollup: ResMut<cabinet::Rollup>,
     mut stacks: ResMut<cabinet::WildStacks>,
     art: Res<ArtPack>,
     mut cells: Query<(&Cell, &mut BackgroundColor)>,
@@ -1986,11 +2047,11 @@ fn present(
         // until the reels are at rest on screen: the last reel's stop is
         // presented as it starts to run on to its stop, and it overshoots
         // and settles after that.
-        // The doors open sooner than a result shows (real game).
+        // The doors open a little later than a result shows (club cabinets),
+        // a wild fills its reel sooner.
         let after_rest = match presentation.queue.front() {
-            Some((_, Event::MysteryRevealed { .. } | Event::WildExpanded { .. })) => {
-                cabinet::REVEAL_AFTER_REST
-            }
+            Some((_, Event::MysteryRevealed { .. })) => cabinet::REVEAL_AFTER_REST,
+            Some((_, Event::WildExpanded { .. })) => cabinet::EXPAND_AFTER_REST,
             _ => cabinet::RESULT_AFTER_REST,
         };
         if fidelity.0
@@ -2141,6 +2202,10 @@ fn present(
                 presentation.status = format!("FREE GAMES  -  {games} games won");
             }
             Event::FreeGameStarted { number, remaining } => {
+                // The last count is done with: this game's win counts from
+                // its own first cent, never flashing the last one's amount
+                // (see `Rollup::settle`).
+                rollup.settle();
                 // Each free game spins the reels like a paid game, on the
                 // free reels' strips.
                 for s in reels_spin.spinning.iter_mut() {
@@ -2943,6 +3008,7 @@ fn main() -> AppExit {
     .insert_resource(cabinet::Sounds::default())
     .insert_resource(cabinet::Rollup::default())
     .insert_resource(cabinet::FeatureShow::default())
+    .init_resource::<cabinet::BannerBurstFrames>()
     .insert_resource(cabinet::GambleShow::with_history(cli.seed))
     .insert_resource(cabinet::GamesMenu::default())
     .insert_resource(cabinet::AttractIdle::default())
@@ -3027,6 +3093,7 @@ fn main() -> AppExit {
                 cabinet::hold_and_spin_draw,
                 cabinet::hs_spin_digits,
                 cabinet::winner_plate,
+                cabinet::hs_collected,
                 cabinet::hs_backdrop,
                 cabinet::door_reveal,
                 cabinet::door_draw,
@@ -3053,11 +3120,12 @@ fn main() -> AppExit {
                 cabinet::update_meters,
                 cabinet::system_message,
                 cabinet::fit_jackpots,
+                cabinet::roll_jackpots,
                 cabinet::fit_reel_panel,
                 cabinet::lines_digits,
                 cabinet::attract_bar,
-                cabinet::additive_fire,
-                cabinet::machine_menu,
+                (cabinet::additive_fire, cabinet::prepare_feature_art),
+                (cabinet::machine_menu, cabinet::echo_texts),
                 cabinet::fit,
             )
                 .chain(),
@@ -3265,6 +3333,53 @@ mod tests {
         println!("Doors: {doors:?}");
     }
 
+    /// The `doors` run's free reels show none to three doors a reel in a
+    /// window, mostly in blocks, and some windows none at all (club
+    /// cabinets: 1 to 12 doors a game, whole reels, runs of 2 and singles);
+    /// the other runs' free reels are the model's own.
+    #[test]
+    fn the_doors_run_lands_its_doors_in_blocks() {
+        let base = golden_century_synthetic();
+        let doors = base
+            .free_games
+            .as_ref()
+            .and_then(|fg| fg.mystery)
+            .expect("Golden Century has doors");
+        let model = Scenario::Doors.model(base.clone(), DOORS_SEED);
+        let fg = model.free_games.as_ref().expect("free games");
+        let own = base.free_games.as_ref().expect("free games");
+        let (mut empty, mut blocks, mut ours, mut windows) = (0, 0, 0, 0);
+        for (strip, own_strip) in fg.free_reel_strips.iter().zip(&own.free_reel_strips) {
+            let len = strip.len();
+            for stop in 0..len {
+                let count = |s: &[dragonlink_model::SymbolId]| {
+                    (0..3).filter(|row| s[(stop + row) % len] == doors).count()
+                };
+                // Where the model has no doors of its own.
+                if count(own_strip) > 0 {
+                    continue;
+                }
+                let here = count(strip);
+                windows += 1;
+                ours += here;
+                empty += usize::from(here == 0);
+                blocks += usize::from(here == 3);
+            }
+        }
+        assert!(empty > 0, "some windows show no doors");
+        assert!(blocks > 0, "some show a reel of them");
+        let mean = ours as f32 / windows as f32;
+        assert!((0.8..=1.2).contains(&mean), "about one a reel: {mean}");
+        // The prepared jackpot runs keep the model's own free reels' doors.
+        let jackpots = Scenario::Jackpots.model(golden_century_synthetic(), JACKPOTS_SEED);
+        let free = jackpots.free_games.as_ref().expect("free games");
+        for (strip, own_strip) in free.free_reel_strips.iter().zip(&own.free_reel_strips) {
+            for (s, o) in strip.iter().zip(own_strip) {
+                assert_eq!(*s == doors, *o == doors);
+            }
+        }
+    }
+
     #[test]
     fn the_jackpot_scenarios_win_what_they_promise() {
         for run in [Scenario::Jackpots, Scenario::Minors] {
@@ -3281,14 +3396,18 @@ mod tests {
         );
     }
 
+    /// The Grand opens at $10,000 to $13,000 and the Major at $500 to
+    /// $1,200; both climb a cent or two at a time every few seconds, now
+    /// and then more, at the club machines' rate (about 0.1-0.8 cents a
+    /// second), and stop at their ceilings.
     #[test]
-    fn the_link_opens_below_eighty_percent_and_climbs_unevenly_to_its_ceiling() {
+    fn the_link_opens_from_its_restart_and_climbs_slowly_to_its_ceiling() {
         for seed in 0..50 {
             let mut game = Game::new(golden_century_synthetic(), 1000).unwrap();
             let link = open_link(&mut game, seed);
             let grand = link.shown(JackpotTier::Grand).unwrap();
             let major = link.shown(JackpotTier::Major).unwrap();
-            assert!((500_000..=1_200_000).contains(&grand), "{grand}");
+            assert!((1_000_000..=1_300_000).contains(&grand), "{grand}");
             assert!((50_000..=120_000).contains(&major), "{major}");
             // The simulation pays what the meters show.
             assert_eq!(game.meter(JackpotTier::Grand), Some(grand));
@@ -3297,9 +3416,10 @@ mod tests {
         let mut game = Game::new(golden_century_synthetic(), 1000).unwrap();
         let mut link = open_link(&mut game, 7);
         let mut rises = std::collections::BTreeSet::new();
-        let mut last = link.shown(JackpotTier::Grand).unwrap();
-        // A minute in tenths of a second: it climbs, by differing amounts.
-        for _ in 0..600 {
+        let start = link.shown(JackpotTier::Grand).unwrap();
+        let mut last = start;
+        // Half an hour in tenths of a second.
+        for _ in 0..18_000 {
             link.tick(&mut game, 0.1, &|_| true);
             let now = link.shown(JackpotTier::Grand).unwrap();
             assert!(now >= last);
@@ -3308,14 +3428,70 @@ mod tests {
             }
             last = now;
         }
-        assert!(rises.len() > 3, "uneven rises: {rises:?}");
+        assert!(rises.len() >= 2, "uneven rises: {rises:?}");
+        assert!(rises.iter().all(|r| *r <= 10), "small steps: {rises:?}");
+        assert!(rises.contains(&1) && rises.contains(&2), "{rises:?}");
+        let rate = (last - start) as f32 / 1800.0;
+        assert!((0.3..0.8).contains(&rate), "{rate} cents a second");
         assert_eq!(game.meter(JackpotTier::Grand), Some(last));
-        // A day later both meters wait at their ceilings.
-        for _ in 0..86_400 {
+        // Near its ceiling a meter climbs to it and waits there.
+        for (tier, top) in [
+            (JackpotTier::Grand, 2_500_000),
+            (JackpotTier::Major, 150_000),
+        ] {
+            let near = top - 5;
+            assert!(set_progressive(&mut game, tier, near));
+            if let Some(m) = link.meters.iter_mut().find(|m| m.spec.tier == tier) {
+                m.told = near;
+                m.shown = near;
+            }
+        }
+        for _ in 0..200 {
             link.tick(&mut game, 1.0, &|_| true);
         }
-        assert_eq!(link.shown(JackpotTier::Grand), Some(1_500_000));
+        assert_eq!(link.shown(JackpotTier::Grand), Some(2_500_000));
         assert_eq!(link.shown(JackpotTier::Major), Some(150_000));
+        assert_eq!(game.meter(JackpotTier::Grand), Some(2_500_000));
+    }
+
+    /// While a Hold & Spin respin is in flight every meter holds: no time
+    /// passes for the link, so nothing climbs, and a meter the simulation
+    /// has just paid shows the amount won, not a climbed value.
+    #[test]
+    fn no_meter_climbs_while_a_respin_is_in_flight() {
+        let mut game = Game::new(golden_century_synthetic(), 1000).unwrap();
+        let mut link = open_link(&mut game, 5);
+        let grand = link.shown(JackpotTier::Grand).unwrap();
+        let major = link.shown(JackpotTier::Major).unwrap();
+        for _ in 0..1_000 {
+            link.tick(&mut game, 0.0, &|_| true);
+        }
+        assert_eq!(link.shown(JackpotTier::Grand), Some(grand));
+        assert_eq!(link.shown(JackpotTier::Major), Some(major));
+        assert_eq!(game.meter(JackpotTier::Grand), Some(grand));
+        // The simulation pays the Grand mid-flight: the meter shows the
+        // amount won until its win is shown.
+        let mut state = game.state().clone();
+        state.meters.insert(JackpotTier::Grand, 1_000_000);
+        game = Game::resume(game.model().clone(), state).unwrap();
+        link.tick(&mut game, 0.0, &|_| false);
+        assert_eq!(link.shown(JackpotTier::Grand), Some(grand));
+        assert_eq!(link.shown(JackpotTier::Major), Some(major));
+        // What holds the link: a respin's events queued, or its turning.
+        let respin = Event::HoldAndSpinRespin {
+            respin: 1,
+            landed: Vec::new(),
+            respins_left: 3,
+            locked_total: 6,
+        };
+        let mut queue = VecDeque::new();
+        assert!(!respin_in_flight(&queue, false));
+        assert!(respin_in_flight(&queue, true));
+        queue.push_back((0.5, respin));
+        assert!(respin_in_flight(&queue, false));
+        queue.clear();
+        queue.push_back((0.5, Event::SpinStarted { spin: 2 }));
+        assert!(!respin_in_flight(&queue, false));
     }
 
     #[test]
@@ -3352,7 +3528,8 @@ mod tests {
             total_award: 100,
             full_grid: false,
         });
-        assert_eq!(show.caption().as_deref(), Some("Free Game 3 of 6"));
+        // Its end reads "Free Spins Completed" (club cabinet, y8c8lEdPW8Y).
+        assert_eq!(show.caption().as_deref(), Some("Free Spins Completed"));
         show.on_event(&Event::FreeGamesResumed { remaining: 3 });
         assert!(!show.inside_free_games() && !show.hold_and_spin());
         assert_eq!(show.caption().as_deref(), Some("Free Game 3 of 6"));

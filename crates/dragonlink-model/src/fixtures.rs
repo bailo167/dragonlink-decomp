@@ -263,11 +263,12 @@ pub const GOLDEN_CENTURY_SYNTHETIC_ID: &str = "golden-century-synthetic-3";
 /// What is **invented** by this project, and must never be quoted as Dragon
 /// Link's: every reel strip, every weight, every pay not read from a machine,
 /// the scatter and orb value tables, the land chance, the jackpots' bet
-/// multiples (which the exact analysis uses), the Major and Grand restart
-/// values, the stakes from which each jackpot has its full chance, and
-/// paylines 6 to 50. The Mini and Minor prizes by denomination are the club
-/// footage's values (claims/family.toml, jackpots.minor-mini-au), and the
-/// Major and Grand are progressive (jackpots.meters-au). Pays matching a reading of a real machine are marked in
+/// multiples (which the exact analysis uses), the Major's restart value,
+/// the stakes from which each jackpot has its full chance, and paylines 6
+/// to 50. The Mini and Minor prizes by denomination are the club footage's
+/// values (claims/family.toml, jackpots.minor-mini-au), the Major and Grand
+/// are progressive (jackpots.meters-au), and the Grand restarts at $10,000
+/// as filmed (claims/golden-century.toml, jackpots.grand-restart). Pays matching a reading of a real machine are marked in
 /// the source; the rest are plausible fillers chosen only so the game plays.
 ///
 /// This exists so Golden Century can be played end to end now. When authentic
@@ -536,8 +537,12 @@ pub fn golden_century_synthetic() -> MathModel {
         def.full_chance_share = Some(Ratio { num: 1, den: 1 });
         // Australian club footage: the Mini is 1,000 credits and the Minor
         // 5,000 up to 10c, 250 and 1,250 from $1 ($10 / $50 at 1c, $250 /
-        // $1,250 at $1); the Major and Grand are running meters, here
-        // restarting at $500 and $5,000 (synthetic start-up values).
+        // $1,250 at $1); the Major and Grand are running meters. The Grand
+        // restarts at $10,000, as filmed (a Golden Century machine read
+        // $10,000.20 under WINNER after its Grand and climbed on from
+        // $10,000.21: OL6Pu1AI-cQ 86-163 s, VERIFIED there; STRONG for
+        // Australian Golden Century). The Major's $500 is synthetic
+        // (HYPOTHESIS: the lowest filmed is $512.94).
         match tier {
             JackpotTier::Mini => {
                 def.fixed_credits = vec![
@@ -564,7 +569,7 @@ pub fn golden_century_synthetic() -> MathModel {
                 ];
             }
             JackpotTier::Major => def.progressive_reset = Some(50_000),
-            JackpotTier::Grand => def.progressive_reset = Some(500_000),
+            JackpotTier::Grand => def.progressive_reset = Some(1_000_000),
         }
         def
     })
@@ -706,8 +711,9 @@ pub fn golden_century_synthetic() -> MathModel {
         description: "SYNTHETIC Golden Century: the game's evidenced structure (5x3, symbol roles, \
                       paylines 1-5, scatter-triggered free games, six-orb Hold & Spin, four jackpot \
                       tiers, denominations and line selection) with INVENTED strips, weights, most \
-                      pays, the jackpots' bet multiples, restart values and stake scaling; the Mini \
-                      and Minor by denomination follow club footage. Not recovered from any machine; never quote its numbers \
+                      pays, the jackpots' bet multiples, the Major's restart value and stake \
+                      scaling; the Mini and Minor by denomination and the Grand's $10,000 restart \
+                      follow club footage. Not recovered from any machine; never quote its numbers \
                       as Dragon Link's (docs/reverse-engineering/GOLDEN_CENTURY_SESSION.md, \
                       docs/DECISIONS.md D-017)."
             .to_string(),

@@ -272,9 +272,31 @@ note = "What the pages say, not what a screen shows. The same sentence is on the
 
 [[claim]]
 id = "jackpots"
-statement = "What are the Major's start-up value and ceiling, and the increment rates of the Grand and the Major, in the Australian configuration?"
+statement = "What are the Major's start-up value and ceiling, the Grand's ceiling, and the exact increment rules of the Grand and the Major, in the Australian configuration?"
 confidence = "unknown"
-note = "Structure, fixed values and observed behaviour are in claims/family.toml (jackpots.progressive-levels, jackpots.meters-au, jackpots.minor-mini-au). Meter values seen on nine machines from 2020 to 2026: Grand between $10,343 and $15,545.85, Major between $512.94 and $1,190.03; a sample, not a range."
+note = "Structure, fixed values and observed behaviour are in claims/family.toml (jackpots.progressive-levels, jackpots.meters-au, jackpots.minor-mini-au); the Grand's restart and the meters' order of rate are below (jackpots.grand-restart, jackpots.meter-rate). Meter values seen on nine machines from 2020 to 2026: Grand between $10,343 and $15,545.85, Major between $512.94 and $1,190.03; a sample, not a range. A club Golden Century's Grand was won at $24,122.63 (Wc7QU1C2jWo), so its ceiling is at least that. The Major's lowest filmed value is $512.94; a US render shows $500.00."
+
+[[claim]]
+id = "jackpots.grand-restart"
+statement = "On Australian Golden Century machines the Grand restarts at $10,000 once won."
+value = "$10,000"
+confidence = "strong_evidence"
+source = "gameplay_recording"
+citation = "Public recordings, YouTube ids and times: OL6Pu1AI-cQ 86.0 s ('GRAND JACKPOT: $10,000.20' under WINNER after a $13,566.04 Grand won at 0.5-3.2 s), 89.0 s ($10,000.21 on the top screen), 96, 161 and 163.5 s ($10,000.23 to $10,000.43); Wc7QU1C2jWo 3.6 s (a line shaped like $?0,000.?0 after a $24,122.63 Grand, too blurred to read) (docs/reverse-engineering/FOOTAGE.md)"
+accessed = "2026-10-19"
+scope = "cabinet-au"
+note = "Verified on one machine (OL6Pu1AI-cQ, a casino build, read at several moments); strong for Australian Golden Century with Wc7QU1C2jWo (partial), demonstration stills of Australian machines at $10,009.77 and a US render at $10,000.04, and nine filmed Australian Golden Century Grands all at $10,343 or more. Venues set their own start-ups on some links (docs/reverse-engineering/AUSTRALIAN_CONFIGURATION.md), so this is the filmed configuration's value, not every floor's. The synthetic model restarts its Grand here; its opening range and ceiling stay synthetic."
+
+[[claim]]
+id = "jackpots.meter-rate"
+statement = "Golden Century's Grand and Major meters climb by one or two cents at a time, at about 0.1 to 0.8 cents a second (Grand) and 0.25 to 0.8 cents a second (Major), also during features; a changed figure rolls up inside its box in about 0.35-0.40 s."
+value = "Grand about 0.1-0.8 c/s, Major about 0.25-0.8 c/s, 1-2 c steps; roll 0.35-0.40 s"
+confidence = "strong_evidence"
+source = "gameplay_recording"
+citation = "Public recordings, YouTube ids and times: p6OesyvM5vA (Grand $10,482.50 to $10,485.38 in 353 s); OL6Pu1AI-cQ 89-163.5 s; f5sMl9a5jds (.97 to .02 in 13.3 s, during a tally); 1bAevGz0K2k (2 c in about 19 s, during a tally); y8c8lEdPW8Y 860-3183 s (Major $602.35 to $619.20) and 1105-1122 s at 30 fps (the roll) (docs/reverse-engineering/FOOTAGE.md)"
+accessed = "2026-10-19"
+scope = "cabinet-au"
+note = "Five machines; video time may include cuts, so real rates are if anything lower. The rate follows link traffic, so the intervals and any larger jumps are not a property of the game; the app's are synthetic, scaled to this order of magnitude. The roll is verified on one machine (two rolls at 30 fps); what a carry does was not seen."
 
 [[claim]]
 id = "gamble"
@@ -313,14 +335,47 @@ note = "Verified as printed. What the range spans (denominations, variations, wi
 
 [[claim]]
 id = "deck.club-layout"
-statement = "Australian club Dragon Link cabinets have a deck of two rows of six keys whose legends are small displays, plus a large teardrop key at the right: GAMBLE top left over TAKE WIN bottom left, credits-per-line keys along the top, lines keys along the bottom, the current choice in each row drawn pale."
+statement = "Australian club Dragon Link cabinets have a deck of two rows of six keys whose legends are small displays, plus a large teardrop key at the right: GAMBLE top left over TAKE WIN bottom left, credits-per-line keys along the top, lines keys along the bottom, the current choice in each row marked: the credits key pale, the lines key light blue."
 value = "2 x 6 displayed-legend keys + teardrop; GAMBLE / TAKE WIN in column 1"
 confidence = "verified"
 source = "gameplay_recording"
 citation = "Public recordings, YouTube ids and times: vNWXRftZOE4 0:55.0; _XHUzg4qDXI 0:05.80; nOgrwFAA0Rw 3:15; owner's recording (private) 00:09.67 (docs/reverse-engineering/GOLDEN_CENTURY_CABINET_DECK.md)"
 accessed = "2026-10-17"
 scope = "cabinet-au, club presentation"
-note = "Layout verified on Golden Century Dragon Link machines and the owner's Happy & Prosperous machine; read by one agent and re-checked by an independent verifier. No Australian casino deck is legible on footage."
+note = "Layout verified on Golden Century Dragon Link machines and the owner's Happy & Prosperous machine; read by one agent and re-checked by an independent verifier. No Australian casino deck is legible on footage. Changed 2026-10-19: the selected lines key was read as pale like the credits key; a second pass found it light blue with a white legend on three Golden Century machines and the owner's (strong evidence, _XHUzg4qDXI 0:05.8, WRGgkKeAksA 0:04.2, vNWXRftZOE4 0:55.3)."
+
+[[claim]]
+id = "deck.teardrop-look"
+statement = "The club deck's teardrop is a plectrum pointing up, its legend in a thin gold ring with blue LEDs along the lower rim; it is dark and smoky with a pale-blue legend at rest, while the reels spin and through Hold & Spin, and lights blue only for START FEATURE."
+value = "apex up; dark except for START FEATURE"
+confidence = "strong_evidence"
+source = "gameplay_recording"
+citation = "Public recordings: _XHUzg4qDXI 0:05.8, 0:09.1-0:10.2, 0:13.0, 0:28-0:29; WRGgkKeAksA 0:03.4-0:05.6; bUbSjAGwqs8 0:08.95; owner's recording (private) 00:09.7 (docs/reverse-engineering/GOLDEN_CENTURY_CABINET_DECK.md)"
+accessed = "2026-10-19"
+scope = "cabinet-au, club presentation"
+note = "The shape is verified on four machines of three products; the dark body verified on one machine (_XHUzg4qDXI) and strong across machines. While START FEATURE waits a Golden Century Dragon Cash deck A keeps it lit with the legend turning like a coin about every 1.28 s (strong); the US deck B blinks it 0.5 s on, 0.5 s off (strong, yGonwq_1nzE); no Dragon Link deck-A wait is filmed, so the steady light is partial for Golden Century Dragon Link."
+
+[[claim]]
+id = "deck.good-luck-wipe"
+statement = "As the reels start, and on every Hold & Spin respin, the club deck spells GOOD over LUCK on keys 2-5 of each row, a letter about every 0.1 s from the left: GAMBLE and TAKE WIN go dark first, keys not yet reached keep their idle face and legend, the bottom row runs about a frame behind and column 6 goes dark 0.1-0.13 s after the D. As the reels stop the idle faces wipe back from the left, a column about every 0.08 s."
+value = "wipe in 0.1 s a key; wipe back 0.08 s a column"
+confidence = "verified"
+source = "gameplay_recording"
+citation = "Public recording _XHUzg4qDXI 0:09.0, 0:11.4, 0:28.0, 0:41.7 (wiping in; two are respins), 0:39-0:47 (respins), 0:09.97-0:10.50 and 0:12.40-0:12.87 (wiping back), frame by frame (docs/reverse-engineering/GOLDEN_CENTURY_CABINET_DECK.md)"
+accessed = "2026-10-19"
+scope = "cabinet-au, club presentation"
+note = "One machine. One wipe of 0.067 s a key lies in a stretch the recording plays about 1.5 times fast; the other three run 0.10-0.11 s a key."
+
+[[claim]]
+id = "deck.lighting"
+statement = "Every key of the club deck is lit at full brightness: GAMBLE and TAKE WIN whether or not a gamble is possible, and the credits keys a denomination does not offer (no legend) like the offered ones. TAKE WIN is pale khaki or cream rather than saturated gold. In the gamble's vivid phase hearts, diamonds and RED are orange and clubs, spades and BLACK dark, with light-blue icons; in the plain phase the red choices are pale lavender and the black ones light blue; the unused keys show a white-silver lattice with a rosette."
+value = "all keys lit; gamble vivid orange / dark, plain lavender / light blue"
+confidence = "strong_evidence"
+source = "gameplay_recording"
+citation = "Public recordings: _XHUzg4qDXI 0:05.8, 0:07.7, 0:13.0, 0:15.0, 0:16.0, 1:11.1-1:15.3; vNWXRftZOE4 0:55.3; WRGgkKeAksA 0:04.2; bUbSjAGwqs8 0:08.95; nOgrwFAA0Rw 3:14-3:21 (docs/reverse-engineering/GOLDEN_CENTURY_CABINET_DECK.md)"
+accessed = "2026-10-19"
+scope = "cabinet-au, club presentation"
+note = "The gamble's colours and lattice are verified on one machine (_XHUzg4qDXI). The unoffered keys' brightness was measured on two machines; earlier notes said they stayed dark orange. TAKE WIN's letters read blue on two Golden Century machines and white on one Dragon Cash machine (partial)."
 
 [[claim]]
 id = "deck.club-keys-behaviour"
@@ -376,6 +431,28 @@ citation = "Public recording _XHUzg4qDXI 0:06.80-0:08.57 and 1:12.00-1:14.50 (do
 accessed = "2026-10-17"
 scope = "cabinet-au, club presentation"
 note = "Bottom keys 1 and 2 are not legible; TAKE WIN and RED there are hypotheses."
+
+[[claim]]
+id = "gamble.screen-over-base"
+statement = "Nothing of the base screen shows during the gamble (no feature banner such as FEATURE COMPLETED, no tall symbol), and it comes back after a loss; COLLECT and GAMES MENU stay at their places; the chosen screen button fills yellow in the frame the card turns face up, not at the touch."
+value = "base screen hidden; COLLECT and GAMES MENU kept; fill with the face"
+confidence = "verified"
+source = "gameplay_recording"
+citation = "Public recordings: LwC3hVqFRMg 18:30.4-18:33.7; _XHUzg4qDXI 0:07.60, 0:07.87, 1:13.00, 1:16.800; iHDxUc1dlKs 0:12.433; owner's recording (private) 00:13.53 (docs/reverse-engineering/GOLDEN_CENTURY_CABINET_DECK.md)"
+accessed = "2026-10-19"
+scope = "cabinet-au, club presentation"
+note = "The fill's timing is strong evidence (three reveals on two machines, once a frame early). Two club machines draw the gamble prompt yellow and letter-spaced like their bet line; an NSW machine with a video deck draws it white and the owner's Happy & Prosperous pale: a conflict, recorded in the doc."
+
+[[claim]]
+id = "menu.chooser-layout"
+statement = "On Queensland club machines the denomination chooser's panel is about 980-1010 by 190-200 canvas pixels centred near y 755, opaque black-brown in a thin gold frame, with bevelled keys about 160 by 80, 26 apart (cents red-orange, dollars amber, white figures in a dark outline, a smaller cent sign); ARE YOU SURE? sits wholly above the panel; the title logo is about 1560 pixels wide just above the panel; a COLLECT pill stays, moved to the screen's bottom right corner."
+value = "panel ~995 x 195 at y ~657-852; keys ~160 x 80, gap ~26; logo ~1560 wide, caps y ~485-640; COLLECT at ~(1830, 1016)"
+confidence = "strong_evidence"
+source = "gameplay_recording"
+citation = "Public recordings 1bAevGz0K2k 0:13.0-0:15.0 and y8c8lEdPW8Y 0:08.0-0:11.7, mapped by homography from the reel frame; etaH-vbYBKY 0:00-0:08 for COLLECT on a 2018 layout (docs/reverse-engineering/GOLDEN_CENTURY_CABINET_DECK.md)"
+accessed = "2026-10-19"
+scope = "cabinet-au, club presentation"
+note = "Both recordings are from one venue; the confirmation's sizes rest on one weak homography (partial). The look is verified; the colours are camera colours (partial). The 2018 layout keeps COLLECT at the left above the clock instead. An earlier linear mapping (a panel 1124 x 222 at y 696) is superseded."
 
 [[claim]]
 id = "meters.unit-switching"
