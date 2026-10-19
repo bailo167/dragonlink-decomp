@@ -75,8 +75,8 @@ pieces"); the mobile app's two large badges per line are gone.
 | Trigger | Flags land with the clink only; the feature bell 0.2 s after the reels are still, played out (2.55 s) | VERIFIED |
 | Flags | As the bell ends the flags wave (their animation from its first frame, at 20 fps) to SND_Scatter (4.75 s) | VERIFIED |
 | Scatter win | Counts when SND_Scatter ends, to its win tune | VERIFIED |
-| Prompt | SELECT SPIN TO START FEATURE after the count (the official app's wording; the cabinet's differs, below); "Scatter wins N" only while it waits | VERIFIED |
-| Start | The press is silent; the flags wave on about 1 s; a hard cut to the free games: SND_Fea_BGM from its start, the first game spinning at once, the banner's total counting up from 1 with a SND_Fea_Inc tick a step | VERIFIED |
+| Prompt | SELECT SPIN TO START FEATURE after the count (the official app's wording and timing; the cabinet's differ, below); "Scatter wins N" only while it waits | VERIFIED |
+| Start | The press is silent; the flags wave on about 1 s; a hard cut to the free games: SND_Fea_BGM from its start, the first game spinning at once, the banner's total counting up from 1 with a SND_Fea_Inc tick a step (the cabinet is quicker and stiller, below) | VERIFIED |
 | Doors | Land with the reels, open together 3 frames after the reels are still (1.4 s), to SND_EndMask; wins 47 frames after they begin to open | VERIFIED (6 games) |
 | Pace | Next game 1.25 s after a win's count; about 2.5 s after the doors with no win | VERIFIED |
 | End | FEATURE COMPLETED in the win slot, SND_Fea_End as the music stops | VERIFIED |
@@ -92,6 +92,49 @@ reads "Press START FEATURE button" on both. **The app** follows the cabinet for 
 own lettering over the banner's bar (the pack has no such art; Arial Black stands in for the brush
 face, the cream judged by eye against white text, not measured as a colour), blinking from the
 moment the prompt shows.
+
+**The cabinet's trigger and start differ from the app** (club footage, frame by frame:
+`y8c8lEdPW8Y` 938.43-951.6 and `1bAevGz0K2k` 319.2-330.3; the two agree; VERIFIED for these club
+machines):
+
+- **Status and message rows.** From the result (0.14 s after the reels rest) the status line reads
+  "6 FREE GAMES WON!", steady; the message row keeps its start prompt until the flags wave (2.6 s
+  later), then reads "Scatter wins N" through the count and the wait. The official app shows
+  "Scatter wins N" only while it waits.
+- **The prompt comes with the count.** PRESS START FEATURE BUTTON and "Press START FEATURE
+  button" appear within one frame of the scatter win's first count step (`y8c8lEdPW8Y` 946.07,
+  `1bAevGz0K2k` 326.77-326.80), 7.6 s after the reels rest; the count goes on under the prompt.
+  The app's official recording asks after the count. While it waits the status alternates in
+  2.0 s slots from the prompt's start, "Press START FEATURE button" first (791.67-793.70 and
+  946.10-948.08 on `y8c8lEdPW8Y`; one case, 946.03, showed the other first after a single frame).
+  The lettering's blink restarts, lit, the moment the count completes (948.50 and 793.80,
+  `1bAevGz0K2k` 327.77, each a press that completed the count).
+- **The start.** The symbols go still at the press (within 0.05-0.07 s), nothing moves, and the
+  first free game's reels start 0.50-0.53 s after the prompt goes (`y8c8lEdPW8Y` 949.80 to
+  950.33, `1bAevGz0K2k` 328.60 to 329.10), with "FREE GAME 1 OF" and its counting total 2 frames
+  after the first motion. The status and message rows are blank from the press; the status shows
+  "Free Game 1 of 6" about 1.2-1.3 s after the reels start.
+- **A free game's WIN banner only for big wins.** "WIN $x WIN" replaces "FREE GAME n OF 6" only
+  for a win of 11x the bet or more (seen at 11.0x, 12.8x, 16x, 20x, 22x twice, 40x and 44x); 18
+  wins from 0.1x to 6.0x counted on the WIN meter under "FREE GAME n OF 6" and its counter
+  (`1bAevGz0K2k`, `y8c8lEdPW8Y`, `f5sMl9a5jds`, `kVjwYtVwhkk`; 26 paid free games in five
+  features). The rule STRONG; the limit lies above 6.0x and at most 11.0x (a fixed dollar limit
+  of $25.50 to $32 also fits). A big win's banner stays 1.0 s after its count, then "FREE GAME n
+  OF 6" returns until the next game (three cases ended by a press).
+- **The return after a Hold & Spin inside the free games.** The WIN plaque goes; the board stays
+  0.37-0.43 s with its open positions dark and no banner, the status still "Free Game N of 6";
+  then "FREE GAME N+1 OF 6", the status N+1 and the reels come together, the dimmed symbols
+  scrolling away still dimmed (`y8c8lEdPW8Y` 1019.93-1020.43, 2562.93-2563.40, 3046.57-3047.00;
+  VERIFIED, one machine).
+
+**The app** follows the cabinet in all of these: the trigger's status and message rows, the
+prompt at the count's first step with the count going on under it, the 2.0 s alternation from the
+prompt's start (Press first) and the blink restarting as the count completes, the flags still at
+the press and the first free game 0.52 s after it with its banner and total, the WIN banner for a
+free game's win from **10x the bet (our choice inside the evidenced range: HYPOTHESIS)** held 1.0 s
+after the count, and the dark 0.43 s return. Its status shows "Free Game 1 of 6" as the reels
+start, not 1.2 s later. A Hold & Spin's payment always shows its banner, however small (`WIN $0.29
+WIN`, `1bAevGz0K2k` 164.3).
 
 ## Hold & Spin
 

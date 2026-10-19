@@ -86,6 +86,19 @@ owner; docs/DECISIONS.md). Every run muted. Progress, newest last:
   official app's medallion, SELECT SPIN wording and banner tally are recorded as the app's. Unit
   tests cover the intro's timing, the blink, the collection and the comets; checked on muted
   captures (both features, the jackpots and doors runs, Golden Gong).
+- **Audit fixes: free games.** The free-games trigger now runs as on club cabinets (VERIFIED on
+  two recordings): "6 FREE GAMES WON!" on the status line from the result, "Scatter wins N" from
+  the flags' wave, the PRESS START FEATURE prompt as the scatter win starts counting (the count
+  goes on under it; it waited for the count before), the status alternating in 2.0 s slots from
+  the prompt's start, Press first, and the blink restarting as the count completes. At the press
+  the flags go still, both rows blank, and the first free game's reels, banner and counting total
+  come 0.52 s later (1.2 s before, with the banner ahead of the reels). A free game's "WIN $x WIN"
+  banner now shows only for a win of 10x the bet or more (the rule STRONG, the 10x limit
+  HYPOTHESIS between the 6.0x and 11.0x the footage brackets), held 1.0 s after its count. After
+  a Hold & Spin inside the free games the board stays dark with no banner for 0.43 s, then "FREE
+  GAME N+1 OF 6" comes with the reels (VERIFIED, one machine), and the moving strips scroll an
+  open position's dimmed symbol away still dimmed. Unit tests cover each rule (one runs the reel
+  system on a world); checked on muted captures of the doors run.
 
 ## Project interpretation (owner reset, 2026-10-14)
 

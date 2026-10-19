@@ -2330,7 +2330,11 @@ pub fn start_prompts(
     if !fidelity.0 {
         return;
     }
-    let quiet = show.message().is_some() || show.stage != Stage::Base || gamble.active;
+    // Blank from START FEATURE to the first free game too (club cabinet).
+    let quiet = show.message().is_some()
+        || show.fg_cut.is_some()
+        || show.stage != Stage::Base
+        || gamble.active;
     for (p, mut vis) in &mut prompts {
         let want = if p.which == show.prompt && !quiet {
             Visibility::Inherited
@@ -3201,7 +3205,7 @@ pub fn update_meters(
             CabMeter::MinBet => format!("MIN BET {}", sim.game.lines()),
             CabMeter::Lines => lines_text(sim.game.lines()).0,
             CabMeter::LinesWord => lines_text(sim.game.lines()).1.to_string(),
-            CabMeter::Multiplier => show.caption(t).unwrap_or_else(|| {
+            CabMeter::Multiplier => show.caption().unwrap_or_else(|| {
                 let per_line = sim.game.credits_per_line();
                 let bet_line = match deck.profile {
                     Profile::Club if per_line == 1 => "1 credit per line".to_string(),
@@ -3246,7 +3250,13 @@ pub fn update_meters(
         let (CabMeter::Multiplier, Some(mut spacing)) = (meter, spacing) else {
             continue;
         };
-        let bet_line = deck.profile == Profile::Club && text.0.ends_with("per line");
+        // A feature's status texts ("6 FREE GAMES WON!", "Press START
+        // FEATURE button", "Free Game 1 of 6") are the bet line's yellow and
+        // spacing too (club cabinet: 1bAevGz0K2k, their brightest pixels
+        // blue/red 0.64-0.70 like the bet line's; STRONG).
+        let feature_line = show.caption().is_some_and(|c| !c.is_empty());
+        let bet_line =
+            deck.profile == Profile::Club && (text.0.ends_with("per line") || feature_line);
         let (want, gap) = match (bet_line, deck.profile) {
             (true, _) => (Color::srgb_u8(225, 225, 80), 4.8),
             (false, Profile::Club) => (Color::srgb_u8(210, 220, 245), 0.0),
@@ -3547,20 +3557,23 @@ pub fn reel_strips(model: &MathModel) -> Reels {
     }
 }
 
-/// The labels of `reel`'s window, top row first, any dimming taken off.
+/// The labels of `reel`'s window, top row first, as on screen: a dimmed
+/// open position keeps its "DIM:" and scrolls away still dimmed (club
+/// cabinet, y8c8lEdPW8Y 1020.43; VERIFIED).
 fn window_labels(labels: &Query<(&CellLabel, &Text)>, reel: usize) -> Vec<String> {
     let mut window = vec![String::new(); 3];
     for (label, text) in labels {
         if label.reel as usize == reel && (label.row as usize) < 3 {
-            window[label.row as usize] = label_symbol_owned(&text.0);
+            window[label.row as usize] = text.0.clone();
         }
     }
     window
 }
 
-/// A cell label with any dimming taken off.
-fn label_symbol_owned(label: &str) -> String {
-    label.strip_prefix(DIM).unwrap_or(label).to_string()
+/// The tint a moving strip draws a label in: dimmed for an open Hold &
+/// Spin position's symbol, as at rest.
+fn strip_tint(dim: bool) -> Color {
+    if dim { DIM_TINT } else { Color::WHITE }
 }
 
 /// The reel strips: a clipped column per reel over the panel, shown only
@@ -3713,7 +3726,7 @@ pub fn spin_reels(
             let quiet = leaving
                 .iter()
                 .chain(anim.coming.get(reel).into_iter().flatten())
-                .any(|l| symbol_of(l) == reels.scatter);
+                .any(|l| label_symbol(l).0 == reels.scatter);
             (leaving, quiet)
         });
         let state = &mut reels.states[reel];
@@ -3832,7 +3845,12 @@ pub fn spin_reels(
         }
         let pos = reels.states[reel].pos;
         let (n, raw) = reels.slot_entry(reel, slot.index);
-        let key = symbol_of(raw).to_string();
+        let (key, dim) = label_symbol(raw);
+        let key = key.to_string();
+        let tint = strip_tint(dim);
+        if image.color != tint {
+            image.color = tint;
+        }
         // Centre of this symbol relative to the column top.
         let cy = p / 2.0 + (n as f32 - pos) * p;
         let (w, h) = art
@@ -3881,7 +3899,7 @@ pub fn spin_reels(
     for (tile, mut node, mut vis) in &mut tiles {
         let reel = tile.reel as usize;
         let (n, raw) = reels.slot_entry(reel, tile.index);
-        let coin = reels.moving(tile.reel) && symbol_of(raw) == "orb";
+        let coin = reels.moving(tile.reel) && label_symbol(raw).0 == "orb";
         let want = if coin {
             Visibility::Inherited
         } else {
@@ -3915,7 +3933,12 @@ pub fn spin_reels(
         }
         let pos = reels.states[reel].pos;
         let (n, raw) = reels.slot_entry(reel, g.index);
-        let key = symbol_of(raw).to_string();
+        let (key, dim) = label_symbol(raw);
+        let key = key.to_string();
+        let tint = strip_tint(dim).with_alpha(BLUR_ALPHA);
+        if image.color != tint {
+            image.color = tint;
+        }
         let cy = p / 2.0 + (n as f32 - pos + g.offset) * p;
         let (w, h) = art
             .sizes
@@ -4136,11 +4159,18 @@ pub struct Rollup {
     /// The win total last seen from the presentation.
     seen: u64,
     tune: Option<Entity>,
+    /// Seconds since the count completed.
+    after: f32,
 }
 
 impl Rollup {
     pub fn active(&self) -> bool {
         self.t < self.duration
+    }
+
+    /// The whole win this count is counting (credits).
+    fn win(&self) -> u64 {
+        self.to.saturating_sub(self.from)
     }
 
     /// The win shown on the meter now.
@@ -4234,6 +4264,7 @@ pub fn win_rollup(
         rollup.to = target;
         rollup.t = 0.0;
         rollup.duration = 0.0;
+        rollup.after = 0.0;
     } else if target > rollup.seen {
         let from = rollup.shown();
         // The tune follows this win, not what the feature has paid so far.
@@ -4252,10 +4283,13 @@ pub fn win_rollup(
         rollup.from = from;
         rollup.to = target;
         rollup.t = 0.0;
+        rollup.after = 0.0;
     }
     rollup.seen = target;
     if rollup.active() {
         rollup.t += smoke.dt(&time);
+    } else {
+        rollup.after += smoke.dt(&time);
     }
 }
 
@@ -4816,6 +4850,13 @@ pub struct FeatureShow {
     waited: f32,
     /// When (`clock`) the start prompt showed, while it shows.
     prompt_at: Option<f32>,
+    /// The scatter win was still counting under the start prompt when last
+    /// seen (the lettering's blink restarts as the count completes).
+    prompt_count: bool,
+    /// The free games are back after a Hold & Spin one of them started,
+    /// until the next free game starts: the board stays dark, with no
+    /// banner (club cabinet, y8c8lEdPW8Y 1019.93-1020.37).
+    resuming: bool,
     /// A respin to animate: the positions orbs just landed on.
     respin_landed: Option<Vec<(u8, u8)>>,
     respin: Option<RespinAnim>,
@@ -4914,8 +4955,9 @@ pub struct FeatureShow {
     scatter_paid: bool,
     /// The free games' trigger sequence: seconds since it began (see
     /// `free_games_trigger`), the flags waving, the time since START FEATURE
-    /// was pressed (until the cut to the free games), and the banner's total
-    /// counting up after the cut (seconds, total shown).
+    /// was pressed (until the first free game starts; the cut comes at
+    /// `FG_CUT`), and the banner's total counting up as the first free game
+    /// spins (seconds, total shown).
     fg_trigger: Option<f32>,
     fg_flags: bool,
     /// Seconds since a stack on a winning line began to stand (its win waits).
@@ -4955,6 +4997,7 @@ impl FeatureShow {
                 self.fg_trigger = None;
                 self.fg_flags = false;
                 self.fg_cut = None;
+                self.resuming = false;
                 self.grand = None;
                 self.grand_done = false;
                 self.progressive = false;
@@ -5009,8 +5052,11 @@ impl FeatureShow {
                 self.win_lines.clear();
                 self.wild = None;
                 self.wild_sounded = false;
+                // The board stays a moment, dark, with no banner, until the
+                // next free game spins (club cabinet).
                 if let Some((number, total)) = self.fg_return.take() {
                     self.stage = Stage::FreeGames { number, total };
+                    self.resuming = true;
                 }
             }
             Event::LineWin {
@@ -5035,10 +5081,18 @@ impl FeatureShow {
                 self.wild_sounded = false;
                 self.game_won = false;
                 self.win_lines.clear();
+                self.resuming = false;
                 self.stage = Stage::FreeGames {
                     number: *number,
                     total: number + remaining,
                 };
+                // The first free game: the banner, its total counting up and
+                // the music come with the reels (club cabinet: the banner 2
+                // frames after the first motion).
+                if *number == 1 {
+                    self.fg_count = Some((0.0, 1));
+                }
+                self.fg_cut = None;
             }
             Event::FreeGamesRetriggered { remaining, .. } => {
                 if let Stage::FreeGames { number, total } = &mut self.stage {
@@ -5052,6 +5106,7 @@ impl FeatureShow {
                     self.clear_hold_and_spin();
                     self.fg_return = None;
                 }
+                self.resuming = false;
                 // Real game: "FEATURE COMPLETED" with SND_Fea_End, the music
                 // cut at the same moment.
                 self.cues.push("SND_Fea_End");
@@ -5117,6 +5172,22 @@ impl FeatureShow {
         self.waited = 0.0;
         // The start prompt's lettering blinks from the moment it shows.
         self.prompt_at = matches!(what, Await::Start(_)).then_some(self.clock);
+        self.prompt_count = false;
+    }
+
+    /// Follow the win's count under the start prompt: the cabinet restarts
+    /// the lettering's blink, lit, the moment the scatter win's count
+    /// completes (club cabinets: y8c8lEdPW8Y 948.50 and 793.80, 1bAevGz0K2k
+    /// 327.77; VERIFIED).
+    pub fn follow_count(&mut self, counting: bool) {
+        if !matches!(self.awaiting, Some(Await::Start(_))) {
+            self.prompt_count = false;
+            return;
+        }
+        if self.prompt_count && !counting {
+            self.prompt_at = Some(self.clock);
+        }
+        self.prompt_count = counting;
     }
 
     /// Whether the start prompt's lettering is lit now, while a feature
@@ -5201,10 +5272,27 @@ impl FeatureShow {
     }
 
     /// The line under the reels, in place of "Bet Multiplier".
-    pub fn caption(&self, t: f32) -> Option<String> {
-        let alternate = ((t / 1.5) as u32).is_multiple_of(2);
+    pub fn caption(&self) -> Option<String> {
+        // Club cabinet: "N FREE GAMES WON!" steady from the result (0.14 s
+        // after the reels rest) until START FEATURE is awaited; blank from
+        // the press until the first free game (y8c8lEdPW8Y 938.57-946.0 and
+        // 949.87; 1bAevGz0K2k 319.3-326.7 and 328.6; VERIFIED). The base
+        // stage only: the trigger's clock runs on through the free games.
+        if matches!(self.stage, Stage::Base) {
+            if self.fg_cut.is_some() {
+                return Some(String::new());
+            }
+            if self.fg_trigger.is_some() && self.awaiting.is_none() {
+                return Some(format!("{} FREE GAMES WON!", self.games_won));
+            }
+        }
+        // While START FEATURE is awaited, the status alternates in 2.0 s
+        // slots from the prompt's start, "Press START FEATURE button" first
+        // (club cabinets: y8c8lEdPW8Y 791.67-793.70 and 946.10-948.08,
+        // 1bAevGz0K2k 326.77; VERIFIED).
+        let won_turn = ((self.waited / PROMPT_TURN) as u32) % 2 == 1;
         match (self.awaiting, self.stage) {
-            (Some(Await::Start(Feature::FreeGames)), _) if alternate => {
+            (Some(Await::Start(Feature::FreeGames)), _) if won_turn => {
                 Some(format!("{} FREE GAMES WON!", self.games_won))
             }
             (Some(Await::Start(_)), _) => Some("Press START FEATURE button".into()),
@@ -5224,15 +5312,81 @@ impl FeatureShow {
 
     /// The message at the right, in place of the start prompts.
     pub fn message(&self) -> Option<String> {
+        // Club cabinet: blank from the START FEATURE press until the first
+        // free game (line wins included).
+        if self.fg_cut.is_some() {
+            return None;
+        }
         if let Some(note) = &self.win_note {
             return Some(note.clone());
         }
-        // Footage: "Scatter wins N" from the flags' wave until START
-        // FEATURE is pressed; blank through the free games.
+        // Club cabinet: "Scatter wins N" from the flags' wave (the result
+        // + 2.6 s) through the count and the wait, until START FEATURE is
+        // pressed (y8c8lEdPW8Y 941.20, 1bAevGz0K2k 321.9; VERIFIED); blank
+        // through the free games. The official app shows it only while it
+        // waits.
         let waiting = matches!(self.awaiting, Some(Await::Start(Feature::FreeGames)));
-        (waiting && self.scatter_award > 0).then(|| format!("Scatter wins {}", self.scatter_award))
+        ((self.fg_flags || waiting) && self.scatter_award > 0)
+            .then(|| format!("Scatter wins {}", self.scatter_award))
+    }
+
+    /// A base game's free-games trigger has reached its count: the cabinet
+    /// asks for START FEATURE as the win counts (y8c8lEdPW8Y 946.07,
+    /// 1bAevGz0K2k 326.77-326.80; VERIFIED).
+    pub fn trigger_counting(&self) -> bool {
+        self.fg_trigger.is_some_and(|t| t >= FG_COUNT) && matches!(self.stage, Stage::Base)
+    }
+
+    /// Whether `front`, the next event to show, waits for a win's count to
+    /// finish: a feature's trigger, the free games' prompt and their return
+    /// after a Hold & Spin do. Not the free games' own trigger once its
+    /// count has begun: the cabinet shows that prompt as the scatter win
+    /// starts counting, and the count goes on under it.
+    pub fn waits_for_count(&self, front: Option<&Event>) -> bool {
+        let waits = matches!(
+            front,
+            Some(
+                Event::FeatureTriggered { .. }
+                    | Event::FreeGamesStarted { .. }
+                    | Event::FreeGamesResumed { .. }
+            )
+        );
+        let prompt_now = self.trigger_counting()
+            && matches!(
+                front,
+                Some(
+                    Event::FeatureTriggered {
+                        feature: Feature::FreeGames,
+                        ..
+                    } | Event::FreeGamesStarted { .. }
+                )
+            );
+        waits && !prompt_now
+    }
+
+    /// START FEATURE pressed for the free games: the flags go still and the
+    /// screen holds until the cut (club cabinets: the symbols still within
+    /// 0.05 s of the press, nothing moving until the reels start; VERIFIED).
+    fn press_free_games(&mut self) {
+        self.fg_cut = Some(0.0);
+        self.fg_flags = false;
+        self.scatter_paid = false;
+    }
+
+    /// Run the time from the START FEATURE press on; true on the frame of
+    /// the cut, when the first free game is to start.
+    fn advance_cut(&mut self, dt: f32) -> bool {
+        let Some(t0) = self.fg_cut else {
+            return false;
+        };
+        let t = t0 + dt;
+        self.fg_cut = Some(t);
+        crossed(t0, t, FG_CUT)
     }
 }
+
+/// The status line's turns while START FEATURE is awaited, in seconds.
+const PROMPT_TURN: f32 = 2.0;
 
 /// A SPIN press while a feature waits releases it (and starts no game). An
 /// unattended run presses by itself after a moment.
@@ -5246,11 +5400,15 @@ pub fn feature_press(
     mut show: ResMut<FeatureShow>,
     mut presentation: ResMut<Presentation>,
     mut rollup: ResMut<Rollup>,
+    mut commands: Commands,
 ) {
     if !fidelity.0 || show.awaiting.is_none() || show.blocks() {
         return;
     }
     show.waited += smoke.dt(&time);
+    // The free games' prompt shows as the scatter win starts counting; its
+    // lettering's blink restarts as the count completes.
+    show.follow_count(rollup.active());
     let pressed = (input.spin && !input.skip_spin)
         || keys.just_pressed(KeyCode::Space)
         || keys.just_pressed(KeyCode::Enter);
@@ -5260,10 +5418,15 @@ pub fn feature_press(
         // the banner reads FREE GAME 1 OF n as the first game spins; the base
         // screen does not come back in between).
         if matches!(show.awaiting, Some(Await::Start(Feature::FreeGames))) {
-            // The press is silent; the flags wave on until the cut to the
-            // free games (real game: about a second later).
+            // The press is silent and completes a count still running (its
+            // tune stops); the flags go still and nothing moves until the
+            // first free game spins (club cabinet: 0.50-0.53 s after the
+            // prompt goes).
             rollup.t = rollup.duration;
-            show.fg_cut = Some(0.0);
+            if let Some(id) = rollup.tune.take() {
+                commands.entity(id).try_despawn();
+            }
+            show.press_free_games();
         }
         show.awaiting = None;
         show.prompt_at = None;
@@ -5507,6 +5670,77 @@ pub fn spawn_hs_cell(cell: &mut ChildSpawnerCommands, art: &ArtPack, reel: u8, r
 /// The banner's key for the start prompt, which has no art of its own.
 const PROMPT_KEY: &str = "prompt";
 
+/// A free game's win shows "WIN $x WIN" over the reels only when it is at
+/// least this many times the total bet; a smaller win counts on the WIN
+/// meter under "FREE GAME n OF 6" and its counter. Club cabinet footage
+/// (1bAevGz0K2k, y8c8lEdPW8Y, f5sMl9a5jds, kVjwYtVwhkk; bets $2.50-$5): shown
+/// at 11.0x, 12.8x, 16x, 20x, 22x (twice), 40x and 44x; not shown at 18 wins
+/// from 0.1x to 6.0x. The rule STRONG (26 paid free games, five features);
+/// the limit lies above 6.0x and at most 11.0x, and 10x is our choice
+/// (HYPOTHESIS). A credit limit is ruled out; a fixed dollar limit ($25.50 to
+/// $32) also fits the footage.
+const FG_WIN_BANNER_X: u64 = 10;
+/// A free game's big win stays on the banner this long after its count,
+/// then "FREE GAME n OF 6" comes back until the next game (club cabinet:
+/// 1.0 s in three cases ended by a press; STRONG).
+const FG_WIN_HOLD: f32 = 1.0;
+
+/// What the WIN banner over the reels shows: a free game's big win while it
+/// counts and a moment after, or a Hold & Spin's payment (always shown:
+/// "WIN $0.29 WIN" at 1bAevGz0K2k 164.3).
+fn banner_win(show: &FeatureShow, rollup: &Rollup, total_bet: u64) -> Option<u64> {
+    let big = rollup.win() >= FG_WIN_BANNER_X.saturating_mul(total_bet.max(1));
+    let held = rollup.active() || rollup.after < FG_WIN_HOLD;
+    (matches!(show.stage, Stage::FreeGames { .. })
+        && show.game_won
+        && show.reveal.is_none()
+        && rollup.win() > 0
+        && big
+        && held)
+        .then(|| rollup.shown().saturating_sub(rollup.from))
+        .or(show.pay_banner())
+}
+
+impl FeatureShow {
+    /// The banner over the reels: its art's key (`PROMPT_KEY` for the start
+    /// prompt), or none; `game_win` is what the WIN banner shows, if it does.
+    fn banner_key(&self, game_win: Option<u64>) -> Option<String> {
+        match (self.awaiting, self.stage) {
+            (_, Stage::FreeGames { .. } | Stage::HoldSpinDone) if game_win.is_some() => {
+                Some("banner_win".to_string())
+            }
+            (_, Stage::HoldSpin { .. }) if self.intro.is_some() => None,
+            // Between FREE SPINS COMPLETED and the WIN banner: no banner.
+            (_, Stage::HoldSpinDone) if self.collect.is_some() => None,
+            // Both features' start prompt: the bar with our lettering.
+            (Some(Await::Start(_)), _) => Some(PROMPT_KEY.to_string()),
+            // Back from a Hold & Spin: no banner until the next free game
+            // (club cabinet, y8c8lEdPW8Y 1019.93-1020.37).
+            (_, Stage::FreeGames { .. }) if self.resuming => None,
+            (_, Stage::FreeGames { .. }) => Some("banner_free_game".to_string()),
+            (_, Stage::FreeGamesDone) => Some("banner_feature_completed".to_string()),
+            (_, Stage::HoldSpin { .. }) if self.counter > 0 => {
+                Some(format!("banner_spins_{}", self.counter.min(3)))
+            }
+            (_, Stage::HoldSpin { .. }) => None,
+            (_, Stage::HoldSpinDone) => Some("banner_spins_completed".to_string()),
+            _ => None,
+        }
+    }
+
+    /// The numbers of "FREE GAME n OF m" on the banner, while it shows them.
+    fn counter_numbers(&self, game_win: Option<u64>) -> Option<[String; 2]> {
+        match (self.awaiting, self.stage) {
+            (None | Some(Await::Respin), Stage::FreeGames { number, total })
+                if game_win.is_none() && !self.resuming =>
+            {
+                Some([number.to_string(), self.counter_total(total).to_string()])
+            }
+            _ => None,
+        }
+    }
+}
+
 /// Show the feature banner, counter, grid and messages for the stage.
 #[allow(clippy::too_many_arguments, clippy::type_complexity)]
 pub fn feature_screen(
@@ -5575,17 +5809,12 @@ pub fn feature_screen(
             Without<BannerAmount>,
         ),
     >,
+    sim: Res<Sim>,
 ) {
     if !fidelity.0 {
         return;
     }
-    // A free game that has paid shows "WIN $x WIN" while its win counts up.
-    let game_win = (matches!(show.stage, Stage::FreeGames { .. })
-        && show.game_won
-        && show.reveal.is_none()
-        && rollup.to > rollup.from)
-        .then(|| rollup.shown().saturating_sub(rollup.from))
-        .or(show.pay_banner());
+    let game_win = banner_win(&show, &rollup, sim.game.total_bet());
     for (mut text, mut vis) in &mut amount {
         // The empty banner shows no amount until the first coin is added.
         let s = game_win
@@ -5604,24 +5833,7 @@ pub fn feature_screen(
             *vis = want;
         }
     }
-    let text = match (show.awaiting, show.stage) {
-        (_, Stage::FreeGames { .. } | Stage::HoldSpinDone) if game_win.is_some() => {
-            Some("banner_win".to_string())
-        }
-        (_, Stage::HoldSpin { .. }) if show.intro.is_some() => None,
-        // Between FREE SPINS COMPLETED and the WIN banner: no banner.
-        (_, Stage::HoldSpinDone) if show.collect.is_some() => None,
-        // Both features' start prompt: the bar with our lettering.
-        (Some(Await::Start(_)), _) => Some(PROMPT_KEY.to_string()),
-        (_, Stage::FreeGames { .. }) => Some("banner_free_game".to_string()),
-        (_, Stage::FreeGamesDone) => Some("banner_feature_completed".to_string()),
-        (_, Stage::HoldSpin { .. }) if show.counter > 0 => {
-            Some(format!("banner_spins_{}", show.counter.min(3)))
-        }
-        (_, Stage::HoldSpin { .. }) => None,
-        (_, Stage::HoldSpinDone) => Some("banner_spins_completed".to_string()),
-        _ => None,
-    };
+    let text = show.banner_key(game_win);
     let prompt = text.as_deref() == Some(PROMPT_KEY);
     let handle = text
         .as_deref()
@@ -5662,12 +5874,7 @@ pub fn feature_screen(
         }
     }
     // The counter's numbers, in the banner's own gold digits.
-    let counter = match (show.awaiting, show.stage) {
-        (None | Some(Await::Respin), Stage::FreeGames { number, total }) if game_win.is_none() => {
-            Some([number.to_string(), show.counter_total(total).to_string()])
-        }
-        _ => None,
-    };
+    let counter = show.counter_numbers(game_win);
     for (d, mut image, mut vis, mut node) in &mut digits {
         let glyph = counter
             .as_ref()
@@ -5697,7 +5904,11 @@ pub fn feature_screen(
     let hs = show.grid && show.hold_and_spin();
     // The other positions are dark from the moment the coins burst (real
     // game: one frame after), before the board itself shows.
-    let dark = show.hold_and_spin() && (show.grid || show.since_burst(1.0 / 30.0));
+    // Back in the free games after a Hold & Spin, they stay dark until the
+    // next free game spins (club cabinet: the row lines go with the plaque,
+    // the open cells stay dark).
+    let dark =
+        (show.hold_and_spin() && (show.grid || show.since_burst(1.0 / 30.0))) || show.resuming;
     for mut vis in &mut frame {
         let want = if hs {
             Visibility::Inherited
@@ -6769,7 +6980,7 @@ impl FeatureShow {
         self.intro.is_some()
             || self.fg_trigger.is_some_and(|t| t < FG_COUNT)
             || self.wild.is_some_and(|t| t < WILD_HOLD)
-            || self.fg_cut.is_some()
+            || self.fg_cut.is_some_and(|t| t < FG_CUT)
             || self.completed_wait.is_some()
             || self.pay.is_some()
             || self.reveal.is_some()
@@ -9184,9 +9395,11 @@ pub fn win_lines(
         return;
     }
     show.win_t += smoke.dt(&time);
+    // Nothing moves from START FEATURE to the first free game (club cabinet).
     let showing = !show.win_lines.is_empty()
         && !gamble.active
         && show.awaiting.is_none()
+        && show.fg_cut.is_none()
         && !show.hold_and_spin()
         && show.reveal.is_none();
     let current = showing.then(|| {
@@ -9966,10 +10179,15 @@ pub fn coin_shower(
 // feature bell sounds and plays out (2.55 s); as it ends the flags start
 // waving (the game's own flag animation from its first frame, at 20 fps) with
 // SND_Scatter (4.75 s); as that ends the scatter win counts on WIN to its
-// tune; then SELECT SPIN TO START FEATURE. The press makes no sound; the flags
-// wave on for about a second, then a hard cut to the free games: their music
-// starts from its beginning, the first free game spins at once, and the
-// banner's total counts up from 1, one a tick (SND_Fea_Inc), during that spin.
+// tune; the official app asks SELECT SPIN TO START FEATURE after the count, and
+// its flags wave on for about a second after the press. The club cabinet
+// (which the app follows) differs there: "N FREE GAMES WON!" on the status
+// line from the result, "Scatter wins N" from the wave, PRESS START FEATURE
+// BUTTON as the scatter win starts counting (the count goes on under it); the
+// press makes no sound, the flags go still at once, and nothing moves until
+// the first free game spins 0.52 s after the press: the free games' music
+// from its beginning, the banner's total counting up from 1, one a tick
+// (SND_Fea_Inc), during that spin.
 
 /// Seconds into the trigger sequence (it begins when the result is shown,
 /// 0.17 s after the last reel is still): the bell, the flags and their sound,
@@ -9977,10 +10195,22 @@ pub fn coin_shower(
 const FG_BELL: f32 = 0.045;
 const FG_FLAGS: f32 = FG_BELL + 2.6;
 pub const FG_COUNT: f32 = FG_FLAGS + 4.76;
-/// Seconds from the START FEATURE press to the cut to the free games.
-const FG_CUT: f32 = 1.07;
+/// Seconds from the START FEATURE press (the frame its prompt goes) to the
+/// first free game's reels moving: club cabinets 0.53 s (y8c8lEdPW8Y
+/// 949.80-950.33) and 0.50 s (1bAevGz0K2k 328.60-329.10), VERIFIED; the
+/// official app about 1.1 s.
+const FG_FIRST_SPIN: f32 = 0.52;
+/// The cut: the first free game is played then, and its start is shown one
+/// event interval later, with its reels.
+const FG_CUT: f32 = FG_FIRST_SPIN - TIMING.event_interval;
 /// Seconds per step of the banner's total counting up after the cut.
 const FG_TICK: f32 = 4.0 / 30.0;
+/// From the WIN plaque going to the next free game, after a Hold & Spin
+/// inside the free games: 0.37-0.43 s on a club cabinet (y8c8lEdPW8Y
+/// 1019.93-1020.37, 2562.93-2563.37, 3046.57-3046.93; VERIFIED, one
+/// machine), the banner "FREE GAME N+1 OF 6" and the reels together. Less
+/// the event interval the next free game's start waits.
+const FG_RESUME: f32 = 0.43 - TIMING.event_interval;
 
 impl FeatureShow {
     /// Seconds before a feature's next step (real game): a free game starts
@@ -9988,6 +10218,11 @@ impl FeatureShow {
     /// its doors opened (0.85 s after the reveal's end); a respin's step 0.5 s.
     pub fn step_pause(&self) -> f32 {
         match self.stage {
+            // Back from a Hold & Spin inside the free games: the next free
+            // game soon after the plaque goes (both arms: the timer is armed
+            // in the last frame before the return shows).
+            Stage::HoldSpinDone if self.fg_return.is_some() => FG_RESUME,
+            Stage::FreeGames { .. } if self.resuming => FG_RESUME,
             Stage::FreeGames { .. } if self.game_won => 1.25,
             Stage::FreeGames { .. } => 0.85,
             _ => 0.5,
@@ -10052,12 +10287,16 @@ impl FeatureShow {
     }
 
     /// Begin the free games' trigger sequence, if a base game's flags have
-    /// won the free games and it has not begun; true when it begins.
-    pub fn begin_free_games_trigger(&mut self) -> bool {
+    /// won the free games and it has not begun; true when it begins. The
+    /// games won and the scatter's pay are known from the start: the status
+    /// and message rows show them before those events are presented.
+    pub fn begin_free_games_trigger(&mut self, games: u8, scatter: u64) -> bool {
         if self.fg_trigger.is_some() || !matches!(self.stage, Stage::Base) {
             return false;
         }
         self.fg_trigger = Some(0.0);
+        self.games_won = games;
+        self.scatter_award = scatter;
         true
     }
 
@@ -10098,22 +10337,12 @@ pub fn free_games_trigger(
             show.win_t = 0.0;
         }
     }
-    if let Some(t0) = show.fg_cut {
-        let t = t0 + dt;
-        if t >= FG_CUT {
-            // The cut: the free games, their music, the first game at once.
-            show.fg_cut = None;
-            show.fg_flags = false;
-            show.scatter_paid = false;
-            show.stage = Stage::FreeGames {
-                number: 1,
-                total: u32::from(show.games_won),
-            };
-            show.fg_count = Some((0.0, 1));
-            presentation.step_timer = 0.0;
-        } else {
-            show.fg_cut = Some(t);
-        }
+    if show.advance_cut(dt) {
+        // The cut: the first free game is played at once; its start (the
+        // banner, its total counting up, the music) shows with its reels.
+        show.fg_flags = false;
+        show.scatter_paid = false;
+        presentation.step_timer = 0.0;
     }
     if let Some((t0, n)) = show.fg_count {
         let total = match show.stage {
@@ -10919,6 +11148,315 @@ mod tests {
         assert_eq!(
             winner_jackpots_line("$12,018.71", "$714.89"),
             "GRAND JACKPOT: $12,018.71   MAJOR JACKPOT: $714.89"
+        );
+    }
+
+    /// START FEATURE to the first free game: the flags go still at the press,
+    /// nothing moves and nothing shows until the first free game's reels
+    /// start 0.52 s after it, with its banner, its total counting up and the
+    /// status line (club cabinets: y8c8lEdPW8Y 949.80-950.40, 1bAevGz0K2k
+    /// 328.60-329.17).
+    #[test]
+    fn the_free_games_start_half_a_second_after_the_press() {
+        let mut show = FeatureShow::default();
+        assert!(show.begin_free_games_trigger(6, 100));
+        // The trigger sequence has played; the scatter win counts.
+        show.fg_trigger = Some(FG_COUNT + 2.0);
+        show.on_event(&Event::FreeGamesStarted { games: 6 });
+        assert_eq!(show.awaiting, Some(Await::Start(Feature::FreeGames)));
+        show.fg_flags = true;
+        show.scatter_paid = true;
+        // The press (feature_press).
+        show.awaiting = None;
+        show.press_free_games();
+        assert!(!show.fg_flags && !show.scatter_paid, "the flags go still");
+        assert!(show.blocks());
+        assert_eq!(show.banner_key(None), None);
+        assert!(!show.advance_cut(FG_CUT - 0.01));
+        assert!(show.blocks());
+        // The cut: the first free game is played; it shows one event
+        // interval later, with its reels.
+        assert!(show.advance_cut(0.02));
+        assert!(!show.blocks());
+        assert!((FG_CUT + TIMING.event_interval - 0.52).abs() < 1e-6);
+        assert_eq!(show.caption().as_deref(), Some(""));
+        assert_eq!(show.message(), None);
+        assert_eq!(show.banner_key(None), None);
+        assert!(!show.advance_cut(TIMING.event_interval));
+        show.on_event(&Event::FreeGameStarted {
+            number: 1,
+            remaining: 5,
+        });
+        assert_eq!(show.fg_cut, None);
+        assert!(show.fg_count.is_some(), "the banner's total counts up");
+        assert_eq!(show.banner_key(None).as_deref(), Some("banner_free_game"));
+        assert_eq!(
+            show.counter_numbers(None),
+            Some(["1".to_string(), "1".to_string()])
+        );
+    }
+
+    /// The free games' prompt shows as the scatter win starts counting, the
+    /// count going on under it; a Hold & Spin's trigger and the free games
+    /// after a Hold & Spin still wait for the count (club cabinets:
+    /// y8c8lEdPW8Y 946.07, 1bAevGz0K2k 326.80).
+    #[test]
+    fn the_free_games_prompt_comes_with_the_scatter_count() {
+        let triggered = Event::FeatureTriggered {
+            feature: Feature::FreeGames,
+            count: 3,
+        };
+        let started = Event::FreeGamesStarted { games: 6 };
+        let mut show = FeatureShow::default();
+        assert!(show.begin_free_games_trigger(6, 100));
+        show.fg_trigger = Some(FG_COUNT - 0.1);
+        assert!(show.waits_for_count(Some(&triggered)));
+        show.fg_trigger = Some(FG_COUNT + 0.2);
+        assert!(show.trigger_counting());
+        assert!(!show.waits_for_count(Some(&triggered)));
+        assert!(!show.waits_for_count(Some(&started)));
+        show.clock = 10.0;
+        show.on_event(&triggered);
+        show.on_event(&started);
+        assert_eq!(show.awaiting, Some(Await::Start(Feature::FreeGames)));
+        // The lettering's blink restarts, lit, as the count completes.
+        show.clock = 10.1;
+        show.follow_count(true);
+        show.clock = 10.3;
+        show.follow_count(true);
+        assert_eq!(show.prompt_lettering(), Some(false));
+        show.follow_count(false);
+        assert_eq!(show.prompt_lettering(), Some(true));
+        show.clock = 10.6;
+        show.follow_count(false);
+        assert_eq!(show.prompt_lettering(), Some(false));
+
+        let hold_and_spin = Event::FeatureTriggered {
+            feature: Feature::HoldAndSpin,
+            count: 6,
+        };
+        let after = FeatureShow {
+            stage: Stage::HoldSpinDone,
+            ..FeatureShow::default()
+        };
+        assert!(after.waits_for_count(Some(&started)));
+        assert!(after.waits_for_count(Some(&hold_and_spin)));
+        assert!(after.waits_for_count(Some(&Event::FreeGamesResumed { remaining: 3 })));
+        assert!(!after.waits_for_count(Some(&Event::SpinStarted { spin: 2 })));
+        assert!(!after.waits_for_count(None));
+    }
+
+    /// The status and message rows through a free-games trigger: "N FREE
+    /// GAMES WON!" from the result, "Scatter wins N" from the flags' wave,
+    /// both blank from the press until the first free game (club cabinets:
+    /// y8c8lEdPW8Y 938.57, 941.20, 949.87; 1bAevGz0K2k 319.3, 321.9, 328.6).
+    #[test]
+    fn a_free_games_trigger_shows_the_games_won_and_the_scatter_win() {
+        let mut show = FeatureShow::default();
+        assert!(show.begin_free_games_trigger(6, 100));
+        assert_eq!(show.caption().as_deref(), Some("6 FREE GAMES WON!"));
+        assert_eq!(show.message(), None);
+        show.fg_flags = true;
+        assert_eq!(show.message().as_deref(), Some("Scatter wins 100"));
+        show.awaiting = None;
+        show.press_free_games();
+        assert_eq!(show.caption().as_deref(), Some(""));
+        assert_eq!(show.message(), None);
+        show.win_note = Some("Line 3 wins 20".to_string());
+        assert_eq!(show.message(), None, "line wins too");
+        show.win_note = None;
+        show.on_event(&Event::FreeGameStarted {
+            number: 1,
+            remaining: 5,
+        });
+        show.fg_count = None;
+        assert!(show.fg_trigger.is_some());
+        assert_eq!(show.caption().as_deref(), Some("Free Game 1 of 6"));
+        assert_eq!(show.message(), None);
+    }
+
+    /// While START FEATURE is awaited the free games' status alternates in
+    /// 2.0 s slots from the prompt's start, "Press START FEATURE button"
+    /// first (club cabinets: y8c8lEdPW8Y 791.67-793.70, 1bAevGz0K2k 326.77).
+    #[test]
+    fn the_prompt_status_alternates_every_two_seconds_press_first() {
+        let press = Some("Press START FEATURE button".to_string());
+        let won = Some("6 FREE GAMES WON!".to_string());
+        let mut show = FeatureShow::default();
+        show.on_event(&Event::FreeGamesStarted { games: 6 });
+        for (waited, want) in [
+            (0.0, &press),
+            (1.9, &press),
+            (2.1, &won),
+            (3.9, &won),
+            (4.1, &press),
+        ] {
+            show.waited = waited;
+            assert_eq!(&show.caption(), want, "at {waited} s");
+        }
+        // Hold & Spin's prompt does not alternate.
+        show.wait_for(Await::Start(Feature::HoldAndSpin));
+        show.waited = 2.5;
+        assert_eq!(show.caption(), press);
+    }
+
+    /// A free game's win shows "WIN $x WIN" only from 10x the bet (the
+    /// limit HYPOTHESIS; the rule STRONG), for a second after its count; a
+    /// smaller win counts under "FREE GAME n OF 6" and its counter. A Hold &
+    /// Spin's payment always shows.
+    #[test]
+    fn only_a_big_free_game_win_takes_the_banner() {
+        let mut show = FeatureShow::default();
+        show.on_event(&Event::FreeGameStarted {
+            number: 2,
+            remaining: 4,
+        });
+        show.game_won = true;
+        let counting = |win: u64| Rollup {
+            from: 1_000,
+            to: 1_000 + win,
+            t: 0.5,
+            duration: 2.0,
+            ..Rollup::default()
+        };
+        let small = banner_win(&show, &counting(499), 50);
+        assert_eq!(small, None);
+        assert_eq!(show.banner_key(small).as_deref(), Some("banner_free_game"));
+        assert_eq!(
+            show.counter_numbers(small),
+            Some(["2".to_string(), "6".to_string()])
+        );
+        let big = banner_win(&show, &counting(500), 50);
+        assert_eq!(big, Some(125));
+        assert_eq!(show.banner_key(big).as_deref(), Some("banner_win"));
+        assert_eq!(show.counter_numbers(big), None);
+        // A second after the count the free game's banner comes back.
+        let done = |after: f32| Rollup {
+            from: 1_000,
+            to: 1_500,
+            t: 2.0,
+            duration: 2.0,
+            after,
+            ..Rollup::default()
+        };
+        assert_eq!(banner_win(&show, &done(0.9), 50), Some(500));
+        assert_eq!(banner_win(&show, &done(1.1), 50), None);
+        // A Hold & Spin's payment, however small.
+        let paid = FeatureShow {
+            stage: Stage::HoldSpinDone,
+            collected: Some(5),
+            paid: 5,
+            ..FeatureShow::default()
+        };
+        assert_eq!(banner_win(&paid, &Rollup::default(), 50), Some(5));
+        assert_eq!(paid.banner_key(Some(5)).as_deref(), Some("banner_win"));
+    }
+
+    /// Back in the free games after a Hold & Spin one of them started: the
+    /// board stays dark with no banner and no counter, the status keeping
+    /// the interrupted game, until "FREE GAME N+1 OF 6" comes with the reels
+    /// 0.43 s after the plaque goes (club cabinet, y8c8lEdPW8Y 1019.93-1020.40).
+    #[test]
+    fn the_free_games_resume_dark_after_a_hold_and_spin() {
+        let mut show = FeatureShow::default();
+        show.on_event(&Event::FreeGameStarted {
+            number: 3,
+            remaining: 3,
+        });
+        show.on_event(&Event::HoldAndSpinStarted {
+            respins: 3,
+            locked: Vec::new(),
+        });
+        show.on_event(&Event::HoldAndSpinCompleted {
+            total_award: 100,
+            full_grid: false,
+        });
+        // The timer is armed in the last frame before the return shows.
+        assert!((show.step_pause() - FG_RESUME).abs() < 1e-6);
+        show.on_event(&Event::FreeGamesResumed { remaining: 3 });
+        assert!(show.resuming);
+        assert_eq!(show.caption().as_deref(), Some("Free Game 3 of 6"));
+        assert!((show.step_pause() - 0.29).abs() < 1e-6);
+        assert!((FG_RESUME + TIMING.event_interval - 0.43).abs() < 1e-6);
+        assert_eq!(show.banner_key(None), None);
+        assert_eq!(show.counter_numbers(None), None);
+        show.on_event(&Event::FreeGameStarted {
+            number: 4,
+            remaining: 2,
+        });
+        assert!(!show.resuming);
+        assert_eq!(show.banner_key(None).as_deref(), Some("banner_free_game"));
+        assert_eq!(
+            show.counter_numbers(None),
+            Some(["4".to_string(), "6".to_string()])
+        );
+        assert_eq!(show.caption().as_deref(), Some("Free Game 4 of 6"));
+    }
+
+    /// A reel starting scrolls the window on screen away, not its stale
+    /// landing, and an open position's dimmed symbol keeps its dimming (club
+    /// cabinet, y8c8lEdPW8Y 1020.43); a dimmed flag still quiets its reel.
+    #[test]
+    fn a_reel_starting_scrolls_the_window_on_screen_still_dimmed() {
+        use bevy::ecs::system::RunSystemOnce;
+        let mut reels = reel_strips(&dragonlink_model::fixtures::golden_century_synthetic());
+        let scatter = reels.scatter.clone();
+        for reel in 0..2 {
+            let s = &mut reels.states[reel];
+            s.pos = 40.0;
+            s.landing_at = 40;
+            s.landing = vec!["door".to_string(); 3];
+        }
+        let mut world = World::new();
+        world.insert_resource(reels);
+        world.insert_resource(Fidelity(true));
+        world.insert_resource(Time::<()>::default());
+        world.insert_resource(Smoke {
+            frames_left: Some(10),
+            screenshot: None,
+            frame: 0,
+            hold: 0,
+            real_time: false,
+            capture: None,
+        });
+        world.insert_resource(ReelAnim {
+            spinning: vec![true, true, false, false, false],
+            ..ReelAnim::default()
+        });
+        world.insert_resource(ArtPack::default());
+        world.insert_resource(Assets::<Image>::default());
+        // On screen: a dimmed open position, a coin and a queen on reel 1;
+        // a dimmed flag on reel 2.
+        let dim_flag = format!("{DIM}{scatter}");
+        for (reel, texts) in [
+            (0u8, ["DIM:K", "ORB\nx5", "Q"]),
+            (1u8, ["J", dim_flag.as_str(), "10"]),
+        ] {
+            for (row, text) in texts.iter().enumerate() {
+                world.spawn((
+                    CellLabel {
+                        reel,
+                        row: row as u8,
+                    },
+                    Text::new(*text),
+                ));
+            }
+        }
+        world.run_system_once(spin_reels).unwrap();
+        let reels = world.resource::<Reels>();
+        let first = reels.states[0].pos.round() as i64;
+        assert!(matches!(reels.states[0].motion, Motion::Spinning { .. }));
+        assert_eq!(reels.key_at(0, first), "DIM:K");
+        assert_eq!(reels.key_at(0, first + 1), "ORB\nx5");
+        assert_eq!(reels.key_at(0, first + 2), "Q");
+        assert_eq!(label_symbol(reels.key_at(0, first)), ("K", true));
+        assert_eq!(label_symbol(reels.key_at(0, first + 1)), ("orb", false));
+        assert_eq!(strip_tint(true), DIM_TINT);
+        assert_eq!(strip_tint(false), Color::WHITE);
+        assert!(!reels.states[0].quiet);
+        assert!(
+            reels.states[1].quiet,
+            "a dimmed flag leaving quiets its reel"
         );
     }
 }
