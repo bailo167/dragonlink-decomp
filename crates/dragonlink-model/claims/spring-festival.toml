@@ -1,0 +1,76 @@
+# Claims about Dragon Link — Spring Festival.
+# Rules, labels, conventions and citation keys: see claims/family.toml and docs/EVIDENCE.md.
+# Read overnight 2026-10-19 from the official mobile build's help pages (our own
+# reading, paraphrased; the pages themselves are not in Git) and public club footage.
+
+title = "spring_festival"
+
+[[claim]]
+id = "lines.mobile-25"
+statement = "The mobile build plays 25 fixed lines for a line cost of 25 coins; the 25 are the family's first 25."
+value = "25"
+confidence = "verified"
+source = "official_mobile"
+citation = "Official mobile build, help pages 11-12"
+accessed = "2026-10-19"
+scope = "mobile"
+
+[[claim]]
+id = "paytable.base"
+statement = "Pays per line: drum 150/50/10/2, lantern 100/30/5, envelopes 100/25/5, firecrackers 100/25/5, K 75/20/5, Q J 10 9 50/10/5; the gold ingot scatter 100/15/2 times the total bet."
+value = "top picture 150/50/10/2; scatter 100/15/2 x bet"
+confidence = "verified"
+source = "official_mobile"
+citation = "Official mobile build, help page 8"
+accessed = "2026-10-19"
+scope = "mobile"
+
+[[claim]]
+id = "free-games.big-reel"
+statement = "In the six free games reels 2, 3 and 4 spin together as one BIG reel showing 3x3 symbols; each BIG symbol counts as one in each position it covers, except the BIG ingot and BIG coin."
+value = "reels 2-4 as one 3x3 reel"
+confidence = "verified"
+source = "official_mobile"
+citation = "Official mobile build, help pages 3, 9"
+accessed = "2026-10-19"
+scope = "mobile"
+
+[[claim]]
+id = "free-games.big-ingot"
+statement = "A BIG ingot pays once the total bet and adds three free games."
+value = "1 x bet and 3 games"
+confidence = "verified"
+source = "official_mobile"
+citation = "Official mobile build, help page 9; public recordings (free game 1 of 6 to 3 of 9)"
+accessed = "2026-10-19"
+scope = "mobile"
+
+[[claim]]
+id = "free-games.big-coin"
+statement = "A BIG coin starts Hold & Spin with its nine positions held and the collected count at 9; its prize is MAJOR, MINOR, MINI or 250, 200, 100, 80, 60, 50, 40, 30, 25, 20, 15, 10 or 5 times the total bet."
+value = "9 held; 5x to 250x or a jackpot"
+confidence = "verified"
+source = "official_mobile"
+citation = "Official mobile build, help pages 1, 3, 5, 6"
+accessed = "2026-10-19"
+scope = "mobile"
+
+[[claim]]
+id = "paytable.free-games"
+statement = "The free games pay their own table, four and five of a kind only: drum 100/10, lantern 50/10, envelopes and firecrackers 25/10, K 20/5, Q J 10 9 15/5."
+value = "own free-games table"
+confidence = "verified"
+source = "official_mobile"
+citation = "Official mobile build, help page 10"
+accessed = "2026-10-19"
+scope = "mobile"
+
+[[claim]]
+id = "scatter.club-pay"
+statement = "Three ingots paid twice the total bet on a club machine."
+value = "3 ingots: 2 x bet"
+confidence = "strong_evidence"
+source = "gameplay_recording"
+citation = "Public recording EO7Q6xvcJMA about 28:30 (NSW hotel)"
+accessed = "2026-10-19"
+scope = "cabinet-au"

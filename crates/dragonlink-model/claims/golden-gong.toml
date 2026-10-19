@@ -1,0 +1,66 @@
+# Claims about Dragon Link — Golden Gong.
+# Rules, labels, conventions and citation keys: see claims/family.toml and docs/EVIDENCE.md.
+# Read overnight 2026-10-19 from the official mobile build's help pages (our own
+# reading, paraphrased; the pages themselves are not in Git) and public club footage.
+
+title = "golden_gong"
+
+[[claim]]
+id = "lines.fifty"
+statement = "The help page shows fifty fixed win lines on a five by three window; lines 1 to 5 are Golden Century's five, and the fifty are the same as Genghis Khan's and Golden Gong's."
+value = "50"
+confidence = "verified"
+source = "official_mobile"
+citation = "Official mobile build, help page 11"
+accessed = "2026-10-19"
+scope = "mobile"
+
+[[claim]]
+id = "paytable.base"
+statement = "Pays per line at bet multiplier 1: disciples 150/50/10/2, rooster 100/30/5, scroll 100/25/5, bamboo 100/25/5, K 75/20/5, Q J 10 9 50/10/5; the gong scatter 100/15/2 times the total bet; the monk wild shows no pay."
+value = "top picture 150/50/10/2; scatter 100/15/2 x bet"
+confidence = "verified"
+source = "official_mobile"
+citation = "Official mobile build, help page 8"
+accessed = "2026-10-19"
+scope = "mobile"
+
+[[claim]]
+id = "paytable.free-games"
+statement = "The free games pay their own table: disciples 250/50/10/2, rooster, scroll and bamboo 150 for five, K 50/10/2, Q J 10 9 25/5/2."
+value = "own free-games table"
+confidence = "verified"
+source = "official_mobile"
+citation = "Official mobile build, help page 9"
+accessed = "2026-10-19"
+scope = "mobile"
+
+[[claim]]
+id = "free-games.expanding-wild"
+statement = "In the six free games a monk landing on reels 2 to 5 fills its whole reel."
+value = "wild fills its reel"
+confidence = "verified"
+source = "official_mobile"
+citation = "Official mobile build, help pages 3-4; public recording 0ApUzEKj3X8 13:44-13:54"
+accessed = "2026-10-19"
+scope = "mobile"
+
+[[claim]]
+id = "hold-and-spin.bought-games-only"
+statement = "The help page says six to fourteen coins start Hold & Spin during bought games."
+value = "bought games only"
+confidence = "strong_evidence"
+source = "official_mobile"
+citation = "Official mobile build, help page 1"
+accessed = "2026-10-19"
+note = "Whether coins in the free games start it is not stated; the app starts none."
+
+[[claim]]
+id = "lines.club-ladder"
+statement = "Club machines offer up to 50, 50, 25, 25 and 5 lines at 1c, 2c, 5c, 10c and $1."
+value = "50/50/25/25/5"
+confidence = "strong_evidence"
+source = "gameplay_recording"
+citation = "Public recordings HEbwBOTh0S0, I2HtFMVzZK4 (Queensland clubs)"
+accessed = "2026-10-19"
+scope = "cabinet-au"

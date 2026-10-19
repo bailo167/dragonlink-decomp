@@ -93,10 +93,14 @@ evidence about the original. Compiling, passing our own tests or looking right n
 | Happy & Prosperous | 15 | 1 | 0 | 10 | 6% | 0% |
 | Panda Magic | 15 | 1 | 0 | 10 | 6% | 0% |
 | Autumn Moon | 15 | 1 | 0 | 10 | 6% | 0% |
+| Genghis Khan | 15 | 0 | 0 | 12 | 0% | 0% |
+| Golden Gong | 15 | 0 | 0 | 12 | 0% | 0% |
+| Peace & Long Life | 15 | 0 | 0 | 12 | 0% | 0% |
+| Spring Festival | 15 | 0 | 0 | 12 | 0% | 0% |
 | Parity | 10 | 5 | 0 | 4 | 50% | 0% |
 | Platforms | 4 | 0 | 0 | 4 | 0% | 0% |
 | Packaging | 5 | 1 | 0 | 3 | 20% | 0% |
-| **Overall** | **151** | **45** | **0** | **82** | **29%** | **0%** |
+| **Overall** | **211** | **45** | **0** | **130** | **21%** | **0%** |
 
 <!-- progress-table:end -->
 

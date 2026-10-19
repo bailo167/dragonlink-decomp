@@ -1,0 +1,66 @@
+# Claims about Dragon Link — Peace & Long Life.
+# Rules, labels, conventions and citation keys: see claims/family.toml and docs/EVIDENCE.md.
+# Read overnight 2026-10-19 from the official mobile build's help pages (our own
+# reading, paraphrased; the pages themselves are not in Git) and public club footage.
+
+title = "peace_and_long_life"
+
+[[claim]]
+id = "lines.mobile-25"
+statement = "The mobile build plays 25 fixed lines for a line cost of 25 coins; the 25 are the family's first 25."
+value = "25"
+confidence = "verified"
+source = "official_mobile"
+citation = "Official mobile build, help pages 8-9"
+accessed = "2026-10-19"
+scope = "mobile"
+
+[[claim]]
+id = "lines.club-50"
+statement = "Club machines let the player choose lines, up to 50 at 1c and 2c, 25 at 5c and 10c, 5 at $1."
+value = "up to 50"
+confidence = "strong_evidence"
+source = "gameplay_recording"
+citation = "Public recordings DWBTkIVcHNM, fyyuFSzHMQs, 3ggOSOerdhc (Queensland clubs)"
+accessed = "2026-10-19"
+scope = "cabinet-au"
+note = "Which 50 lines is not read; the app uses the family fifty (HYPOTHESIS)."
+
+[[claim]]
+id = "paytable.mobile"
+statement = "Pays per line: tortoise 150/50/10/2, deer 100/30/5, birdcage 100/25/5, bamboo 100/25/5, K 75/20/5, Q J 10 9 50/10/5; the peach scatter 100/15/2 times the total bet; the sage wild shows no pay."
+value = "top picture 150/50/10/2; scatter 100/15/2 x bet; wild no pay"
+confidence = "verified"
+source = "official_mobile"
+citation = "Official mobile build, help page 7"
+accessed = "2026-10-19"
+scope = "mobile"
+
+[[claim]]
+id = "free-games.x2-wild"
+statement = "Six free games, in which the sage carries x2 and doubles any win it substitutes in."
+value = "6 games, x2 wild"
+confidence = "verified"
+source = "official_mobile"
+citation = "Official mobile build, help page 3"
+accessed = "2026-10-19"
+scope = "mobile"
+
+[[claim]]
+id = "hold-and-spin.bought-games-only"
+statement = "Six to fourteen coins start Hold & Spin in bought games only."
+value = "bought games only"
+confidence = "strong_evidence"
+source = "official_mobile"
+citation = "Official mobile build, help page 1; table file names"
+accessed = "2026-10-19"
+
+[[claim]]
+id = "scatter.one-per-reel"
+statement = "At most one peach shows on a reel."
+value = "one per reel"
+confidence = "strong_evidence"
+source = "gameplay_recording"
+citation = "Pay table stops at five; public recordings 3ggOSOerdhc 26:21, wRZ5CyogZ0Q 15:12"
+accessed = "2026-10-19"
+scope = "cabinet-au"

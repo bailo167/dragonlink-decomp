@@ -1,0 +1,76 @@
+# Claims about Dragon Link — Genghis Khan.
+# Rules, labels, conventions and citation keys: see claims/family.toml and docs/EVIDENCE.md.
+# Read overnight 2026-10-19 from the official mobile build's help pages (our own
+# reading, paraphrased; the pages themselves are not in Git) and public club footage.
+
+title = "genghis_khan"
+
+[[claim]]
+id = "lines.fifty"
+statement = "The help page shows fifty fixed win lines on a five by three window; lines 1 to 5 are Golden Century's five, and the fifty are the same as Genghis Khan's and Golden Gong's."
+value = "50"
+confidence = "verified"
+source = "official_mobile"
+citation = "Official mobile build, help page 11"
+accessed = "2026-10-19"
+scope = "mobile"
+
+[[claim]]
+id = "paytable.mobile"
+statement = "Pays per line at bet multiplier 1: woman 150/50/10/2 for 5/4/3/2, fortress 100/30/5, pot 100/25/5, shield 100/25/5, K 75/20/5, Q J 10 9 50/10/5; the archer scatter pays 100/15/2 times the total bet; the wild shows no pay."
+value = "top picture 150/50/10/2; scatter 100/15/2 x bet; wild no pay"
+confidence = "verified"
+source = "official_mobile"
+citation = "Official mobile build, help page 7"
+accessed = "2026-10-19"
+scope = "mobile"
+
+[[claim]]
+id = "paytable.club-wins"
+statement = "Club line-win messages agree with the mobile table: K x5 pays 75, woman x3 10, 9 x3 5 per credit."
+value = "K x5 75, top picture x3 10, 9 x3 5"
+confidence = "strong_evidence"
+source = "gameplay_recording"
+citation = "Public recordings 3FEkN_FN2ik, 1mhLqnuUGTw (Queensland clubs)"
+accessed = "2026-10-19"
+scope = "cabinet-au"
+
+[[claim]]
+id = "free-games.x2-wild"
+statement = "Three or more archers win six free games, in which Khan wears an x2 badge and doubles any win he substitutes in; the plain wild does not appear."
+value = "6 games, x2 wild"
+confidence = "verified"
+source = "official_mobile"
+citation = "Official mobile build, help page 3"
+accessed = "2026-10-19"
+scope = "mobile"
+
+[[claim]]
+id = "free-games.x2-compounds"
+statement = "Two x2 wilds in one win make x4."
+value = "x4"
+confidence = "strong_evidence"
+source = "gameplay_recording"
+citation = "Public recordings, status line 'Line N wins A x 4' seen twice (private notes, genghis-khan section C)"
+accessed = "2026-10-19"
+scope = "cabinet-au"
+
+[[claim]]
+id = "hold-and-spin.bought-games-only"
+statement = "Six to fourteen coins start Hold & Spin in bought games; the help page restricts it to bought games and the build has no free-games Hold & Spin table."
+value = "bought games only"
+confidence = "strong_evidence"
+source = "official_mobile"
+citation = "Official mobile build, help page 1; table file names"
+accessed = "2026-10-19"
+note = "Never seen either way on footage."
+
+[[claim]]
+id = "free-games.retrigger-count"
+statement = "The free games can be won again during the feature; how many games are added is not stated."
+value = "retrigger allowed; count not stated"
+confidence = "partial"
+source = "official_mobile"
+citation = "Official mobile build, help page 3"
+accessed = "2026-10-19"
+note = "A third-party page says three; the app adds three (HYPOTHESIS)."

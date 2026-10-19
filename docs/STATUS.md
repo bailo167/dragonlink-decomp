@@ -38,6 +38,22 @@ owner; docs/DECISIONS.md). Every run muted. Progress, newest last:
   without doors, with royal-free free reels (synthetic) and three-game retriggers (mobile and club
   footage) and the family's mobile pay table (the club table is unknown). Both play in the cabinet
   with their own art and return about 90% at every bet (checked on muted captures).
+- **The four later titles.** Genghis Khan, Golden Gong, Peace & Long Life and Spring Festival
+  share one base game read from their help pages: the family's fifty lines (Genghis Khan's and
+  Golden Gong's pages, identical; Peace & Long Life and Spring Festival show the first 25 on
+  mobile and sell up to 50 on club machines), one pay table, a wild with no pay of its own and a
+  scatter paying 2, 15 and 100 times the bet. Each has its own free games: Genghis Khan's and
+  Peace & Long Life's x2 wild (two make x4), Golden Gong's monk filling its reel and its own pay
+  table, Spring Festival's BIG 3x3 reel over reels 2 to 4 with BIG ingot retriggers and a BIG coin
+  that starts Hold & Spin with nine positions held. Coins in their free games start no Hold &
+  Spin (three help pages say bought games only). The engine gained these as model data, tested on
+  hand-made models. All four play in the cabinet with their own art and sounds (checked on muted
+  captures); synthetic maths returning 85 to 88% at every bet.
+- **The two flags in one column, found.** The engine never lands two scatters on a reel, but the
+  moving reels scrolled the undressed base strips with the landed window spliced in anywhere, so
+  a passing flag could show beside a landed one (the overnight audit traced the owner's sighting
+  to this). The reels now scroll the strips of the model being played, the free strips in free
+  games, and a reel whose window leaving or coming holds a scatter shows no other that spin.
 
 ## Project interpretation (owner reset, 2026-10-14)
 
