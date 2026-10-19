@@ -1087,6 +1087,11 @@ impl Default for Timing {
 
 fn schedule_with(events: Vec<Event>, timing: &Timing) -> Vec<(f32, Event)> {
     let mut first_reel = true;
+    // The free games a Hold & Spin's spin also won start an event interval
+    // after its award, as before: in the same frame the award would be
+    // presented with the Hold & Spin's total already cleared, and the win
+    // meter would count the whole total again.
+    let mut after_hold_and_spin = false;
     // The reels under a free game's BIG symbol are one reel: they stop
     // together, with the first of them.
     let mut together = vec![false; events.len()];
@@ -1106,8 +1111,12 @@ fn schedule_with(events: Vec<Event>, timing: &Timing) -> Vec<(f32, Event)> {
         .into_iter()
         .enumerate()
         .map(|(i, event)| {
+            if matches!(event, Event::HoldAndSpinCompleted { .. }) {
+                after_hold_and_spin = true;
+            }
             let delay = match &event {
                 Event::ReelStopped { .. } if together[i] => 0.0,
+                Event::FreeGamesStarted { .. } if after_hold_and_spin => timing.event_interval,
                 Event::BetPlaced { .. } | Event::SpinStarted { .. } | Event::BetChanged { .. } => {
                     0.0
                 }
@@ -1123,6 +1132,14 @@ fn schedule_with(events: Vec<Event>, timing: &Timing) -> Vec<(f32, Event)> {
                 Event::ReelStopped { .. } => timing.reel_interval,
                 // Line wins are lit together, not one by one.
                 Event::OrbValueShown { .. } | Event::LineWin { .. } => 0.0,
+                // The free games' prompt comes with the scatter win's count
+                // (club cabinet); where a count or a feature must finish
+                // first, the presentation holds it.
+                Event::FeatureTriggered {
+                    feature: dragonlink_core::Feature::FreeGames,
+                    ..
+                }
+                | Event::FreeGamesStarted { .. } => 0.0,
                 _ => timing.event_interval,
             };
             (delay, event)
@@ -1574,6 +1591,8 @@ fn input(
     {
         if menu.open {
             menu.close();
+            // Club meters alternate from the choice until the first game.
+            menu.selecting = true;
         }
         let from = denom.cents();
         if from != to && sim.game.is_idle() {
@@ -1668,9 +1687,10 @@ fn input(
         && !menu.showing();
     if go {
         // A new game: the gamble's result and its end message go, BET shows
-        // its own bet.
+        // its own bet, the meters' alternation after a choice ends.
         gamble.result = None;
         gamble.ended = None;
+        menu.selecting = false;
         let first_here = menu.last_bet_cents.take().is_some();
         let Sim { game, rng } = &mut *sim;
         if let Some((m, index)) = bet_press {
@@ -1879,32 +1899,27 @@ fn present(
     presentation.wait -= smoke.dt(&time);
     while presentation.wait <= 0.0 {
         // Flags that won the free games play their sequence (the bell, the
-        // flags waving) before their win is shown; the feature then waits
-        // for that win's count (real game).
+        // flags waving) before their win is shown (real game); the status
+        // and message rows show the games won and the scatter's pay from the
+        // result (club cabinet).
         if fidelity.0
             && reels_motion.rested_for() >= cabinet::RESULT_AFTER_REST
-            && matches!(
-                presentation.queue.front(),
-                Some((_, Event::ScatterWin { .. }))
-            )
-            && presentation
-                .queue
-                .iter()
-                .any(|(_, e)| matches!(e, Event::FreeGamesStarted { .. }))
+            && let Some((_, Event::ScatterWin { award, .. })) = presentation.queue.front()
         {
-            feature.begin_free_games_trigger();
+            let award = *award;
+            if let Some(games) = presentation.queue.iter().find_map(|(_, e)| match e {
+                Event::FreeGamesStarted { games } => Some(*games),
+                _ => None,
+            }) {
+                feature.begin_free_games_trigger(games, award);
+            }
         }
+        // A feature's start waits for the win's count, except the free
+        // games' own prompt, which shows as the scatter win starts counting
+        // (club cabinet).
         if fidelity.0
             && rollup.active()
-            && matches!(
-                presentation.queue.front(),
-                Some((
-                    _,
-                    Event::FeatureTriggered { .. }
-                        | Event::FreeGamesStarted { .. }
-                        | Event::FreeGamesResumed { .. }
-                ))
-            )
+            && feature.waits_for_count(presentation.queue.front().map(|(_, e)| e))
         {
             presentation.wait = 0.0;
             break;
@@ -2243,10 +2258,15 @@ fn present(
             }
             Event::FreeGamesResumed { remaining } => {
                 // The free games carry on after the Hold & Spin one of them
-                // started: its dimmed positions light again.
-                for (_, mut text) in &mut labels {
-                    if let Some(rest) = text.0.strip_prefix("DIM:") {
-                        text.0 = rest.to_string();
+                // started. The cabinet keeps its open positions dark until
+                // the next free game spins them away, still dimmed (club
+                // cabinet, y8c8lEdPW8Y 1019.93-1020.43); the placeholder
+                // lights them again at once.
+                if !fidelity.0 {
+                    for (_, mut text) in &mut labels {
+                        if let Some(rest) = text.0.strip_prefix("DIM:") {
+                            text.0 = rest.to_string();
+                        }
                     }
                 }
                 presentation.status = format!("FREE GAMES resume  ({remaining} to come)");
@@ -2339,7 +2359,7 @@ fn present(
     }
 }
 
-#[allow(clippy::type_complexity)]
+#[allow(clippy::type_complexity, clippy::too_many_arguments)]
 fn hud(
     sim: Res<Sim>,
     presentation: Res<Presentation>,
@@ -2347,7 +2367,23 @@ fn hud(
     link: Res<Link>,
     mut hud: Single<&mut Text, (With<HudText>, Without<StatusText>)>,
     mut status: Single<&mut Text, (With<StatusText>, Without<HudText>)>,
-    mut meters: Query<(&JackpotMeter, &mut Text), (Without<HudText>, Without<StatusText>)>,
+    mut meters: Query<
+        (&JackpotMeter, &mut Text),
+        (
+            Without<HudText>,
+            Without<StatusText>,
+            Without<cabinet::WinnerJackpots>,
+        ),
+    >,
+    mut winner_line: Query<
+        &mut Text,
+        (
+            With<cabinet::WinnerJackpots>,
+            Without<HudText>,
+            Without<StatusText>,
+            Without<JackpotMeter>,
+        ),
+    >,
 ) {
     let game = &sim.game;
     let cents = denom.cents();
@@ -2373,13 +2409,22 @@ fn hud(
     }
     // Jackpot meters: a progressive's meter in money, any other its prize
     // now in credits.
+    let value = |tier: JackpotTier| match link.shown(tier) {
+        Some(meter_cents) => money(meter_cents, 1),
+        None => game
+            .jackpot_value(tier)
+            .map_or_else(|| "-".to_string(), |c| money(c, cents)),
+    };
     for (meter, mut text) in &mut meters {
-        text.0 = match link.shown(meter.tier) {
-            Some(meter_cents) => money(meter_cents, 1),
-            None => game
-                .jackpot_value(meter.tier)
-                .map_or_else(|| "-".to_string(), |c| money(c, cents)),
-        };
+        text.0 = value(meter.tier);
+    }
+    // The live Grand and Major under the WINNER box (club cabinets).
+    for mut text in &mut winner_line {
+        let line =
+            cabinet::winner_jackpots_line(&value(JackpotTier::Grand), &value(JackpotTier::Major));
+        if text.0 != line {
+            text.0 = line;
+        }
     }
 }
 
@@ -2903,6 +2948,7 @@ fn main() -> AppExit {
     .insert_resource(cabinet::AttractIdle::default())
     .insert_resource(cabinet::GameRules::default())
     .insert_resource(cabinet::DeckState::default())
+    .insert_resource(cabinet::SystemSlot::default())
     .insert_resource(cabinet::Profile::from_env())
     .insert_resource(cabinet::WildStacks::default())
     .insert_resource(cabinet::Music::default())
@@ -2956,7 +3002,7 @@ fn main() -> AppExit {
                 cabinet::rollup_skip,
                 cabinet::feature_press,
                 cabinet::free_games_trigger,
-                cabinet::hs_medallion,
+                cabinet::counter_burst,
                 cabinet::payout_effects,
                 cabinet::gamble_control,
                 cabinet::attract_timer,
@@ -3005,7 +3051,10 @@ fn main() -> AppExit {
                 cabinet::start_prompts,
                 cabinet::clear_cells,
                 cabinet::update_meters,
+                cabinet::system_message,
                 cabinet::fit_jackpots,
+                cabinet::fit_reel_panel,
+                cabinet::lines_digits,
                 cabinet::attract_bar,
                 cabinet::additive_fire,
                 cabinet::machine_menu,
@@ -3298,15 +3347,15 @@ mod tests {
             locked: Vec::new(),
         });
         assert!(show.inside_free_games() && show.hold_and_spin());
-        assert_eq!(show.caption(0.0).as_deref(), Some("Free Game 3 of 6"));
+        assert_eq!(show.caption().as_deref(), Some("Free Game 3 of 6"));
         show.on_event(&Event::HoldAndSpinCompleted {
             total_award: 100,
             full_grid: false,
         });
-        assert_eq!(show.caption(0.0).as_deref(), Some("Free Game 3 of 6"));
+        assert_eq!(show.caption().as_deref(), Some("Free Game 3 of 6"));
         show.on_event(&Event::FreeGamesResumed { remaining: 3 });
         assert!(!show.inside_free_games() && !show.hold_and_spin());
-        assert_eq!(show.caption(0.0).as_deref(), Some("Free Game 3 of 6"));
+        assert_eq!(show.caption().as_deref(), Some("Free Game 3 of 6"));
         assert_eq!(show.grand_win(), None);
         // On the last free game, FEATURE COMPLETED follows its tally.
         let mut show = cabinet::FeatureShow::default();
@@ -3329,6 +3378,46 @@ mod tests {
             total_award: 150,
         });
         assert!(!show.inside_free_games() && !show.hold_and_spin());
+    }
+
+    /// The message row's start prompt changes to the other only at the first
+    /// game start after a base game's win message, once however many lines
+    /// won, and never at a start after no win (cabinet footage, y8c8lEdPW8Y
+    /// 15-84 s).
+    #[test]
+    fn the_start_prompt_changes_only_after_a_win() {
+        let win = |line: u16| Event::LineWin {
+            line,
+            symbol: "A".into(),
+            count: 3,
+            award: 10,
+        };
+        let mut show = cabinet::FeatureShow::default();
+        assert_eq!(show.prompt, 0);
+        show.on_event(&Event::SpinStarted { spin: 1 });
+        show.on_event(&win(16));
+        show.on_event(&Event::SpinStarted { spin: 2 });
+        assert_eq!(show.prompt, 1);
+        // No win in between: it stays.
+        show.on_event(&Event::SpinStarted { spin: 3 });
+        show.on_event(&Event::SpinStarted { spin: 4 });
+        assert_eq!(show.prompt, 1);
+        // Several winning lines flip it once.
+        show.on_event(&win(0));
+        show.on_event(&win(4));
+        show.on_event(&win(12));
+        show.on_event(&Event::SpinStarted { spin: 5 });
+        assert_eq!(show.prompt, 0);
+        show.on_event(&Event::SpinStarted { spin: 6 });
+        assert_eq!(show.prompt, 0);
+        // A free game's wins do not (its stage is not the base game).
+        show.on_event(&Event::FreeGameStarted {
+            number: 1,
+            remaining: 5,
+        });
+        show.on_event(&win(2));
+        show.on_event(&Event::SpinStarted { spin: 7 });
+        assert_eq!(show.prompt, 0);
     }
 
     #[test]
@@ -3570,6 +3659,46 @@ mod tests {
                 _ => {}
             }
         }
+    }
+
+    #[test]
+    fn free_games_after_a_hold_and_spin_wait_for_its_award() {
+        let delay_of_free_games = |events: Vec<Event>| {
+            schedule(events)
+                .into_iter()
+                .find_map(|(d, e)| matches!(e, Event::FreeGamesStarted { .. }).then_some(d))
+                .unwrap()
+        };
+        // A base trigger's prompt comes with the scatter win's count.
+        let base = vec![
+            Event::ScatterWin {
+                symbol: "pennant".into(),
+                count: 3,
+                award: 100,
+            },
+            Event::FeatureTriggered {
+                feature: dragonlink_core::Feature::FreeGames,
+                count: 3,
+            },
+            Event::FreeGamesStarted { games: 6 },
+        ];
+        assert_eq!(delay_of_free_games(base), 0.0);
+        // After a Hold & Spin the award is presented a frame of its own
+        // before the free games clear the Hold & Spin's total, so the win
+        // meter does not count the total a second time.
+        let after = vec![
+            Event::HoldAndSpinCompleted {
+                total_award: 668_780,
+                full_grid: true,
+            },
+            Event::CreditsChanged {
+                from: 9_950,
+                to: 678_730,
+                reason: CreditReason::FeatureAward,
+            },
+            Event::FreeGamesStarted { games: 6 },
+        ];
+        assert_eq!(delay_of_free_games(after), EVENT_INTERVAL);
     }
 
     #[test]

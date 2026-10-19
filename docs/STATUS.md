@@ -54,6 +54,68 @@ owner; docs/DECISIONS.md). Every run muted. Progress, newest last:
   a passing flag could show beside a landed one (the overnight audit traced the owner's sighting
   to this). The reels now scroll the strips of the model being played, the free strips in free
   games, and a reel whose window leaving or coming holds a scatter shows no other that spin.
+- **Audit fixes: deck, meters and messages.** The button deck and bezel now sit above every
+  screen effect (coin comets and the coin shower stop at the bezel line, as at the glass's edge).
+  Line wins always read in credits ("Line 17 wins 10"; 306 club messages, none in dollars). The
+  jackpot values are coloured by level, Grand crimson, Major green, Minor blue, Mini orange, in
+  heavy digits with a dark edge (hue VERIFIED on cabinet and app; tints from camera colour). The
+  idle status line's 2 s alternation now counts from the end of the game or a bet change, bet
+  line first, with a 0.1 s "Game Over - Play Now" at each debit (VERIFIED). The message row's start
+  prompt changes only at the first game start after a base game's win, never on a timer (STRONG;
+  after a feature HYPOTHESIS). Unit tests cover each rule; checked on muted captures.
+- **Audit fixes: lines boxes and line badges.** The club's "N LINES" boxes are now the large
+  panels club footage shows (geometry STRONG, look VERIFIED on four machines): the game's own
+  lines-box fill, a gold rim, the inner edge under the reel frame, "50" over "LINES" at the
+  cabinet's glyph heights (the number in the game's own brush-serif numerals, Impact standing in
+  for "LINES"). Golden Gong, whose reel art
+  carries its own tabs, now has its reel panel fitted so the frame sits on the reels and its tabs
+  stand outside it, where the cabinet's boxes are; it gets no panels of ours. Winning lines show
+  the cabinet's pieces: badges sized to the denomination's line configuration (small at 50 lines,
+  wide at 25 and 5), one badge per line at 50 and 25 lines on the side filmed for that line (both
+  ends at 5 lines and for line 1 at 25), outside the frame with a stub across it (sizes and count
+  STRONG; sides VERIFIED for the lines filmed, unfilmed lines by parity HYPOTHESIS). Unit tests
+  cover the sizes, sides, crop and panel fit; checked on muted captures at 50, 25 and 5 lines.
+- **Audit fixes: Hold & Spin.** The intro is the cabinet's: one fire straight into the Hold & Spin
+  board (no medallion over the reels, no second fire), timed to two club recordings, the prompt
+  3.5 s after the coins burst (STRONG; it was 4.6 s). Both features' prompt reads PRESS START
+  FEATURE BUTTON, our own cream lettering over the banner's bar, the lettering alone blinking on a
+  0.667 s cycle (VERIFIED). Every Hold & Spin's coins now fly to a flame-bordered WINNER box on a
+  plate over the jackpot bar, with the live Grand and Major under it and nothing over the reels;
+  the count's WIN banner counts up from nothing with WIN, and the plate goes 0.55 s after the count
+  (VERIFIED on three club recordings; the plate's layout is ours, the line's colour PARTIAL). The
+  official app's medallion, SELECT SPIN wording and banner tally are recorded as the app's. Unit
+  tests cover the intro's timing, the blink, the collection and the comets; checked on muted
+  captures (both features, the jackpots and doors runs, Golden Gong).
+- **Audit fixes: free games.** The free-games trigger now runs as on club cabinets (VERIFIED on
+  two recordings): "6 FREE GAMES WON!" on the status line from the result, "Scatter wins N" from
+  the flags' wave, the PRESS START FEATURE prompt as the scatter win starts counting (the count
+  goes on under it; it waited for the count before), the status alternating in 2.0 s slots from
+  the prompt's start, Press first, and the blink restarting as the count completes. At the press
+  the flags go still, both rows blank, and the first free game's reels, banner and counting total
+  come 0.52 s later (1.2 s before, with the banner ahead of the reels). A free game's "WIN $x WIN"
+  banner now shows only for a win of 10x the bet or more (the rule STRONG, the 10x limit
+  HYPOTHESIS between the 6.0x and 11.0x the footage brackets), held 1.0 s after its count. After
+  a Hold & Spin inside the free games the board stays dark with no banner for 0.43 s, then "FREE
+  GAME N+1 OF 6" comes with the reels (VERIFIED, one machine), and the moving strips scroll an
+  open position's dimmed symbol away still dimmed. Unit tests cover each rule (one runs the reel
+  system on a world); checked on muted captures of the doors run.
+- **Audit fixes: system message and meters.** The club profile now fills the message row's left
+  slot as Queensland club machines do (texts and place VERIFIED, rules STRONG on more than 30
+  transitions): "Gamble win limit is $10000.00" while a base game's win is offered, "Credit
+  reached $100.00, cash-in disabled" once after the credit rises to $100, and otherwise the gamble
+  notice and a greeting in turn, switching 2.0 s after each start and, with no game, every 2.0 s
+  (HYPOTHESIS). The greeting is a generic "Welcome" standing in for the venue's own line. After a
+  denomination choice the club meters alternate dollars and credits each second until the first
+  game, the clock counting from the YES (VERIFIED on five cases; the phase PARTIAL), and BET then
+  shows the last bet in credits of the new denomination. Unit tests cover the rules; checked on
+  muted captures (a choice of 5c, the base game with wins, a Hold & Spin, the casino profile).
+- **Audit fixes verified.** Muted captures of Golden Century (both, doors and a plain base run)
+  and of Golden Gong and Spring Festival with frequent features were checked against each fix.
+  Two slips were mended: free games won on a Hold & Spin's spin started in the frame of its
+  award, so the WIN meter counted the whole Hold & Spin total a second time, coin shower and all,
+  under their prompt (the free games now start an event interval later, as before); and the
+  WINNER plate stayed 0.95 s after the count, not 0.55 s (it counted from the payment, 0.4 s
+  after the count). Golden Gong's monk and Spring Festival's BIG reel still play as before.
 
 ## Project interpretation (owner reset, 2026-10-14)
 
@@ -374,7 +436,9 @@ The app now follows it:
 - **Hold & Spin.** The trigger, fire and medallion (about 1 s, and no COLLECT screen: the owner's
   changes), the counter, respins stopping by reel with their sounds, and the payout: coins added to
   a WIN banner by fire comets, then a coin shower and the payout music, found in the app's shared
-  sound bank (it also plays under the cabinet's big counts).
+  sound bank (it also plays under the cabinet's big counts). Updated 2026-10-19: the intro, the
+  prompt and the collection now follow club cabinets (one fire, no medallion, PRESS START FEATURE
+  BUTTON, the coins to a WINNER box over the jackpot bar; see the overnight report).
 
 ### Button deck, GAMES MENU and gamble rebuilt from cabinet footage (2026-10-17)
 
