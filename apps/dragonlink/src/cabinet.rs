@@ -1187,9 +1187,26 @@ fn fixed_prize(model: &MathModel, tier: JackpotTier, cents: u64) -> Option<u64> 
 }
 
 /// The jackpot values' type size, and the share of its box a value may fill
-/// before it is set smaller.
-const JACKPOT_VALUE_SIZE: f32 = 56.0;
+/// before it is set smaller. In the heavy face (Arial Black) a figure is
+/// about 0.74 of the type size, so 62 keeps the digits about 46 px tall.
+const JACKPOT_VALUE_SIZE: f32 = 62.0;
 const JACKPOT_VALUE_FILL: f32 = 0.9;
+
+/// A jackpot value's colour, by level. Both the cabinet's jackpot display
+/// and the official mobile app colour each level's value: the Grand crimson,
+/// the Major green, the Minor blue, the Mini orange (p6OesyvM5vA 5:59,
+/// y8c8lEdPW8Y 0:05-0:18, the app at 20 s; Happy & Prosperous bUbSjAGwqs8
+/// agrees). The hue family is VERIFIED; these tints sit between two
+/// cameras' readings and the bar art's own label hues (STRONG for hue only:
+/// camera colour is shifted).
+fn jackpot_value_colour(tier: JackpotTier) -> Color {
+    match tier {
+        JackpotTier::Grand => Color::srgb(0.89, 0.10, 0.24),
+        JackpotTier::Major => Color::srgb(0.12, 0.98, 0.42),
+        JackpotTier::Minor => Color::srgb(0.10, 0.40, 0.97),
+        JackpotTier::Mini => Color::srgb(0.95, 0.46, 0.25),
+    }
+}
 
 /// A jackpot value's box width, in canvas pixels.
 #[derive(Component)]
@@ -1197,11 +1214,11 @@ pub struct JackpotFit {
     width: f32,
 }
 
-/// A value's width in ems in the meter face: figures and "$" about 0.46,
-/// "," and "." about 0.25 (measured on the bar's "$5,434.05").
+/// A value's width in ems in the jackpot values' heavy face (Arial Black's
+/// advances): figures and "$" 0.667, "," and "." 0.333.
 fn meter_ems(text: &str) -> f32 {
     text.chars()
-        .map(|c| if matches!(c, ',' | '.') { 0.25 } else { 0.46 })
+        .map(|c| if matches!(c, ',' | '.') { 0.333 } else { 0.667 })
         .sum()
 }
 
@@ -1275,7 +1292,6 @@ pub fn spawn(
     fonts: &CabFonts,
     profile: Profile,
 ) {
-    let font = &fonts.meter;
     let ui = |k: &str| art.ui.get(k).cloned().unwrap_or_default();
     let gold = Color::srgb(1.0, 0.86, 0.12);
     let pale = Color::srgb(0.86, 0.9, 1.0);
@@ -1414,7 +1430,11 @@ pub fn spawn(
             // While the chooser shows: fire round the Minor and Mini boxes
             // and the PLAY plaque between them (spawn_attract_bar).
             spawn_attract_bar(c, &fonts.meter, bar_top, k);
-            // Each value centred in its box's dark panel.
+            // Each value centred in its box's dark panel, coloured by its
+            // level in heavy, wide digits with a dark edge (cabinet and app).
+            // The heavy face sits lower in its line than the meter face did,
+            // so the middle line is raised to keep the digits at about canvas
+            // y 73-117 (measured on a capture; the app's centre is 93.4).
             for (tier, (left, right)) in JACKPOT_BOXES {
                 let width = (right - left) * k;
                 c.spawn((
@@ -1422,13 +1442,17 @@ pub fn spawn(
                     JackpotFit { width },
                     label(
                         "-",
-                        font,
+                        &fonts.heavy,
                         JACKPOT_VALUE_SIZE,
-                        Color::srgb(1.0, 1.0, 0.96),
+                        jackpot_value_colour(tier),
                         960.0 - bar_w / 2.0 + (left + right) / 2.0 * k,
-                        bar_top + 70.0 * k,
+                        bar_top + 64.5 * k,
                         width,
                     ),
+                    TextShadow {
+                        offset: Vec2::new(2.0, 2.0),
+                        color: Color::srgba(0.03, 0.03, 0.05, 0.9),
+                    },
                 ));
             }
 
@@ -2021,10 +2045,11 @@ fn spawn_meter_band(
     }
 }
 
-/// Alternate the two start prompts every few seconds.
+/// Show one of the two start prompts: the one `FeatureShow::prompt` names,
+/// which changes to the other at the first game start after a win message
+/// has used the slot, never on a timer (cabinet footage).
 pub fn start_prompts(
     fidelity: Res<Fidelity>,
-    time: Res<Time>,
     show: Res<FeatureShow>,
     gamble: Res<GambleShow>,
     mut prompts: Query<(&StartPrompt, &mut Visibility)>,
@@ -2032,10 +2057,9 @@ pub fn start_prompts(
     if !fidelity.0 {
         return;
     }
-    let shown = ((time.elapsed_secs() / 3.0) as u32 % 2) as u8;
     let quiet = show.message().is_some() || show.stage != Stage::Base || gamble.active;
     for (p, mut vis) in &mut prompts {
-        let want = if p.which == shown && !quiet {
+        let want = if p.which == show.prompt && !quiet {
             Visibility::Inherited
         } else {
             Visibility::Hidden
@@ -2060,7 +2084,12 @@ fn spawn_deck(
     symbols: &Handle<Font>,
 ) {
     let ui = |k: &str| art.ui.get(k).cloned().unwrap_or_default();
-    // The black bezel under the screen, and the deck panel.
+    // The black bezel under the screen, and the deck panel. The deck is
+    // hardware in front of the glass: nothing the screen draws (coin comets,
+    // the coin shower, flares) may paint over it, so the bezel, the panel and
+    // the keys form one stacking layer above every screen effect, in a fixed
+    // order inside it: bezel (DECK_LAYER, 0) < panel (DECK_LAYER, 1) < keys
+    // (DECK_LAYER, 2).
     c.spawn((
         Node {
             position_type: PositionType::Absolute,
@@ -2071,6 +2100,7 @@ fn spawn_deck(
             ..default()
         },
         BackgroundColor(Color::srgb(0.02, 0.02, 0.02)),
+        GlobalZIndex(DECK_LAYER),
     ));
     c.spawn((
         Node {
@@ -2086,6 +2116,8 @@ fn spawn_deck(
             image_mode: NodeImageMode::Stretch,
             ..default()
         },
+        GlobalZIndex(DECK_LAYER),
+        ZIndex(1),
     ));
     // Square keys, as on the cabinet (its keys are about as tall as wide),
     // in two rows, and the teardrop beside them spanning both.
@@ -2124,6 +2156,13 @@ fn spawn_deck(
 /// size (cabinet footage: square keys about a third of a key apart, the
 /// teardrop about 1.75 keys wide and as tall as both rows).
 const DECK_KEY: (f32, f32, f32, f32) = (96.0, 80.0, 30.0, 10.0);
+
+/// The deck's stacking layer: above every screen effect (the Hold & Spin
+/// transition 30, the coin shower, bolt bursts and win flares 26, the
+/// medallion 25, the bolts 22, the WINNER plate 19-21, the CREDIT pill 14,
+/// the chooser and the gamble 12-13) and below the rules overlay (50) and the
+/// machine menu (60), which still cover the deck.
+const DECK_LAYER: i32 = 40;
 const DECK_TEARDROP: (f32, f32) = (170.0, 170.0);
 
 /// A key's legend as the cabinet stacks it: lines of their own sizes (a lines
@@ -2445,6 +2484,10 @@ fn deck_button(
             image_mode: NodeImageMode::Stretch,
             ..default()
         },
+        // Above the bezel and the panel inside the deck's layer; the legend
+        // children inherit the key's place in the stack.
+        GlobalZIndex(DECK_LAYER),
+        ZIndex(2),
     ))
     .with_children(|b| {
         b.spawn(Node {
@@ -2735,6 +2778,55 @@ pub fn clear_cells(fidelity: Res<Fidelity>, mut cells: Query<&mut BackgroundColo
     }
 }
 
+/// Seconds each half of the idle status line's alternation shows: the bet
+/// line, then "Game Over - Play Now" (cabinet footage).
+const REST_TURN: f32 = 2.0;
+/// How long "Game Over - Play Now" flashes as a game is debited (cabinet
+/// footage: 0.07-0.13 s on the club machines, 2-4 frames at 30 fps).
+const DEBIT_FLASH: f32 = 0.10;
+
+/// The idle status line's phase. The bet line and "Game Over - Play Now"
+/// alternate, two seconds each, counted from the moment the machine came to
+/// rest (the end of a game) or the bet last changed, bet line first: on the
+/// cabinet a credits-per-line key restarts the cycle (y8c8lEdPW8Y 12.967 to
+/// 14.967 s is exactly 2.000 s), and after a game the bet line shows first.
+#[derive(Default)]
+pub struct RestPhase {
+    at_rest: bool,
+    since: f32,
+    /// The bet as last seen: credits per line, lines, cents a credit.
+    bet: (u32, u16, u64),
+    /// Games started so far as last seen, and when the debit flash ends.
+    spins: Option<u64>,
+    flash_until: f32,
+}
+
+impl RestPhase {
+    /// Follow the machine at time `t`.
+    fn update(&mut self, t: f32, at_rest: bool, bet: (u32, u16, u64), spins: u64) {
+        if at_rest && (!self.at_rest || bet != self.bet) {
+            self.since = t;
+        }
+        if self.spins.and_then(|s| s.checked_add(1)) == Some(spins) {
+            self.flash_until = t + DEBIT_FLASH;
+        }
+        self.at_rest = at_rest;
+        self.bet = bet;
+        self.spins = Some(spins);
+    }
+
+    /// At rest, whether the bet line shows (rather than "Game Over - Play
+    /// Now"): [0, 2) s of rest, then [4, 6) s, and so on.
+    fn bet_line_turn(&self, t: f32) -> bool {
+        (((t - self.since).max(0.0) / REST_TURN) as u32).is_multiple_of(2)
+    }
+
+    /// A game was debited within the last [`DEBIT_FLASH`] seconds.
+    fn flashing(&self, t: f32) -> bool {
+        t < self.flash_until
+    }
+}
+
 /// The cabinet's credit, bet and win meters.
 #[allow(clippy::too_many_arguments)]
 pub fn update_meters(
@@ -2748,6 +2840,7 @@ pub fn update_meters(
     gamble: Res<GambleShow>,
     menu: Res<GamesMenu>,
     deck: Res<DeckState>,
+    mut rest: Local<RestPhase>,
     mut meters: Query<(
         &CabMeter,
         &mut Text,
@@ -2759,6 +2852,15 @@ pub fn update_meters(
         return;
     }
     let cents = denom.cents();
+    let t = time.elapsed_secs();
+    let at_rest =
+        sim.game.is_idle() && presentation.queue.is_empty() && !rollup.active() && !gamble.active;
+    rest.update(
+        t,
+        at_rest,
+        (sim.game.credits_per_line(), sim.game.lines(), cents),
+        sim.game.state().spins,
+    );
     // Cents a change to a larger denomination left over: money on CREDIT.
     let residue = sim.game.state().residue;
     // Credits count up with the win meter.
@@ -2826,12 +2928,7 @@ pub fn update_meters(
             CabMeter::MinBet => format!("MIN BET {}", sim.game.lines()),
             CabMeter::Lines if sim.game.lines() == 1 => "1\nLINE".to_string(),
             CabMeter::Lines => format!("{}\nLINES", sim.game.lines()),
-            CabMeter::Multiplier => show.caption(time.elapsed_secs()).unwrap_or_else(|| {
-                let t = time.elapsed_secs();
-                let at_rest = sim.game.is_idle()
-                    && presentation.queue.is_empty()
-                    && !rollup.active()
-                    && !gamble.active;
+            CabMeter::Multiplier => show.caption(t).unwrap_or_else(|| {
                 let per_line = sim.game.credits_per_line();
                 let bet_line = match deck.profile {
                     Profile::Club if per_line == 1 => "1 credit per line".to_string(),
@@ -2839,7 +2936,11 @@ pub fn update_meters(
                     Profile::Casino => format!("Bet Multiplier {per_line}"),
                 };
                 let turn = ((t / 2.0) as u32).is_multiple_of(2);
-                if !at_rest {
+                if !at_rest && rest.flashing(t) {
+                    // The debit of a game: a flash of "Game Over - Play Now"
+                    // (footage: y8c8lEdPW8Y 15.0-15.3, 61.8, 3076.0 s).
+                    "Game Over - Play Now".to_string()
+                } else if !at_rest {
                     bet_line
                 } else if gamble_open(&sim.game, cents, &show) {
                     // The offer while a win can be gambled.
@@ -2853,9 +2954,10 @@ pub fn update_meters(
                     }
                 } else if sim.game.credits() < sim.game.total_bet() {
                     "Insert More Credits or Change Selection".to_string()
-                } else if turn {
+                } else if rest.bet_line_turn(t) {
                     // Idle: the bet line and "Game Over - Play Now", two
-                    // seconds each (footage).
+                    // seconds each, bet line first from the end of each game
+                    // and from a bet change (footage).
                     bet_line
                 } else {
                     "Game Over - Play Now".to_string()
@@ -4545,6 +4647,13 @@ pub struct FeatureShow {
     wild_turn: usize,
     fg_cut: Option<f32>,
     fg_count: Option<(f32, u32)>,
+    /// Which start prompt the message row shows: 0 = "3 [flag] Start FREE
+    /// GAMES", 1 = "6 [coin] Start HOLD & SPIN FEATURE". On the cabinet it
+    /// changes only at the first game start after a win message, never on a
+    /// timer (y8c8lEdPW8Y 15-84 s, 7 of 7; CAM8vranI9Y 18-44 s, 2 of 2).
+    /// Starting on FREE GAMES is our choice (one recording opens on each);
+    /// a denomination change leaves it as it is.
+    pub prompt: u8,
 }
 
 impl FeatureShow {
@@ -4552,6 +4661,13 @@ impl FeatureShow {
     pub fn on_event(&mut self, event: &Event) {
         match event {
             Event::SpinStarted { .. } => {
+                // The other start prompt follows a base game's win message,
+                // once, at the next game start (the frame WIN resets). Not
+                // after free games or Hold & Spin, whose stage is not Base:
+                // that part is unobserved (HYPOTHESIS).
+                if self.stage == Stage::Base && !self.win_lines.is_empty() {
+                    self.prompt ^= 1;
+                }
                 self.big = None;
                 self.pic_sounded = false;
                 self.grand_bell_at = None;
@@ -8345,6 +8461,13 @@ pub fn spawn_win_lines(c: &mut ChildSpawnerCommands, font: &Handle<Font>) {
     }
 }
 
+/// A line win's message as the cabinet gives it: the 1-based line and the
+/// award in credits, plain digits with no grouping comma ("Line 13 wins 20",
+/// "Scatter wins 1000": y8c8lEdPW8Y). `line` is the 0-based payline index.
+fn line_win_note(line: u16, award: u64) -> String {
+    format!("Line {} wins {award}", u32::from(line) + 1)
+}
+
 /// Show the winning lines in turn, and their message.
 #[allow(clippy::too_many_arguments, clippy::type_complexity)]
 pub fn win_lines(
@@ -8353,7 +8476,6 @@ pub fn win_lines(
     smoke: Res<Smoke>,
     sim: Res<Sim>,
     art: Res<ArtPack>,
-    denom: Res<Denom>,
     gamble: Res<GambleShow>,
     mut show: ResMut<FeatureShow>,
     mut badges: Query<(&LineBadge, &mut Node, &mut ImageNode, &mut Visibility), Without<LineDash>>,
@@ -8391,14 +8513,10 @@ pub fn win_lines(
         && (show.awaiting.is_none() || flags_wait)
         && !show.hold_and_spin()
         && show.reveal.is_none();
-    show.win_note = current.map(|(line, _, award)| {
-        let shown = if (show.win_t / 2.5) as u32 % 2 == 1 {
-            grouped(award)
-        } else {
-            money(award, denom.cents())
-        };
-        format!("Line {} wins {shown}", line + 1)
-    });
+    // The cabinet always gives a line win in credits, in plain digits
+    // ("Line 13 wins 20", "Line 4 wins 100": y8c8lEdPW8Y, 306 messages at
+    // every denomination, none in dollars), while WIN counts in dollars.
+    show.win_note = current.map(|(line, _, award)| line_win_note(line, award));
     let lit = current.filter(|_| in_spans(show.win_t % WIN_LINE_SECONDS, &WIN_LINE_LIT));
     let rows = lit.and_then(|(line, _, _)| sim.game.model().paylines.get(line as usize));
     let set = |vis: &mut Visibility, on: bool| {
@@ -9696,5 +9814,71 @@ mod tests {
             jackpot_value_size("$15,000.00", (351.0 - 14.0) * k),
             JACKPOT_VALUE_SIZE
         );
+    }
+
+    /// Each level's value has its own hue, as on the cabinet and in the app:
+    /// the Grand red, the Major green, the Minor blue, the Mini orange.
+    #[test]
+    fn each_jackpot_value_has_its_levels_colour() {
+        let hue = |tier| {
+            let c = jackpot_value_colour(tier).to_srgba();
+            (c.red, c.green, c.blue)
+        };
+        let (r, g, b) = hue(JackpotTier::Grand);
+        assert!(r > 0.8 && g < 0.3 && b < 0.3);
+        let (r, g, b) = hue(JackpotTier::Major);
+        assert!(g > 0.8 && r < 0.3 && b < 0.6);
+        let (r, g, b) = hue(JackpotTier::Minor);
+        assert!(b > 0.8 && r < 0.3 && g < 0.6);
+        let (r, g, b) = hue(JackpotTier::Mini);
+        assert!(r > 0.8 && g > 0.3 && g < 0.6 && b < 0.4);
+    }
+
+    /// A line win's message is always in credits, in plain digits (cabinet
+    /// footage: "Line 13 wins 20", "Line 4 wins 100"; never dollars).
+    #[test]
+    fn a_line_win_is_given_in_credits() {
+        assert_eq!(line_win_note(12, 20), "Line 13 wins 20");
+        assert_eq!(line_win_note(3, 100), "Line 4 wins 100");
+        assert_eq!(line_win_note(0, 1000), "Line 1 wins 1000");
+    }
+
+    /// At rest the status line shows the bet line for two seconds, then
+    /// "Game Over - Play Now" for two, counted from the end of the game or
+    /// the last bet change; a debit flashes "Game Over - Play Now" briefly.
+    #[test]
+    fn the_idle_status_line_counts_from_rest() {
+        let bet = (2, 50, 1);
+        let mut rest = RestPhase::default();
+        rest.update(0.0, false, bet, 7);
+        rest.update(10.3, false, bet, 7);
+        // The game ends at 10.5 s: the bet line first, whatever the clock.
+        rest.update(10.5, true, bet, 7);
+        assert!(rest.bet_line_turn(10.5));
+        assert!(rest.bet_line_turn(12.4));
+        assert!(!rest.bet_line_turn(12.6));
+        assert!(!rest.bet_line_turn(14.4));
+        assert!(rest.bet_line_turn(14.6));
+        // A credits-per-line key restarts the cycle.
+        rest.update(13.0, true, (3, 50, 1), 7);
+        assert!(rest.bet_line_turn(13.0));
+        assert!(rest.bet_line_turn(14.9));
+        assert!(!rest.bet_line_turn(15.1));
+        // So does a denomination change.
+        rest.update(16.0, true, (3, 50, 2), 7);
+        assert!(rest.bet_line_turn(17.5));
+        // Staying at rest with the same bet keeps the phase.
+        rest.update(18.5, true, (3, 50, 2), 7);
+        assert!(!rest.bet_line_turn(18.5));
+        assert!(!rest.flashing(18.5));
+        // A game is debited: the flash, for a tenth of a second.
+        rest.update(19.0, false, (3, 50, 2), 8);
+        assert!(rest.flashing(19.0));
+        assert!(rest.flashing(19.09));
+        assert!(!rest.flashing(19.11));
+        // The first frame seen raises no flash.
+        let mut fresh = RestPhase::default();
+        fresh.update(1.0, true, bet, 40);
+        assert!(!fresh.flashing(1.0));
     }
 }

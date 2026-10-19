@@ -3331,6 +3331,46 @@ mod tests {
         assert!(!show.inside_free_games() && !show.hold_and_spin());
     }
 
+    /// The message row's start prompt changes to the other only at the first
+    /// game start after a base game's win message, once however many lines
+    /// won, and never at a start after no win (cabinet footage, y8c8lEdPW8Y
+    /// 15-84 s).
+    #[test]
+    fn the_start_prompt_changes_only_after_a_win() {
+        let win = |line: u16| Event::LineWin {
+            line,
+            symbol: "A".into(),
+            count: 3,
+            award: 10,
+        };
+        let mut show = cabinet::FeatureShow::default();
+        assert_eq!(show.prompt, 0);
+        show.on_event(&Event::SpinStarted { spin: 1 });
+        show.on_event(&win(16));
+        show.on_event(&Event::SpinStarted { spin: 2 });
+        assert_eq!(show.prompt, 1);
+        // No win in between: it stays.
+        show.on_event(&Event::SpinStarted { spin: 3 });
+        show.on_event(&Event::SpinStarted { spin: 4 });
+        assert_eq!(show.prompt, 1);
+        // Several winning lines flip it once.
+        show.on_event(&win(0));
+        show.on_event(&win(4));
+        show.on_event(&win(12));
+        show.on_event(&Event::SpinStarted { spin: 5 });
+        assert_eq!(show.prompt, 0);
+        show.on_event(&Event::SpinStarted { spin: 6 });
+        assert_eq!(show.prompt, 0);
+        // A free game's wins do not (its stage is not the base game).
+        show.on_event(&Event::FreeGameStarted {
+            number: 1,
+            remaining: 5,
+        });
+        show.on_event(&win(2));
+        show.on_event(&Event::SpinStarted { spin: 7 });
+        assert_eq!(show.prompt, 0);
+    }
+
     #[test]
     fn the_gamble_sounds_only_where_chosen() {
         use cabinet::{GambleCue, gamble_cue};

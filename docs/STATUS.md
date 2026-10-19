@@ -54,6 +54,15 @@ owner; docs/DECISIONS.md). Every run muted. Progress, newest last:
   a passing flag could show beside a landed one (the overnight audit traced the owner's sighting
   to this). The reels now scroll the strips of the model being played, the free strips in free
   games, and a reel whose window leaving or coming holds a scatter shows no other that spin.
+- **Audit fixes: deck, meters and messages.** The button deck and bezel now sit above every
+  screen effect (coin comets and the coin shower stop at the bezel line, as at the glass's edge).
+  Line wins always read in credits ("Line 17 wins 10"; 306 club messages, none in dollars). The
+  jackpot values are coloured by level, Grand crimson, Major green, Minor blue, Mini orange, in
+  heavy digits with a dark edge (hue VERIFIED on cabinet and app; tints from camera colour). The
+  idle status line's 2 s alternation now counts from the end of the game or a bet change, bet
+  line first, with a 0.1 s "Game Over - Play Now" at each debit (VERIFIED). The message row's start
+  prompt changes only at the first game start after a base game's win, never on a timer (STRONG;
+  after a feature HYPOTHESIS). Unit tests cover each rule; checked on muted captures.
 
 ## Project interpretation (owner reset, 2026-10-14)
 
