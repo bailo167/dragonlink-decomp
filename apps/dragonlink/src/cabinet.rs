@@ -554,6 +554,397 @@ const JACKPOT_BOXES: [(JackpotTier, (f32, f32)); 4] = [
     (JackpotTier::Mini, (975.0, 1209.0)),
 ];
 
+/// Attract and the chooser's top screen, from cabinet footage of club
+/// machines (research notes, GOLDEN_CENTURY_CABINET_DECK.md "Attract and
+/// idle"):
+/// - An idle machine at zero credit is found on the denomination chooser
+///   (VERIFIED, two recordings); the delay before it opens is not filmed, so
+///   the shared framework's 30 s default is used (HYPOTHESIS), or
+///   `DRAGONLINK_ATTRACT_SECONDS`. No demo spins, no attract sound.
+/// - While the chooser shows, a PLAY plaque between the Minor and Mini steps
+///   1c, 2c, 5c, 10c, $1 and wraps, with that denomination's Minor and Mini:
+///   the first step 1.1 s after it opens, then every 4.0 s (VERIFIED: 14
+///   openings and one period); at a step the label changes at +0.10 s, the
+///   values at +0.30 s, a white flare lasts 0.25 s. Fire runs round the boxes
+///   the whole time (STRONG; the exact route is not followed, HYPOTHESIS).
+/// - After a choice the Minor, Mini and plaque go blank for about 0.25 s.
+pub const ATTRACT_SECONDS: f32 = 30.0;
+const ATTRACT_FIRST_STEP: f32 = 1.1;
+const ATTRACT_STEP: f32 = 4.0;
+const ATTRACT_LABEL_LAG: f32 = 0.10;
+const ATTRACT_VALUE_LAG: f32 = 0.30;
+const ATTRACT_FLARE: f32 = 0.25;
+
+/// The step a chooser `t` seconds open shows (0 from the opening, 1 from the
+/// first step, and so on), `lag` seconds after each step begins.
+pub fn attract_step(t: f32, lag: f32) -> usize {
+    let t = t - lag;
+    if t < ATTRACT_FIRST_STEP {
+        0
+    } else {
+        1 + ((t - ATTRACT_FIRST_STEP) / ATTRACT_STEP) as usize
+    }
+}
+
+/// How bright the step flare is `t` seconds after the chooser opened (0 to 1).
+pub fn attract_flare(t: f32) -> f32 {
+    if t < ATTRACT_FIRST_STEP {
+        return 0.0;
+    }
+    let since = (t - ATTRACT_FIRST_STEP) % ATTRACT_STEP;
+    if since < ATTRACT_FLARE {
+        1.0 - since / ATTRACT_FLARE
+    } else {
+        0.0
+    }
+}
+
+/// The idle timer of attract: the seconds idle so far after `dt` more, and
+/// whether the chooser opens now. It runs only while `armed` (the game at
+/// rest with no credit) and starts again on any `input`.
+pub fn attract_tick(idle: f32, dt: f32, timeout: f32, armed: bool, input: bool) -> (f32, bool) {
+    if !armed || input {
+        return (0.0, false);
+    }
+    let idle = idle + dt;
+    if idle >= timeout {
+        (0.0, true)
+    } else {
+        (idle, false)
+    }
+}
+
+/// Seconds the machine has sat idle at zero credit.
+#[derive(Resource, Default)]
+pub struct AttractIdle(f32);
+
+/// The PLAY plaque and its parts, the flare over it, and the fire round the
+/// Minor and Mini boxes.
+#[derive(Component)]
+pub struct PlayPlaque;
+#[derive(Component)]
+pub struct PlayPlaqueDenom;
+#[derive(Component)]
+pub struct PlayPlaqueFlare;
+#[derive(Component)]
+pub struct AttractFire;
+
+/// Spawn the chooser's additions to the jackpot bar, hidden.
+fn spawn_attract_bar(c: &mut ChildSpawnerCommands, font: &Handle<Font>, bar_top: f32, k: f32) {
+    let left = 960.0 - JACKPOT_BAR_W / 2.0;
+    // The fire over the Minor and Mini boxes.
+    for (tier, (l, r)) in JACKPOT_BOXES {
+        if !matches!(tier, JackpotTier::Minor | JackpotTier::Mini) {
+            continue;
+        }
+        // A little larger than the box, so the flames run round it and
+        // clear its title and value.
+        let (w, h) = ((r - l + 36.0) * k, 132.0 * k);
+        c.spawn((
+            AttractFire,
+            Node {
+                position_type: PositionType::Absolute,
+                left: Val::Px(left + (l - 18.0) * k),
+                top: Val::Px(bar_top - 12.0 * k),
+                width: Val::Px(w),
+                height: Val::Px(h),
+                ..default()
+            },
+            ImageNode {
+                image_mode: NodeImageMode::Stretch,
+                ..default()
+            },
+            ZIndex(3),
+            Visibility::Hidden,
+        ));
+    }
+    // The plaque, centred on the seam between the Minor and Mini boxes.
+    let (pw, ph) = (118.0, 76.0);
+    let cx = left + 968.0 * k;
+    let cy = bar_top + 62.0 * k;
+    c.spawn((
+        PlayPlaque,
+        Node {
+            position_type: PositionType::Absolute,
+            left: Val::Px(cx - pw / 2.0),
+            top: Val::Px(cy - ph / 2.0),
+            width: Val::Px(pw),
+            height: Val::Px(ph),
+            border: UiRect::all(Val::Px(4.0)),
+            border_radius: BorderRadius::all(Val::Px(8.0)),
+            flex_direction: FlexDirection::Column,
+            align_items: AlignItems::Center,
+            justify_content: JustifyContent::Center,
+            ..default()
+        },
+        BackgroundColor(Color::srgb(0.05, 0.03, 0.02)),
+        BorderColor::all(Color::srgb(0.95, 0.74, 0.2)),
+        ZIndex(4),
+        Visibility::Hidden,
+    ))
+    .with_children(|p| {
+        p.spawn((
+            Text::new("PLAY"),
+            TextFont {
+                font: bevy::text::FontSource::Handle(font.clone()),
+                font_size: FontSize::Px(20.0),
+                ..default()
+            },
+            TextColor(Color::srgb(1.0, 0.9, 0.4)),
+        ));
+        p.spawn((
+            Node {
+                width: Val::Px(92.0),
+                height: Val::Px(36.0),
+                border_radius: BorderRadius::all(Val::Px(6.0)),
+                justify_content: JustifyContent::Center,
+                align_items: AlignItems::Center,
+                ..default()
+            },
+            BackgroundColor(Color::srgb(0.72, 0.06, 0.05)),
+        ))
+        .with_children(|b| {
+            b.spawn((
+                PlayPlaqueDenom,
+                Text::new("1c"),
+                TextFont {
+                    font: bevy::text::FontSource::Handle(font.clone()),
+                    font_size: FontSize::Px(30.0),
+                    ..default()
+                },
+                TextColor(Color::WHITE),
+            ));
+        });
+        // The step's white flare, over the whole plaque.
+        p.spawn((
+            PlayPlaqueFlare,
+            Node {
+                position_type: PositionType::Absolute,
+                left: Val::Px(-14.0),
+                top: Val::Px(-14.0),
+                width: Val::Px(pw + 20.0),
+                height: Val::Px(ph + 20.0),
+                border_radius: BorderRadius::all(Val::Px(16.0)),
+                ..default()
+            },
+            BackgroundColor(Color::srgba(1.0, 1.0, 0.95, 0.0)),
+        ));
+    });
+}
+
+/// Open the chooser after the machine has sat idle at zero credit.
+#[allow(clippy::too_many_arguments)]
+pub fn attract_timer(
+    fidelity: Res<Fidelity>,
+    time: Res<Time>,
+    smoke: Res<Smoke>,
+    keys: Res<ButtonInput<KeyCode>>,
+    mouse: Res<ButtonInput<MouseButton>>,
+    input: Res<CabinetInput>,
+    sim: Res<Sim>,
+    presentation: Res<Presentation>,
+    gamble: Res<GambleShow>,
+    show: Res<FeatureShow>,
+    mut menu: ResMut<GamesMenu>,
+    mut idle: ResMut<AttractIdle>,
+) {
+    if !fidelity.0 {
+        return;
+    }
+    let timeout = std::env::var("DRAGONLINK_ATTRACT_SECONDS")
+        .ok()
+        .and_then(|s| s.parse::<f32>().ok())
+        .filter(|s| *s > 0.0)
+        .unwrap_or(ATTRACT_SECONDS);
+    let armed = sim.game.is_idle()
+        && presentation.queue.is_empty()
+        && !gamble.active
+        && !show.in_feature()
+        && !menu.showing()
+        && sim.game.credits() == 0
+        && sim.game.state().residue == 0;
+    let pressed = keys.get_just_pressed().next().is_some()
+        || mouse.get_just_pressed().next().is_some()
+        || input.spin
+        || input.menu
+        || input.gamble
+        || input.take_win
+        || input.bet.is_some()
+        || input.credits.is_some()
+        || input.lines.is_some()
+        || input.pick.is_some();
+    let (left, open) = attract_tick(idle.0, smoke.dt(&time), timeout, armed, pressed);
+    idle.0 = left;
+    if open {
+        menu.open_now();
+    }
+}
+
+/// The jackpot bar while the chooser shows: the PLAY plaque steps through
+/// the denominations with each one's Minor and Mini, and fire runs round
+/// their boxes; after a choice they go blank a moment.
+#[allow(clippy::type_complexity, clippy::too_many_arguments)]
+pub fn attract_bar(
+    fidelity: Res<Fidelity>,
+    time: Res<Time>,
+    menu: Res<GamesMenu>,
+    deck: Res<DeckState>,
+    sim: Res<Sim>,
+    art: Res<ArtPack>,
+    mut values: Query<(&JackpotMeter, &mut Text), Without<PlayPlaqueDenom>>,
+    mut plaque: Query<&mut Visibility, (With<PlayPlaque>, Without<AttractFire>)>,
+    mut denom_text: Query<&mut Text, (With<PlayPlaqueDenom>, Without<JackpotMeter>)>,
+    mut flare: Query<&mut BackgroundColor, With<PlayPlaqueFlare>>,
+    mut fire: Query<(&mut ImageNode, &mut Visibility), (With<AttractFire>, Without<PlayPlaque>)>,
+) {
+    if !fidelity.0 {
+        return;
+    }
+    let open = menu.open;
+    let want = if open {
+        Visibility::Inherited
+    } else {
+        Visibility::Hidden
+    };
+    for mut v in &mut plaque {
+        if *v != want {
+            *v = want;
+        }
+    }
+    let frames = art.anims.get("flameborder_sm");
+    let frame = frames.and_then(|f| {
+        let n = (time.elapsed_secs() * ANIM_FPS) as usize;
+        f.get(n % f.len().max(1)).cloned()
+    });
+    for (mut image, mut v) in &mut fire {
+        let show = open && frame.is_some();
+        if let (true, Some(h)) = (show, &frame)
+            && image.image != *h
+        {
+            image.image = h.clone();
+        }
+        let w = if show {
+            Visibility::Inherited
+        } else {
+            Visibility::Hidden
+        };
+        if *v != w {
+            *v = w;
+        }
+    }
+    if menu.closing() {
+        // After a choice: blank for a moment, then the plain bar.
+        for (m, mut text) in &mut values {
+            if matches!(m.tier, JackpotTier::Minor | JackpotTier::Mini) && !text.0.is_empty() {
+                text.0.clear();
+            }
+        }
+        return;
+    }
+    if !open {
+        return;
+    }
+    let denoms = deck.profile.denoms();
+    if denoms.is_empty() {
+        return;
+    }
+    let t = menu.since();
+    let label = denoms[attract_step(t, ATTRACT_LABEL_LAG) % denoms.len()];
+    let shown = denoms[attract_step(t, ATTRACT_VALUE_LAG) % denoms.len()];
+    for mut text in &mut denom_text {
+        let want = denom_text_short(label);
+        if text.0 != want {
+            text.0 = want;
+        }
+    }
+    let alpha = attract_flare(t) * 0.85;
+    for mut bg in &mut flare {
+        bg.0 = Color::srgba(1.0, 1.0, 0.95, alpha);
+    }
+    let model = sim.game.model();
+    for (m, mut text) in &mut values {
+        if !matches!(m.tier, JackpotTier::Minor | JackpotTier::Mini) {
+            continue;
+        }
+        let want = fixed_prize(model, m.tier, shown)
+            .map_or_else(|| "-".to_string(), |credits| money(credits, shown));
+        if text.0 != want {
+            text.0 = want;
+        }
+    }
+}
+
+/// The fire round the jackpot boxes is drawn by the game additively: its
+/// frames are flames on opaque black. Once loaded, each frame's brightness
+/// becomes its alpha (and its colour is brightened to match), so the flames
+/// lie over the bar with the black gone. The pack itself is untouched.
+pub fn additive_fire(art: Res<ArtPack>, mut images: ResMut<Assets<Image>>, mut done: Local<usize>) {
+    let Some(frames) = art.anims.get("flameborder_sm") else {
+        return;
+    };
+    if *done >= frames.len() {
+        return;
+    }
+    let mut converted = 0;
+    for handle in frames {
+        let Some(mut image) = images.get_mut(handle) else {
+            continue;
+        };
+        if image.texture_descriptor.format
+            != bevy::render::render_resource::TextureFormat::Rgba8UnormSrgb
+        {
+            converted += 1;
+            continue;
+        }
+        if let Some(data) = image.data.as_mut()
+            && data.len() % 4 == 0
+            && data
+                .as_chunks::<4>()
+                .0
+                .iter()
+                .any(|px| px[3] == 255 && px[0].max(px[1]).max(px[2]) < 8)
+        {
+            for px in data.as_chunks_mut::<4>().0 {
+                let peak = px[0].max(px[1]).max(px[2]);
+                let alpha = (u16::from(peak) * u16::from(px[3]) / 255) as u8;
+                if peak > 0 {
+                    for c in &mut px[..3] {
+                        *c = (u16::from(*c) * 255 / u16::from(peak)) as u8;
+                    }
+                }
+                px[3] = alpha;
+            }
+        }
+        converted += 1;
+    }
+    *done = converted;
+}
+
+/// "1c" or "$1", as the plaque letters a denomination.
+fn denom_text_short(cents: u64) -> String {
+    if cents >= 100 {
+        format!("${}", cents / 100)
+    } else {
+        format!("{cents}c")
+    }
+}
+
+/// A fixed jackpot's prize in credits at a credit of `cents`.
+fn fixed_prize(model: &MathModel, tier: JackpotTier, cents: u64) -> Option<u64> {
+    let unit = u32::try_from(cents).ok()?;
+    model
+        .hold_and_spin
+        .as_ref()?
+        .jackpots
+        .iter()
+        .find(|j| j.tier == tier)?
+        .fixed_credits
+        .iter()
+        .filter(|f| f.from_unit <= unit)
+        .max_by_key(|f| f.from_unit)
+        .map(|f| f.credits)
+}
+
 /// The jackpot values' type size, and the share of its box a value may fill
 /// before it is set smaller.
 const JACKPOT_VALUE_SIZE: f32 = 56.0;
@@ -778,6 +1169,9 @@ pub fn spawn(
                 bar_h,
             ));
             let k = bar_w / 1225.0;
+            // While the chooser shows: fire round the Minor and Mini boxes
+            // and the PLAY plaque between them (spawn_attract_bar).
+            spawn_attract_bar(c, &fonts.meter, bar_top, k);
             // Each value centred in its box's dark panel.
             for (tier, (left, right)) in JACKPOT_BOXES {
                 let width = (right - left) * k;
@@ -6212,6 +6606,16 @@ impl GamesMenu {
     pub fn showing(&self) -> bool {
         self.open || self.closing > 0.0
     }
+
+    /// Seconds since the chooser opened.
+    pub fn since(&self) -> f32 {
+        self.since
+    }
+
+    /// The splash still shows after a choice.
+    pub fn closing(&self) -> bool {
+        !self.open && self.closing > 0.0
+    }
 }
 
 /// The chooser's parts.
@@ -8541,6 +8945,60 @@ pub fn payout_effects(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn attract_opens_only_at_rest_with_no_credit_and_any_press_restarts_it() {
+        // Armed: 29 s idle, then the 30th second opens the chooser.
+        let (idle, open) = attract_tick(29.0, 0.5, 30.0, true, false);
+        assert!(!open && (idle - 29.5).abs() < 1e-4);
+        let (idle, open) = attract_tick(idle, 0.6, 30.0, true, false);
+        assert!(open && idle == 0.0);
+        // A press, or credit on the meter (not armed), starts it again.
+        assert_eq!(attract_tick(29.9, 0.5, 30.0, true, true), (0.0, false));
+        assert_eq!(attract_tick(29.9, 0.5, 30.0, false, false), (0.0, false));
+    }
+
+    #[test]
+    fn the_play_plaque_steps_as_the_cabinet_does() {
+        // 1c from the opening; the label moves at 1.2 s, the values at 1.4 s.
+        assert_eq!(attract_step(0.0, ATTRACT_LABEL_LAG), 0);
+        assert_eq!(attract_step(1.15, ATTRACT_LABEL_LAG), 0);
+        assert_eq!(attract_step(1.25, ATTRACT_LABEL_LAG), 1);
+        assert_eq!(attract_step(1.25, ATTRACT_VALUE_LAG), 0);
+        assert_eq!(attract_step(1.45, ATTRACT_VALUE_LAG), 1);
+        // Every 4.0 s after that, wrapping round five club denominations.
+        assert_eq!(attract_step(5.25, ATTRACT_LABEL_LAG), 2);
+        assert_eq!(attract_step(17.25, ATTRACT_LABEL_LAG) % 5, 0);
+        // The flare at each step, gone 0.25 s later.
+        assert!(attract_flare(1.1) > 0.99);
+        assert_eq!(attract_flare(1.4), 0.0);
+        assert!(attract_flare(5.15) > 0.5);
+    }
+
+    #[test]
+    fn the_chooser_shows_each_denominations_minor_and_mini() {
+        let model = dragonlink_model::fixtures::golden_century_synthetic();
+        let prizes: Vec<(u64, u64)> = [1u64, 2, 5, 10, 100]
+            .iter()
+            .map(|&c| {
+                (
+                    fixed_prize(&model, JackpotTier::Minor, c).unwrap() * c,
+                    fixed_prize(&model, JackpotTier::Mini, c).unwrap() * c,
+                )
+            })
+            .collect();
+        // Footage: $50/$10, $100/$20, $250/$50, $500/$100, $1,250/$250.
+        assert_eq!(
+            prizes,
+            vec![
+                (5_000, 1_000),
+                (10_000, 2_000),
+                (25_000, 5_000),
+                (50_000, 10_000),
+                (125_000, 25_000)
+            ]
+        );
+    }
 
     #[test]
     fn every_jackpot_value_fits_its_box() {

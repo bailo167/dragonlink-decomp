@@ -640,8 +640,10 @@ note = "Reels spin and land as 60 fps cabinet footage shows (20 symbols a second
 
 [[category.item]]
 id = "attract"
-name = "Attract and idle presentation"
-status = "not_started"
+name = "Attract / idle mode"
+status = "implemented"
+evidence = "apps/dragonlink/src/cabinet.rs (attract_timer, attract_bar, tests); docs/reverse-engineering/GOLDEN_CENTURY_CABINET_DECK.md (Attract and idle)"
+note = "At zero credit the GAMES MENU opens after 30 s idle (HYPOTHESIS: the framework default); its top-screen PLAY plaque steps through the denominations with their Minor and Mini as club footage shows (VERIFIED timing), fire round the boxes. Not compared side by side throughout."
 
 [[category.item]]
 id = "imported-assets"

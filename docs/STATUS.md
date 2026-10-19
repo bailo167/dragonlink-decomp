@@ -18,6 +18,14 @@ owner; docs/DECISIONS.md). Every run muted. Progress, newest last:
   restart), so its share of the return is the same at every bet and denomination; with the coin
   values retuned, Golden Century returns about 90% at every bet the decks allow, within about two
   points in 800,000-spin simulations (noise included). Synthetic, not Dragon Link's maths.
+- **Packs for all eight titles.** A generic private exporter rebuilds Golden Century's pack byte
+  for byte and exported the seven others into the private packs folder (nothing in Git).
+- **Every title in the cabinet.** DRAGONLINK_ART may name a folder of packs; the cabinet boots
+  any title with its own pack, its symbols' roles read from its model, and the yellow pill opens
+  a machine chooser that restarts the app as another title with the same money.
+- **Attract.** At zero credit the GAMES MENU opens after 30 s idle (the framework's default,
+  HYPOTHESIS); the jackpot bar's PLAY plaque steps through the denominations with their Minor and
+  Mini as club footage shows, with fire round the boxes.
 
 ## Project interpretation (owner reset, 2026-10-14)
 

@@ -2673,6 +2673,7 @@ fn main() -> AppExit {
     .insert_resource(cabinet::FeatureShow::default())
     .insert_resource(cabinet::GambleShow::with_history(cli.seed))
     .insert_resource(cabinet::GamesMenu::default())
+    .insert_resource(cabinet::AttractIdle::default())
     .insert_resource(cabinet::DeckState::default())
     .insert_resource(cabinet::Profile::from_env())
     .insert_resource(cabinet::WildStacks::default())
@@ -2730,6 +2731,7 @@ fn main() -> AppExit {
                 cabinet::hs_medallion,
                 cabinet::payout_effects,
                 cabinet::gamble_control,
+                cabinet::attract_timer,
                 input,
                 cabinet::clear_buttons,
                 drive_features,
@@ -2774,6 +2776,8 @@ fn main() -> AppExit {
                 cabinet::clear_cells,
                 cabinet::update_meters,
                 cabinet::fit_jackpots,
+                cabinet::attract_bar,
+                cabinet::additive_fire,
                 cabinet::machine_menu,
                 cabinet::fit,
             )
