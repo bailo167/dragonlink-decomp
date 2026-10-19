@@ -174,6 +174,8 @@ Scope: Australian cabinet, Queensland clubs unless stated.
 | Mini and Minor at $2 | $500 and $2,500 | `cCB2KxFUzW0` 0:43 | STRONG EVIDENCE |
 | Meter values seen | Grand between $10,343 and $15,545.85; Major between $512.94 and $1,190.03, across nine machines from 2020 to 2026 | several | STRONG EVIDENCE each. A sample, not a range |
 | Gamble | a notice that gamble is not offered when the gamble win would exceed $10,000: a gamble feature exists; its rules were not seen | `1bAevGz0K2k` 0:12; `y8c8lEdPW8Y` 15:05 | VERIFIED |
+| System message | the message row's left slot always holds a system message on Queensland club machines: the gamble notice, "Gamble win limit is $10000.00" with PLAY ON after a base game's win, "Credit reached $100.00, cash-in disabled" once after the credit rises to $100, the venue's greeting; it changes 2.0-2.25 s after each game start | `CAM8vranI9Y` (its 0:04-0:44 section), `T49m2COe0Ho` f_0005, `y8c8lEdPW8Y` 14-65 s, 236-244 s, 2860-2885 s, 3044-3085 s | texts and place VERIFIED; the rules STRONG. In this project's app: followed on the club profile, "Welcome" standing in for the greeting ([GOLDEN_CENTURY_CABINET_DECK.md](GOLDEN_CENTURY_CABINET_DECK.md)) |
+| Meters after a denomination choice | CREDIT, BET and WIN alternate dollars and credits in 1.00 s phases from the game's return until the first game; BET then shows the last bet in credits of the new denomination | `y8c8lEdPW8Y` 11.77-15.30 s, 171.77-173.73 s; `CAM8vranI9Y` 15.43-17.67 s; `1bAevGz0K2k` 15.20-17.4 s; `etaH-vbYBKY` 4.45-9.8 s | VERIFIED (five cases, three venues); the phase PARTIAL. In this project's app: followed, the clock from the YES |
 
 What this adds to the other three titles' findings:
 

@@ -2010,6 +2010,22 @@ fn spawn_meter_band(
         },
     ));
 
+    // The club's system message at the row's left (see `SystemMessage`),
+    // over the chooser's splash and the gamble screen (12) as CREDIT is:
+    // it stays on the chooser (VERIFIED). The longest text is 728 px.
+    c.spawn((
+        SystemMessage,
+        status_text("", fonts, profile, Justify::Left),
+        Node {
+            position_type: PositionType::Absolute,
+            left: Val::Px(SYSTEM_MESSAGE_X),
+            top: Val::Px(message_top(profile) + 5.0),
+            width: Val::Px(800.0),
+            ..default()
+        },
+        GlobalZIndex(13),
+    ));
+
     // The tall yellow pill at the far left, with its stacked bars (its
     // function is not shown on footage). In this app it opens the machine
     // chooser (MachineMenu), this app's own feature.
@@ -2347,6 +2363,281 @@ pub fn start_prompts(
     }
 }
 
+// ---------------------------------------------------------------------------
+// The system message (club)
+// ---------------------------------------------------------------------------
+
+/// The club machines' system message at the left of the message row
+/// ("Gamble not offered if gamble win will exceed $10000.00"): left-aligned
+/// at x 225 with its capitals centred near y 923, in the status line's face
+/// and colour, always showing a message (Queensland club footage mapped
+/// onto the canvas: CAM8vranI9Y, T49m2COe0Ho, y8c8lEdPW8Y; text and place
+/// VERIFIED). The casino profile leaves it empty: an NSW club and a US
+/// casino show only one-off lines there, so the always-filled slot is the
+/// Queensland club's configuration.
+#[derive(Component)]
+pub struct SystemMessage;
+
+/// The system message's left edge on the canvas (footage: x 225-227).
+const SYSTEM_MESSAGE_X: f32 = 225.0;
+/// The club's cash-in limit: notes are refused once CREDIT reaches it
+/// ("Credit reached $100.00, cash-in disabled"; VERIFIED).
+const CASH_IN_LIMIT_CENTS: u64 = 10_000;
+/// The venue's greeting. A SUBSTITUTE: the venue sets this line, and club
+/// footage shows "Welcome To <the club's name>"; no real venue's name is
+/// used here.
+const VENUE_GREETING: &str = "Welcome";
+/// The system message switches two seconds after a game starts (club
+/// footage: 13 of 13 changes 2.0-2.25 s after a start; STRONG) and, with
+/// no game, every two seconds (HYPOTHESIS: one idle toggle seen, 2.2 s).
+const SYSTEM_SWITCH: f32 = 2.0;
+/// Seconds the cash-in notice shows (club footage: 1.0-1.5 s, 2.4 s once;
+/// PARTIAL).
+const CASH_IN_SHOWS: f32 = 1.2;
+
+/// A limit as the system messages write it: "$10000.00", never grouped
+/// (every frame; `money` would write "$10,000.00").
+fn plain_dollars(cents: u64) -> String {
+    format!("${}.{:02}", cents / 100, cents % 100)
+}
+
+/// The club's system messages (texts VERIFIED on Queensland club footage).
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum SystemText {
+    /// "Gamble not offered if gamble win will exceed $10000.00".
+    GambleNotice,
+    /// "Gamble win limit is $10000.00", while a base game's win is offered.
+    WinLimit,
+    /// "Credit reached $100.00, cash-in disabled", once after CREDIT rises
+    /// to the limit.
+    CashIn,
+    /// The venue's greeting (a substitute: [`VENUE_GREETING`]).
+    Greeting,
+}
+
+impl SystemText {
+    /// The message as the slot writes it.
+    pub fn text(self) -> String {
+        match self {
+            SystemText::GambleNotice => format!(
+                "Gamble not offered if gamble win will exceed {}",
+                plain_dollars(GAMBLE_WIN_LIMIT_CENTS)
+            ),
+            SystemText::WinLimit => format!(
+                "Gamble win limit is {}",
+                plain_dollars(GAMBLE_WIN_LIMIT_CENTS)
+            ),
+            SystemText::CashIn => format!(
+                "Credit reached {}, cash-in disabled",
+                plain_dollars(CASH_IN_LIMIT_CENTS)
+            ),
+            SystemText::Greeting => VENUE_GREETING.to_string(),
+        }
+    }
+}
+
+/// One frame of what the system message follows.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct SlotFrame {
+    /// Seconds since the last frame.
+    pub dt: f32,
+    /// A game started this frame (a base game, a free game or a respin):
+    /// the credit before its bet, in cents.
+    pub start: Option<u64>,
+    /// A base game's win is offered ("PLAY ON, GAMBLE or TAKE WIN"; not a
+    /// feature's total).
+    pub offer: bool,
+    /// CREDIT as shown, in cents.
+    pub credit: u64,
+}
+
+/// The club's system message, as Queensland club footage shows it
+/// (y8c8lEdPW8Y at 4 fps over 14-65, 236-244, 2860-2885 and 3044-3085 s;
+/// CAM8vranI9Y; T49m2COe0Ho):
+/// - a base game's win offered shows the win limit, until the next start
+///   (STRONG; not during the count, not after a feature);
+/// - CREDIT rising to the cash-in limit or above (a win paid, credits
+///   loaded) leaves the cash-in notice due (STRONG);
+/// - a start ends the win limit or the cash-in notice with the gamble
+///   notice (a cut-off cash-in notice stays due); otherwise, with the
+///   credit before its bet at the limit or above, it brings the greeting;
+///   otherwise it changes nothing (STRONG);
+/// - two seconds after a start it switches: to the cash-in notice if due
+///   (1.2 s, then the greeting), else to the gamble notice with the credit
+///   at the limit or above, else to the other of the gamble notice and the
+///   greeting (STRONG: more than 30 transitions);
+/// - with no start and no offer it switches every two seconds the same
+///   way, the cash-in notice included when due (HYPOTHESIS: one idle
+///   toggle seen; the cash-in notice once at an idle switch, y8c8lEdPW8Y
+///   14.0 s);
+/// - in the gamble and on the chooser it carries on, the win limit not
+///   forced (the owner's recording shows the greeting in the gamble;
+///   PARTIAL).
+#[derive(Resource, Debug, Default)]
+pub struct SystemSlot {
+    /// The greeting (true) or the gamble notice (false), between the
+    /// others.
+    greeting: bool,
+    /// The win limit shows.
+    limit: bool,
+    /// Seconds left on the cash-in notice, while it shows.
+    cash: Option<f32>,
+    /// CREDIT rose to the cash-in limit: the notice is due at the next
+    /// switch.
+    cash_due: bool,
+    /// Seconds since the last start, switch or offer.
+    clock: f32,
+    /// The next switch is the first since a start.
+    after_start: bool,
+    /// A win was offered last frame.
+    offer: bool,
+    /// CREDIT last frame, in cents (none before the first).
+    credit: Option<u64>,
+}
+
+impl SystemSlot {
+    /// Follow one frame.
+    pub fn step(&mut self, f: SlotFrame) {
+        // CREDIT rose to the limit; the credit loaded at the start counts.
+        if self.credit.is_none_or(|c| f.credit > c) && f.credit >= CASH_IN_LIMIT_CENTS {
+            self.cash_due = true;
+        }
+        self.credit = Some(f.credit);
+        if f.offer {
+            // A cash-in notice the offer cuts off stays due.
+            self.limit = true;
+            self.cash = None;
+            self.offer = true;
+            self.clock = 0.0;
+            return;
+        }
+        if std::mem::take(&mut self.offer) {
+            self.clock = 0.0;
+        }
+        if let Some(before) = f.start {
+            if self.limit || self.cash.is_some() {
+                self.greeting = false;
+            } else if before >= CASH_IN_LIMIT_CENTS {
+                self.greeting = true;
+            }
+            self.limit = false;
+            self.cash = None;
+            self.clock = 0.0;
+            self.after_start = true;
+            return;
+        }
+        self.clock += f.dt;
+        if let Some(left) = self.cash {
+            if left > f.dt {
+                self.cash = Some(left - f.dt);
+            } else {
+                // The greeting follows, the next switch two seconds on.
+                self.cash = None;
+                self.cash_due = false;
+                self.greeting = true;
+                self.clock = 0.0;
+            }
+            return;
+        }
+        if self.clock < SYSTEM_SWITCH {
+            return;
+        }
+        self.clock = 0.0;
+        self.limit = false;
+        if self.cash_due {
+            self.cash = Some(CASH_IN_SHOWS);
+        } else if self.after_start && f.credit >= CASH_IN_LIMIT_CENTS {
+            self.greeting = false;
+        } else {
+            self.greeting = !self.greeting;
+        }
+        self.after_start = false;
+    }
+
+    /// The message showing.
+    pub fn showing(&self) -> SystemText {
+        if self.limit {
+            SystemText::WinLimit
+        } else if self.cash.is_some() {
+            SystemText::CashIn
+        } else if self.greeting {
+            SystemText::Greeting
+        } else {
+            SystemText::GambleNotice
+        }
+    }
+}
+
+/// What the system message saw last frame: the reels moving, a respin
+/// under way, and the games paid for at the last start.
+#[derive(Default)]
+pub struct SlotSeen {
+    spinning: bool,
+    respinning: bool,
+    spins: u64,
+}
+
+/// Keep the club's system message (see [`SystemSlot`]); the casino
+/// profile's stays empty.
+#[allow(clippy::too_many_arguments)]
+pub fn system_message(
+    fidelity: Res<Fidelity>,
+    time: Res<Time>,
+    smoke: Res<Smoke>,
+    profile: Res<Profile>,
+    sim: Res<Sim>,
+    presentation: Res<Presentation>,
+    denom: Res<Denom>,
+    rollup: Res<Rollup>,
+    show: Res<FeatureShow>,
+    gamble: Res<GambleShow>,
+    deck: Res<DeckState>,
+    mut slot: ResMut<SystemSlot>,
+    mut seen: Local<SlotSeen>,
+    mut texts: Query<&mut Text, With<SystemMessage>>,
+) {
+    if !fidelity.0 {
+        return;
+    }
+    let want = if *profile == Profile::Club {
+        let cents = denom.cents();
+        let credit = credit_shown(&sim, &presentation, &rollup, &show, &gamble)
+            .saturating_mul(cents)
+            .saturating_add(sim.game.state().residue);
+        // A start: the reels set off (free games' too) or a respin begins.
+        let spinning = deck.mode == DeckMode::Spinning;
+        let respinning = show.respinning();
+        let started = (spinning && !seen.spinning) || (respinning && !seen.respinning);
+        seen.spinning = spinning;
+        seen.respinning = respinning;
+        let start = started.then(|| {
+            // A paid game's bet is off CREDIT by the time its reels move.
+            let spins = sim.game.state().spins;
+            let paid = spins > seen.spins;
+            seen.spins = spins;
+            if paid {
+                credit.saturating_add(sim.game.total_bet().saturating_mul(cents))
+            } else {
+                credit
+            }
+        });
+        slot.step(SlotFrame {
+            dt: smoke.dt(&time).min(0.05),
+            start,
+            offer: deck.offer && show.stage == Stage::Base,
+            credit,
+        });
+        slot.showing().text()
+    } else {
+        String::new()
+    };
+    for mut text in &mut texts {
+        if text.0 != want {
+            text.0.clone_from(&want);
+        }
+    }
+}
+
 /// The button deck below the screen, as on the Australian Dragon Link
 /// cabinets: a brushed-silver panel with a blue light strip, two rows of six
 /// square keys whose legends are displays, and the teardrop PLAY button.
@@ -2595,8 +2886,12 @@ pub struct DeckState {
     pub cents: u64,
     /// A win waits to be gambled ("PLAY ON, GAMBLE or TAKE WIN").
     pub offer: bool,
-    /// Seconds since the mode or the offer began: the one clock of the
-    /// deck's flash, the teardrop's legends and the meters' switch.
+    /// A denomination was chosen and no game has started since, at base
+    /// (see [`GamesMenu::selecting`]).
+    pub selecting: bool,
+    /// Seconds since the mode or the offer began (after a denomination
+    /// choice, since the YES): the one clock of the deck's flash, the
+    /// teardrop's legends and the meters' switch.
     pub since: f32,
 }
 
@@ -2608,11 +2903,28 @@ impl DeckState {
     }
 
     /// The meters switch to credits every other second while a win is
-    /// offered and through the gamble, on the club machines only.
+    /// offered, through the gamble, and from a denomination choice until
+    /// the first game, on the club machines only (club footage: 1.00 s
+    /// phases, five cases on four recordings after a choice).
     pub fn in_credits(&self) -> bool {
         self.profile == Profile::Club
-            && (self.offer || self.mode == DeckMode::Gamble)
+            && (self.offer || self.mode == DeckMode::Gamble || self.selecting)
             && (self.since as u32) % 2 == 1
+    }
+}
+
+/// Where the deck's clock restarts when the mode or the offer changes:
+/// from nothing, except as the game returns from a denomination choice,
+/// when it counts from the YES (the splash's [`MENU_CLOSE`] earlier). The
+/// meters then show dollars 0.7 s more and switch to credits 1.0 s after
+/// the YES, the first switch that two of the club recordings place 0.87
+/// and 0.93 s after it (the phase is PARTIAL: 0.26 to 1.04 s across five
+/// cases).
+fn deck_clock_restart(from: DeckMode, selecting: bool) -> f32 {
+    if from == DeckMode::Menu && selecting {
+        MENU_CLOSE
+    } else {
+        0.0
     }
 }
 
@@ -2859,13 +3171,16 @@ pub fn light_deck(
         DeckMode::Base
     };
     let offer = mode == DeckMode::Base && can_gamble;
+    // After a denomination choice, until the first game (club footage).
+    let selecting = menu.selecting && mode == DeckMode::Base;
     if deck.mode != mode || deck.offer != offer {
-        deck.since = 0.0;
+        deck.since = deck_clock_restart(deck.mode, selecting);
     } else {
         deck.since += smoke.dt(&time).min(0.05);
     }
     deck.mode = mode;
     deck.offer = offer;
+    deck.selecting = selecting;
     deck.profile = *profile;
     deck.cents = cents;
     let d = *deck;
@@ -3104,6 +3419,55 @@ impl RestPhase {
     }
 }
 
+/// A feature under way, from its trigger spin on (the game is in it
+/// before the screen shows it), and its end (completion, count and
+/// payment: on the last free game the engine is idle before they are
+/// shown): CREDIT holds still while the win counts on WIN (cabinet
+/// footage).
+fn credit_held(sim: &Sim, show: &FeatureShow) -> bool {
+    show.in_feature() || show.counting() || !sim.game.is_idle()
+}
+
+/// The credits CREDIT shows (before any cents a change to a larger
+/// denomination left over): held through a feature (see [`credit_held`]);
+/// otherwise counting up with the win meter, less a win that may still be
+/// gambled.
+fn credit_shown(
+    sim: &Sim,
+    presentation: &Presentation,
+    rollup: &Rollup,
+    show: &FeatureShow,
+    gamble: &GambleShow,
+) -> u64 {
+    if credit_held(sim, show) {
+        return presentation
+            .shown_credits
+            .saturating_sub(presentation.shown_win);
+    }
+    let pending = rollup.to.saturating_sub(rollup.shown());
+    let at_rest = sim.game.is_idle() && presentation.queue.is_empty();
+    let held = if at_rest && (sim.game.can_gamble() || gamble.active) {
+        sim.game.state().gamble_stake
+    } else {
+        0
+    };
+    presentation.shown_credits.saturating_sub(pending.max(held))
+}
+
+/// What BET shows: after a denomination change (or a credits key's
+/// selection) the last game's bet until the next game (footage), and in a
+/// credits phase that bet in credits of the denomination now played (club
+/// footage: "BET 50" against "$1.00" at 2c, CAM8vranI9Y 12.1 s and
+/// 1bAevGz0K2k 15.8 s; VERIFIED); otherwise the bet.
+fn bet_meter(last_bet_cents: Option<u64>, in_credits: bool, total_bet: u64, cents: u64) -> String {
+    match last_bet_cents {
+        Some(c) if in_credits => grouped(c / cents.max(1)),
+        Some(c) => money(c, 1),
+        None if in_credits => grouped(total_bet),
+        None => money(total_bet, cents),
+    }
+}
+
 /// The cabinet's credit, bet and win meters.
 #[allow(clippy::too_many_arguments)]
 pub fn update_meters(
@@ -3140,8 +3504,6 @@ pub fn update_meters(
     );
     // Cents a change to a larger denomination left over: money on CREDIT.
     let residue = sim.game.state().residue;
-    // Credits count up with the win meter.
-    let pending = rollup.to.saturating_sub(rollup.shown());
     // The club machines switch to credits every other second while a win is
     // offered and through the gamble, never during a play or a count (and
     // the standard forbids it then); the casino style stays in dollars.
@@ -3155,39 +3517,17 @@ pub fn update_meters(
     };
     for (meter, mut text, mut colour, spacing) in &mut meters {
         let value = match meter {
-            // A feature under way, from its trigger spin on (the game is in it
-            // before the screen shows it): CREDIT holds still while the
-            // trigger's win counts on WIN (cabinet footage).
-            // Its end too (completion, count and payment): on the last free
-            // game the engine is idle before they are shown.
-            CabMeter::Credit if show.in_feature() || show.counting() || !sim.game.is_idle() => {
-                amount(
-                    presentation
-                        .shown_credits
-                        .saturating_sub(presentation.shown_win),
-                    cents,
-                )
-            }
             CabMeter::Credit => {
-                let at_rest = sim.game.is_idle() && presentation.queue.is_empty();
-                let held = if at_rest && (sim.game.can_gamble() || gamble.active) {
-                    sim.game.state().gamble_stake
-                } else {
-                    0
-                };
-                let credits = presentation.shown_credits.saturating_sub(pending.max(held));
-                if in_credits || residue == 0 {
+                let credits = credit_shown(&sim, &presentation, &rollup, &show, &gamble);
+                if in_credits || residue == 0 || credit_held(&sim, &show) {
                     amount(credits, cents)
                 } else {
                     money(credits.saturating_mul(cents).saturating_add(residue), 1)
                 }
             }
-            // After a denomination change BET still shows the last game's bet
-            // until the next game (footage).
-            CabMeter::Bet => match menu.last_bet_cents {
-                Some(c) if !in_credits => money(c, 1),
-                _ => amount(sim.game.total_bet(), cents),
-            },
+            CabMeter::Bet => {
+                bet_meter(menu.last_bet_cents, in_credits, sim.game.total_bet(), cents)
+            }
             CabMeter::Win if gamble.active => amount(gamble.shown_stake(), cents),
             CabMeter::Win => match (gamble.result, show.grand_win()) {
                 (Some(w), _) => amount(w, cents),
@@ -5199,6 +5539,11 @@ impl FeatureShow {
         Some(prompt_lit(
             self.clock - self.prompt_at.unwrap_or(self.clock),
         ))
+    }
+
+    /// A Hold & Spin respin is under way (its positions turning).
+    pub fn respinning(&self) -> bool {
+        self.respin.is_some()
     }
 
     /// A feature is under way: the credit meter holds still and its wins
@@ -7874,6 +8219,12 @@ pub struct GamesMenu {
     pub last_bet_cents: Option<u64>,
     /// Club: the denomination touched, waiting on ARE YOU SURE?.
     pub pending: Option<u64>,
+    /// A denomination was chosen and no game has started since: the club
+    /// meters alternate dollars and credits each second meanwhile (club
+    /// footage: y8c8lEdPW8Y 11.77-15.30 and 171.77-173.73, CAM8vranI9Y,
+    /// 1bAevGz0K2k, etaH-vbYBKY; VERIFIED). Set on every choice, the
+    /// current denomination's included (untested on the cabinet).
+    pub selecting: bool,
 }
 
 impl GamesMenu {
@@ -10719,6 +11070,200 @@ mod tests {
         assert!(b > 0.8 && r < 0.3 && g < 0.6);
         let (r, g, b) = hue(JackpotTier::Mini);
         assert!(r > 0.8 && g > 0.3 && g < 0.6 && b < 0.4);
+    }
+
+    /// After a denomination choice the club meters alternate dollars and
+    /// credits each second until the first game, the clock counting from
+    /// the YES (club footage); the casino style never switches.
+    #[test]
+    fn club_meters_alternate_from_a_denomination_choice_until_the_first_game() {
+        let mut deck = DeckState {
+            profile: Profile::Club,
+            mode: DeckMode::Base,
+            selecting: true,
+            ..Default::default()
+        };
+        // The game returns 0.3 s after the YES: dollars until 1.0 s after
+        // it, then credits for a second, dollars for a second, and so on.
+        deck.since = deck_clock_restart(DeckMode::Menu, true);
+        assert!((deck.since - MENU_CLOSE).abs() < 1e-6);
+        for (since, credits) in [(0.3, false), (0.95, false), (1.05, true), (1.95, true)] {
+            deck.since = since;
+            assert_eq!(deck.in_credits(), credits, "at {since} s");
+        }
+        for (since, credits) in [(2.05, false), (3.5, true), (4.2, false)] {
+            deck.since = since;
+            assert_eq!(deck.in_credits(), credits, "at {since} s");
+        }
+        // With no choice pending, base idle stays in dollars.
+        deck.selecting = false;
+        deck.since = 1.5;
+        assert!(!deck.in_credits());
+        // A win offered and the gamble still switch.
+        deck.offer = true;
+        assert!(deck.in_credits());
+        // The casino style never switches.
+        let casino = DeckState {
+            profile: Profile::Casino,
+            selecting: true,
+            ..deck
+        };
+        assert!(!casino.in_credits());
+        // Every other restart counts from nothing.
+        assert_eq!(deck_clock_restart(DeckMode::Menu, false), 0.0);
+        assert_eq!(deck_clock_restart(DeckMode::Spinning, true), 0.0);
+        assert_eq!(deck_clock_restart(DeckMode::Base, true), 0.0);
+    }
+
+    /// In a credits phase BET shows the last game's bet in credits of the
+    /// denomination now played (club footage: "BET 50" against "$1.00" at
+    /// 2c), in dollars otherwise.
+    #[test]
+    fn bet_shows_the_last_bet_in_credits_of_the_new_denomination() {
+        assert_eq!(bet_meter(Some(100), true, 1, 2), "50");
+        assert_eq!(bet_meter(Some(100), false, 1, 2), "$1.00");
+        assert_eq!(bet_meter(Some(1_234_500), true, 1, 1), "1,234,500");
+        // No change pending: the bet itself.
+        assert_eq!(bet_meter(None, true, 50, 2), "50");
+        assert_eq!(bet_meter(None, false, 50, 2), "$1.00");
+    }
+
+    /// Step a system message `secs` seconds in frames of 0.05 s.
+    fn slot_run(slot: &mut SystemSlot, secs: f32, offer: bool, credit: u64) {
+        let frames = (secs / 0.05).round() as u32;
+        for _ in 0..frames {
+            slot.step(SlotFrame {
+                dt: 0.05,
+                start: None,
+                offer,
+                credit,
+            });
+        }
+    }
+
+    /// A game starting, the credit `before` its bet and `credit` after.
+    fn slot_start(slot: &mut SystemSlot, before: u64, credit: u64) {
+        slot.step(SlotFrame {
+            dt: 0.05,
+            start: Some(before),
+            offer: false,
+            credit,
+        });
+    }
+
+    /// The system messages' texts, as club footage writes them: the limits
+    /// in plain dollars with no grouping, the greeting a substitute.
+    #[test]
+    fn the_system_messages_read_as_on_the_club_machines() {
+        assert_eq!(plain_dollars(GAMBLE_WIN_LIMIT_CENTS), "$10000.00");
+        assert_eq!(
+            SystemText::GambleNotice.text(),
+            "Gamble not offered if gamble win will exceed $10000.00"
+        );
+        assert_eq!(SystemText::WinLimit.text(), "Gamble win limit is $10000.00");
+        assert_eq!(
+            SystemText::CashIn.text(),
+            "Credit reached $100.00, cash-in disabled"
+        );
+        assert_eq!(SystemText::Greeting.text(), "Welcome");
+    }
+
+    /// Below the cash-in limit a start changes nothing; the message
+    /// switches between the gamble notice and the greeting two seconds
+    /// after each start, and every two seconds with no game.
+    #[test]
+    fn below_the_cash_in_limit_the_message_switches_two_seconds_after_a_start() {
+        let mut slot = SystemSlot::default();
+        slot_run(&mut slot, 0.1, false, 5_000);
+        assert_eq!(slot.showing(), SystemText::GambleNotice);
+        slot_start(&mut slot, 5_050, 5_000);
+        assert_eq!(slot.showing(), SystemText::GambleNotice);
+        slot_run(&mut slot, 1.9, false, 5_000);
+        assert_eq!(slot.showing(), SystemText::GambleNotice);
+        slot_run(&mut slot, 0.2, false, 5_000);
+        assert_eq!(slot.showing(), SystemText::Greeting);
+        // The next start leaves it; two seconds on it switches back.
+        slot_start(&mut slot, 5_000, 4_950);
+        assert_eq!(slot.showing(), SystemText::Greeting);
+        slot_run(&mut slot, 2.1, false, 4_950);
+        assert_eq!(slot.showing(), SystemText::GambleNotice);
+        // No game: every two seconds (HYPOTHESIS).
+        slot_run(&mut slot, 2.0, false, 4_950);
+        assert_eq!(slot.showing(), SystemText::Greeting);
+    }
+
+    /// Credit loaded to the cash-in limit shows the cash-in notice at the
+    /// next switch, 1.2 s, then the greeting; at or above the limit a start
+    /// brings the greeting and the gamble notice follows two seconds later.
+    #[test]
+    fn at_the_cash_in_limit_a_start_brings_the_greeting() {
+        let mut slot = SystemSlot::default();
+        // The session's credit, loaded at $100.00.
+        slot_run(&mut slot, 1.9, false, 10_000);
+        assert_eq!(slot.showing(), SystemText::GambleNotice);
+        slot_run(&mut slot, 0.2, false, 10_000);
+        assert_eq!(slot.showing(), SystemText::CashIn);
+        slot_run(&mut slot, 1.1, false, 10_000);
+        assert_eq!(slot.showing(), SystemText::CashIn);
+        slot_run(&mut slot, 0.2, false, 10_000);
+        assert_eq!(slot.showing(), SystemText::Greeting);
+        // Once only: the next switch is the gamble notice.
+        slot_run(&mut slot, 2.1, false, 10_000);
+        assert_eq!(slot.showing(), SystemText::GambleNotice);
+        // A start from $100.00 or more: the greeting, then the notice.
+        slot_start(&mut slot, 10_000, 9_950);
+        assert_eq!(slot.showing(), SystemText::Greeting);
+        slot_run(&mut slot, 2.1, false, 9_950);
+        assert_eq!(slot.showing(), SystemText::GambleNotice);
+        // The same with the credit still at the limit (a free game's start).
+        let mut slot = SystemSlot::default();
+        slot_run(&mut slot, 3.4, false, 10_000);
+        assert_eq!(slot.showing(), SystemText::Greeting);
+        slot_start(&mut slot, 10_000, 10_000);
+        assert_eq!(slot.showing(), SystemText::Greeting);
+        slot_run(&mut slot, 2.1, false, 10_000);
+        assert_eq!(slot.showing(), SystemText::GambleNotice);
+        slot_start(&mut slot, 10_000, 10_000);
+        assert_eq!(slot.showing(), SystemText::Greeting);
+    }
+
+    /// A base game's win offered shows the win limit until the next start,
+    /// which brings the gamble notice; a win paid to the cash-in limit
+    /// shows the cash-in notice two seconds after the start, and a start
+    /// that cuts it off leaves it due.
+    #[test]
+    fn a_win_offered_shows_the_win_limit_and_a_win_paid_the_cash_in_notice() {
+        let mut slot = SystemSlot::default();
+        slot_run(&mut slot, 0.1, false, 9_000);
+        slot_run(&mut slot, 3.0, true, 9_000);
+        assert_eq!(slot.showing(), SystemText::WinLimit);
+        // PLAY ON: the win paid takes CREDIT to $100.40 as the game starts.
+        slot_start(&mut slot, 10_450, 10_400);
+        assert_eq!(slot.showing(), SystemText::GambleNotice);
+        slot_run(&mut slot, 2.1, false, 10_400);
+        assert_eq!(slot.showing(), SystemText::CashIn);
+        // Cut off by the next start: the gamble notice, the cash-in notice
+        // again at the next switch, then the greeting.
+        slot_start(&mut slot, 10_400, 10_350);
+        assert_eq!(slot.showing(), SystemText::GambleNotice);
+        slot_run(&mut slot, 2.1, false, 10_350);
+        assert_eq!(slot.showing(), SystemText::CashIn);
+        slot_run(&mut slot, 1.3, false, 10_350);
+        assert_eq!(slot.showing(), SystemText::Greeting);
+    }
+
+    /// Into the gamble from the offer, the win limit is not forced: the
+    /// message carries on switching two seconds after the offer ends.
+    #[test]
+    fn the_win_limit_gives_way_in_the_gamble() {
+        let mut slot = SystemSlot::default();
+        slot_run(&mut slot, 0.1, false, 5_000);
+        slot_run(&mut slot, 1.0, true, 5_000);
+        assert_eq!(slot.showing(), SystemText::WinLimit);
+        slot_run(&mut slot, 1.9, false, 5_000);
+        assert_eq!(slot.showing(), SystemText::WinLimit);
+        slot_run(&mut slot, 0.2, false, 5_000);
+        assert_eq!(slot.showing(), SystemText::Greeting);
     }
 
     /// A line win's message is always in credits, in plain digits (cabinet

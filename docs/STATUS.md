@@ -99,6 +99,16 @@ owner; docs/DECISIONS.md). Every run muted. Progress, newest last:
   GAME N+1 OF 6" comes with the reels (VERIFIED, one machine), and the moving strips scroll an
   open position's dimmed symbol away still dimmed. Unit tests cover each rule (one runs the reel
   system on a world); checked on muted captures of the doors run.
+- **Audit fixes: system message and meters.** The club profile now fills the message row's left
+  slot as Queensland club machines do (texts and place VERIFIED, rules STRONG on more than 30
+  transitions): "Gamble win limit is $10000.00" while a base game's win is offered, "Credit
+  reached $100.00, cash-in disabled" once after the credit rises to $100, and otherwise the gamble
+  notice and a greeting in turn, switching 2.0 s after each start and, with no game, every 2.0 s
+  (HYPOTHESIS). The greeting is a generic "Welcome" standing in for the venue's own line. After a
+  denomination choice the club meters alternate dollars and credits each second until the first
+  game, the clock counting from the YES (VERIFIED on five cases; the phase PARTIAL), and BET then
+  shows the last bet in credits of the new denomination. Unit tests cover the rules; checked on
+  muted captures (a choice of 5c, the base game with wins, a Hold & Spin, the casino profile).
 
 ## Project interpretation (owner reset, 2026-10-14)
 

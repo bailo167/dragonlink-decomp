@@ -1582,6 +1582,8 @@ fn input(
     {
         if menu.open {
             menu.close();
+            // Club meters alternate from the choice until the first game.
+            menu.selecting = true;
         }
         let from = denom.cents();
         if from != to && sim.game.is_idle() {
@@ -1676,9 +1678,10 @@ fn input(
         && !menu.showing();
     if go {
         // A new game: the gamble's result and its end message go, BET shows
-        // its own bet.
+        // its own bet, the meters' alternation after a choice ends.
         gamble.result = None;
         gamble.ended = None;
+        menu.selecting = false;
         let first_here = menu.last_bet_cents.take().is_some();
         let Sim { game, rng } = &mut *sim;
         if let Some((m, index)) = bet_press {
@@ -2936,6 +2939,7 @@ fn main() -> AppExit {
     .insert_resource(cabinet::AttractIdle::default())
     .insert_resource(cabinet::GameRules::default())
     .insert_resource(cabinet::DeckState::default())
+    .insert_resource(cabinet::SystemSlot::default())
     .insert_resource(cabinet::Profile::from_env())
     .insert_resource(cabinet::WildStacks::default())
     .insert_resource(cabinet::Music::default())
@@ -3038,6 +3042,7 @@ fn main() -> AppExit {
                 cabinet::start_prompts,
                 cabinet::clear_cells,
                 cabinet::update_meters,
+                cabinet::system_message,
                 cabinet::fit_jackpots,
                 cabinet::fit_reel_panel,
                 cabinet::lines_digits,
