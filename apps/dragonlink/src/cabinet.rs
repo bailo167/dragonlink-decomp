@@ -4408,6 +4408,12 @@ pub struct FeatureShow {
     respins_run: i64,
     /// Sounds the presentation has cued, played by `feature_cues`.
     cues: Vec<&'static str>,
+    /// A picture's own sound has played this game (one a game).
+    pic_sounded: bool,
+    /// The drum roll of a respin that starts with fourteen coins held.
+    drum: Option<Entity>,
+    /// When the Grand's bell rings (`clock`), once the grid is full.
+    grand_bell_at: Option<f32>,
     /// The bolt in flight (its coin, its start on `clock`), and the last
     /// splash on the WINNER box.
     bolt: Option<(u8, u8, f32)>,
@@ -4446,6 +4452,8 @@ impl FeatureShow {
     pub fn on_event(&mut self, event: &Event) {
         match event {
             Event::SpinStarted { .. } => {
+                self.pic_sounded = false;
+                self.grand_bell_at = None;
                 self.flares_at = None;
                 self.wild = None;
                 self.wild_sounded = false;
@@ -4525,6 +4533,7 @@ impl FeatureShow {
                 self.scatter_paid = true;
             }
             Event::FreeGameStarted { number, remaining } => {
+                self.pic_sounded = false;
                 // Each free game is a game of its own for the wild.
                 self.wild = None;
                 self.wild_sounded = false;
@@ -4624,6 +4633,22 @@ impl FeatureShow {
             || matches!(self.stage, Stage::FreeGames { .. } | Stage::HoldSpin { .. })
             || self.collect_start
             || self.collect.is_some()
+    }
+
+    /// A picture's own sound for a win of four or five of it, with no wild on
+    /// its line: SND_Pic1 to SND_Pic4, the pictures highest first (the
+    /// mobile engine's win-sound rule, 4 of a kind and up; silent on 2 of a
+    /// kind in the official app recording). Once a game. STRONG for the
+    /// engine, PARTIAL for the cabinet.
+    pub fn picture_win(&mut self, picture: usize) {
+        const NAMES: [&str; 4] = ["SND_Pic1", "SND_Pic2", "SND_Pic3", "SND_Pic4"];
+        if self.pic_sounded {
+            return;
+        }
+        if let Some(name) = NAMES.get(picture) {
+            self.cues.push(name);
+            self.pic_sounded = true;
+        }
     }
 
     /// Clear a finished Hold & Spin's board, total and banner (the free
@@ -5136,6 +5161,9 @@ const RESPIN_FLARE: f32 = 7.0 / 30.0;
 const RESPIN_CLINK: f32 = 2.0 / 30.0;
 const RESPIN_DOONK: f32 = RESPIN_CLINK + 0.06;
 const RESPIN_STRIKE: f32 = RESPIN_DOONK + 0.07;
+/// Seconds from the end of the respin that fills the grid to the Grand's
+/// bell (3.55 s after the fifteenth coin lands, less the respin's settle).
+const GRAND_BELL_AFTER: f32 = 3.2;
 /// The respin is over 4 to 5 frames after the last position settles.
 const RESPIN_DONE: f32 = 4.5 / 30.0;
 /// Frames per second of the game's animations.
@@ -6058,6 +6086,20 @@ pub fn hold_and_spin_motion(
     // A respin was presented: every open position spins and stops in turn.
     if let Some(landed) = show.respin_landed.take() {
         show.counter = show.counter.saturating_sub(1);
+        // Fourteen coins held: a drum roll from the respin's start, ended at
+        // its last stop (the mobile engine starts it on a respin with
+        // fourteen held, STRONG; its opening matched on a Happy & Prosperous
+        // cabinet, VERIFIED there).
+        let held = (0..reels)
+            .flat_map(|reel| (0..rows).map(move |row| (reel, row)))
+            .filter(|&(reel, row)| {
+                !landed.contains(&(reel, row)) && !open(&label_of(&labels, reel, row))
+            })
+            .count();
+        let drum = held + 1 == usize::from(reels) * usize::from(rows);
+        if drum {
+            show.drum = sounds.play(&mut commands, "SND_DrumRoll_extended");
+        }
         let mut stops = Vec::new();
         for reel in 0..reels {
             for row in 0..rows {
@@ -6070,11 +6112,16 @@ pub fn hold_and_spin_motion(
         }
         show.respins_run += 1;
         sounds.play(&mut commands, "SND_Button");
-        show.respin = Some(RespinAnim {
+        let last = stops.iter().map(|s| s.2).fold(0.0, f32::max);
+        let mut anim = RespinAnim {
             stops,
             base: show.respins_run * 1009,
             ..default()
-        });
+        };
+        if drum {
+            anim.sounds.push((last + RESPIN_CLINK, "SND_DrumRoll_term"));
+        }
+        show.respin = Some(anim);
     }
     let mut finished = false;
     if let Some(mut anim) = show.respin.take() {
@@ -6114,6 +6161,11 @@ pub fn hold_and_spin_motion(
         // flame, while the respin is still settling (real game).
         let now = anim.t;
         for (_, name) in anim.sounds.iter().filter(|s| s.0 <= now) {
+            if *name == "SND_DrumRoll_term"
+                && let Some(e) = show.drum.take()
+            {
+                commands.entity(e).try_despawn();
+            }
             sounds.play(&mut commands, name);
         }
         anim.sounds.retain(|s| s.0 > now);
@@ -6146,6 +6198,22 @@ pub fn hold_and_spin_motion(
     }
     if finished {
         show.counter = show.pending_left;
+        // The grid full: the Grand's bell about 3.5 s after the fifteenth
+        // coin lands (a Happy & Prosperous cabinet, VERIFIED there; the clip
+        // is shared by the family).
+        let full = (0..reels)
+            .flat_map(|reel| (0..rows).map(move |row| (reel, row)))
+            .all(|(reel, row)| !open(&label_of(&labels, reel, row)));
+        if full && show.grand_bell_at.is_none() {
+            show.grand_bell_at = Some(clock + GRAND_BELL_AFTER);
+        }
+    }
+    if let Some(at) = show.grand_bell_at
+        && clock >= at
+        && at > 0.0
+    {
+        sounds.play(&mut commands, "SND_GrandBell");
+        show.grand_bell_at = Some(0.0);
     }
 
     if let Some(w) = show.completed_wait {

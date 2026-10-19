@@ -949,6 +949,8 @@ struct ArtPack {
     /// Which of the title's symbols plays which part (wild, scatter, coin,
     /// mystery), from its model.
     roles: cabinet::Roles,
+    /// The title's pictures, highest first (`symbols/pictures.txt`).
+    pictures: Vec<String>,
     /// The game's animations, as frame sequences (`anim/<name>/NNNN.png`).
     anims: std::collections::HashMap<String, Vec<Handle<Image>>>,
     /// Whether the pack has been read (loading happens once, on first use).
@@ -1750,6 +1752,7 @@ fn present(
     reels_motion: Res<cabinet::Reels>,
     rollup: Res<cabinet::Rollup>,
     stacks: Res<cabinet::WildStacks>,
+    art: Res<ArtPack>,
     mut cells: Query<(&Cell, &mut BackgroundColor)>,
     mut labels: Query<(&CellLabel, &mut Text)>,
 ) {
@@ -1939,6 +1942,25 @@ fn present(
                 count,
                 award,
             } => {
+                // Four or five of a picture with no wild on the line: the
+                // picture's own sound.
+                if fidelity.0
+                    && *count >= 4
+                    && let Some(picture) = art.pictures.iter().position(|p| p == symbol)
+                {
+                    let wild_on_line = model.paylines.get(*line as usize).is_some_and(|rows| {
+                        (0..*count).any(|reel| {
+                            rows.0.get(reel as usize).is_some_and(|&row| {
+                                labels
+                                    .iter()
+                                    .any(|(l, t)| l.reel == reel && l.row == row && t.0 == wild)
+                            })
+                        })
+                    });
+                    if !wild_on_line {
+                        feature.picture_win(picture);
+                    }
+                }
                 // Light up the winning run on its payline.
                 if let Some(payline) = model.paylines.get(*line as usize) {
                     for reel in 0..(*count).min(model.grid.reels) {
@@ -2265,6 +2287,15 @@ fn load_art(asset_server: &AssetServer, pack: &mut ArtPack, dir: Option<&str>) {
     if let Some(dir) = dir {
         let root = std::path::Path::new(&dir);
         load_pngs(asset_server, &root.join("symbols"), "symbols", pack, true);
+        pack.pictures = std::fs::read_to_string(root.join("symbols").join("pictures.txt"))
+            .map(|t| {
+                t.lines()
+                    .map(str::trim)
+                    .filter(|l| !l.is_empty())
+                    .map(str::to_string)
+                    .collect()
+            })
+            .unwrap_or_default();
         load_pngs(asset_server, &root.join("ui"), "ui", pack, false);
         load_anims(asset_server, &root.join("anim"), pack);
         eprintln!(
@@ -3141,7 +3172,18 @@ mod tests {
             .into_iter()
             .filter_map(gamble_cue)
             .chain([1, 2, 3, 5, 10].map(bet_beep))
-            .map(|(name, _)| name);
+            .map(|(name, _)| name)
+            .chain([
+                "SND_GrandBell",
+                "SND_DrumRoll_extended",
+                "SND_DrumRoll_term",
+                "SND_Pic1",
+                "SND_Pic2",
+                "SND_Pic3",
+                "SND_Pic4",
+                "GenericButton",
+                "ButtonClick_reduced",
+            ]);
         for name in names {
             let path = std::path::Path::new(&dir).join(format!("audio/{name}.ogg"));
             assert!(path.is_file(), "{} is missing", path.display());
