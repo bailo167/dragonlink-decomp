@@ -116,6 +116,19 @@ owner; docs/DECISIONS.md). Every run muted. Progress, newest last:
   under their prompt (the free games now start an event interval later, as before); and the
   WINNER plate stayed 0.95 s after the count, not 0.55 s (it counted from the payment, 0.4 s
   after the count). Golden Gong's monk and Spring Festival's BIG reel still play as before.
+- **Audit fixes, second pass: Hold & Spin.** A second verification of the audit, frame by frame at
+  30 fps on four club recordings, corrected the board and the collection (all VERIFIED unless
+  said). The first respin now starts 0.59 s after the counter's 3 (cabinets 0.55-0.63 s; the app
+  had waited about 1.4 s, its hold meant to precede a step pause that never applied there). The
+  burst on the 3 is a short blue-white flash, the pack's burst recoloured at load, 0.45 s (its size
+  PARTIAL). The board's row lines are thin and pale under the gold dividers (the pack frame's own
+  cleared at load; the hue PARTIAL). The status line follows the cabinet through the feature:
+  blank through the intro and running respins, "Press START FEATURE button" through the count-up,
+  "Press SPIN button" between respins, "Free Spins Completed" through the tally and the count
+  (inside the free games "Free Game N of 6", STRONG). The WINNER box shows in the frame FREE SPINS
+  COMPLETED goes, the first coin 0.38 s later, each comet 0.67 s and landing with its value (the
+  bolt's frames stretched to its flight); the WIN banner's amount is white. Unit tests cover each;
+  checked on muted captures (the jackpots run, Spring Festival's BIG coin feature).
 
 ## Project interpretation (owner reset, 2026-10-14)
 

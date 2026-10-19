@@ -5217,6 +5217,9 @@ pub struct FeatureShow {
     /// count-up, while it runs.
     started: bool,
     count_up: Option<f32>,
+    /// A respin of this Hold & Spin has been presented (the start prompt's
+    /// status line lasts until the first).
+    respun: bool,
     /// Flame bursts: position and start time on `clock`.
     bursts: Vec<(u8, u8, f32)>,
     /// Seconds of feature presentation, for the animations.
@@ -5474,6 +5477,7 @@ impl FeatureShow {
                 self.counter = 0;
                 self.pending_left = *respins;
                 self.started = false;
+                self.respun = false;
                 self.bursts.clear();
                 self.winner = None;
                 self.winner_hold = None;
@@ -5487,6 +5491,7 @@ impl FeatureShow {
                 ..
             } => {
                 self.respin_landed = Some(landed.iter().map(|o| (o.reel, o.row)).collect());
+                self.respun = true;
                 self.pending_left = *respins_left;
                 self.stage = Stage::HoldSpin {
                     respins_left: *respins_left,
@@ -5636,23 +5641,61 @@ impl FeatureShow {
         // (club cabinets: y8c8lEdPW8Y 791.67-793.70 and 946.10-948.08,
         // 1bAevGz0K2k 326.77; VERIFIED).
         let won_turn = ((self.waited / PROMPT_TURN) as u32) % 2 == 1;
+        // Hold & Spin's end: "Free Spins Completed" from FREE SPINS
+        // COMPLETED through the tally and the count, inside the free games
+        // too (club cabinets: 1bAevGz0K2k 142.6-164.3, f5sMl9a5jds
+        // 256.5-281.1, rwatCLs3QO0; inside the free games y8c8lEdPW8Y 999.5,
+        // 1006.0, 1018.7; VERIFIED). Then the base game's bet line, or the
+        // free game again.
+        if self.stage == Stage::HoldSpinDone && self.hold_and_spin_ending() {
+            return Some("Free Spins Completed".into());
+        }
         match (self.awaiting, self.stage) {
             (Some(Await::Start(Feature::FreeGames)), _) if won_turn => {
                 Some(format!("{} FREE GAMES WON!", self.games_won))
             }
             (Some(Await::Start(_)), _) => Some("Press START FEATURE button".into()),
+            // In the base game the prompt's line stays through the counter's
+            // count-up, until the first respin starts (club cabinets:
+            // 1bAevGz0K2k 113.9-116.30, gone at 116.37 as the reels move;
+            // f5sMl9a5jds 212.1-213.20; VERIFIED). Inside the free games the
+            // free game shows from the press (below).
+            (None, Stage::HoldSpin { .. })
+                if self.fg_return.is_none()
+                    && self.started
+                    && !self.respun
+                    && self.respin.is_none() =>
+            {
+                Some("Press START FEATURE button".into())
+            }
             (Some(Await::Respin), _) if self.respin.is_none() => Some("Press SPIN button".into()),
             (_, Stage::FreeGames { number, total }) => Some(format!(
                 "Free Game {number} of {}",
                 self.counter_total(total)
             )),
             // A Hold & Spin inside the free games keeps the free game on the
-            // status line (cabinet footage: "Free Game 3 of 6" over its board).
+            // status line through its intro, count-up and respins (cabinet
+            // footage: "Free Game 3 of 6" over its board, y8c8lEdPW8Y 962.0-
+            // 968.6, 970.8, 971.9; STRONG, one recording).
             (_, Stage::HoldSpin { .. } | Stage::HoldSpinDone) if self.fg_return.is_some() => self
                 .fg_return
                 .map(|(number, total)| format!("Free Game {number} of {total}")),
+            // In the base game the line is blank through the intro (bell,
+            // burst, fire and board) and while a respin runs (club cabinets:
+            // 1bAevGz0K2k 107.6-113.0, 116.6, 120.0; f5sMl9a5jds 206.5-211.5,
+            // 213.6, 214.5; VERIFIED).
+            (_, Stage::HoldSpin { .. }) => Some(String::new()),
             _ => None,
         }
+    }
+
+    /// Hold & Spin's end is showing: FREE SPINS COMPLETED, the tally on the
+    /// WINNER box, or the count still counting.
+    fn hold_and_spin_ending(&self) -> bool {
+        self.completed_wait.is_some()
+            || self.collect_start
+            || self.collect.is_some()
+            || self.pay.as_ref().is_some_and(|p| p.t < p.seconds)
     }
 
     /// The message at the right, in place of the start prompts.
@@ -5799,9 +5842,25 @@ pub struct HsCell {
     reel: u8,
     row: u8,
 }
-/// The Hold & Spin grid lines over the reels.
+/// The Hold & Spin grid lines over the reels: our row lines under the
+/// pack's frame.
 #[derive(Component)]
 pub struct HsFrame;
+/// One of the Hold & Spin grid's two row lines.
+#[derive(Component)]
+pub struct HsRowLine;
+
+/// The Hold & Spin grid's row lines as club cabinets show them: about
+/// 2.5-3 px on our canvas, far paler and less saturated than the gold
+/// dividers (15-16 px, the base frame's own, as ours are; VERIFIED on two
+/// venues, f5sMl9a5jds 212.8 and y8c8lEdPW8Y 973.0); a pale cream-gold
+/// (PARTIAL: the hue depends on the camera, estimated after removing one
+/// camera's blue cast; the 'lavender' read on that camera alone is its
+/// cast, HYPOTHESIS). The pack's frame (the official app's) draws them
+/// 2 px of its art, stretched to 5-6.5 px of saturated gold; they are
+/// cleared from it (`clear_row_lines`) and drawn here under its dividers.
+const HS_ROW_LINE: Color = Color::srgb(0.94, 0.82, 0.58);
+const HS_ROW_LINE_H: f32 = 3.0;
 /// The message at the right of the meter band during a feature.
 #[derive(Component)]
 pub struct FeatureMessage;
@@ -5865,17 +5924,41 @@ pub fn spawn_feature_layer(
     let (gx, gy) = GRID_CENTER;
     c.spawn((
         HsFrame,
+        Node {
+            position_type: PositionType::Absolute,
+            left: Val::Px(0.0),
+            top: Val::Px(0.0),
+            ..default()
+        },
+        Visibility::Hidden,
+    ))
+    .with_children(|f| {
+        // The row lines between the rows, under the frame's dividers and
+        // border.
+        for k in [-0.5, 0.5] {
+            f.spawn((
+                HsRowLine,
+                Node {
+                    position_type: PositionType::Absolute,
+                    left: Val::Px(gx - 2.5 * PITCH.0),
+                    top: Val::Px(gy + k * PITCH.1 - HS_ROW_LINE_H / 2.0),
+                    width: Val::Px(5.0 * PITCH.0),
+                    height: Val::Px(HS_ROW_LINE_H),
+                    ..default()
+                },
+                BackgroundColor(HS_ROW_LINE),
+            ));
+        }
         // The grid art is the reel panel's own size (749 x 380): laid exactly
         // over the panel, so its border is the panel's border.
-        sprite(
+        f.spawn(sprite(
             ui("hs_frame"),
             gx,
             gy + 4.5 * PANEL_SCALE.1,
             1240.0 * PANEL_SCALE.0,
             629.0 * PANEL_SCALE.1,
-        ),
-        Visibility::Hidden,
-    ));
+        ));
+    });
     let (bw, bh) = BANNER_SIZE;
     c.spawn((
         FeatureBanner,
@@ -6330,14 +6413,22 @@ const INTRO_GRID: f32 = INTRO_TRANSITION + 27.0 / FIRE_FPS;
 /// The prompt (the music starts with it; its onset on the cabinet is not
 /// measurable, and with the prompt is the official app's order).
 const INTRO_END: f32 = INTRO_BURST + 3.5;
-/// The counter's count-up after START FEATURE (real game: a SND_Fea_Inc tick
-/// a step, the first 0.27 s after the press, then every 0.2 s; a burst on the
-/// banner's 3), and the pause before the first respin, which starts by
-/// itself 1.9 s after the count reaches 3 (the feature's step pause of 0.5 s
-/// follows this).
+/// The counter's count-up after START FEATURE (the official app: a
+/// SND_Fea_Inc tick a step, the first 0.27 s after the press, then every
+/// 0.2 s; a burst on the banner's 3), and how long the count holds the 3.
+/// The START FEATURE press plays the first respin at once (`feature_press`
+/// zeroes the step timer), and its start, queued, shows the frame the count
+/// ends: so the hold is the time from the 3 to the first respin. Club
+/// cabinets start it by itself 0.55-0.63 s after the 3, mean 0.59 s
+/// (VERIFIED, four features on three recordings at two venues: y8c8lEdPW8Y
+/// 970.93 to 971.53 and 2522.15 to 2522.70, 1bAevGz0K2k 115.78 to 116.37,
+/// f5sMl9a5jds 212.67 to 213.30; the counter drops to 2 a frame or two
+/// before the reels move). The official app waits about 1.9 s; the cabinet
+/// outranks it. (The earlier hold of 1.4 s was thought to be followed by the
+/// 0.5 s step pause; it was not, and gave about 1.4 s.)
 const COUNT_FIRST: f32 = 0.27;
 const COUNT_STEP: f32 = 0.2;
-const COUNT_HOLD: f32 = 1.4;
+const COUNT_HOLD: f32 = 0.59;
 /// A respin, from the real game (9 position stops measured frame by frame):
 /// every open position of a reel stops together. The first reel passes its
 /// stop 16 frames (0.53 s) after the press and each further reel 14 frames
@@ -6404,13 +6495,17 @@ pub struct RespinAnim {
     sounds: Vec<(f32, &'static str)>,
 }
 
-/// The coins being added to the WIN banner, then the Grand.
+/// A coin of the collection: its position, amount, whether it is a jackpot
+/// and which.
+type CollectCoin = (u8, u8, u64, bool, Option<JackpotTier>);
+
+/// The coins being added to the WINNER box, then the Grand.
 #[derive(Clone, Debug, Default)]
 pub struct Collect {
     t: f32,
-    /// Each step's coin position, amount, whether it is a jackpot and which,
-    /// in order; the Grand, last, has no position (`GRAND_STEP`).
-    coins: Vec<(u8, u8, u64, bool, Option<JackpotTier>)>,
+    /// Each step's coin, in order; the Grand, last, has no position
+    /// (`GRAND_STEP`).
+    coins: Vec<CollectCoin>,
     /// Steps begun, and amounts added to the banner.
     launched: usize,
     counted: usize,
@@ -6423,34 +6518,62 @@ const GRAND_STEP: u8 = u8::MAX;
 
 /// The end of Hold & Spin. "FREE SPINS COMPLETED" with SND_Fea_End (3 s),
 /// then the collection, as club cabinets show it (VERIFIED: 1bAevGz0K2k
-/// 2:25-2:45, y8c8lEdPW8Y 1001.9-1019.9, f5sMl9a5jds 4:18-4:38): 0.1 s after
-/// the banner goes, the jackpot meters give way to an empty flame-bordered
-/// WINNER box, with a line of the live Grand and Major under it, and nothing
-/// shows over the reels; each coin in turn, reel by reel and top to bottom,
-/// 1.35 s apart (the first 0.4 s after the box), flares and its fire comet
-/// (the game's bolt animations) flies up to the box, which adds its value
-/// 0.6 s later with a splash, to SND_Small_5 (SND_Medium_1 for a big coin);
-/// after the last value the count begins: the WIN banner over the reels,
-/// counting up from nothing with WIN, its letters bursting from its first
-/// moment (again every 59 frames until the next game), the payout music and
-/// a coin shower, WIN counting the total up over the music's length (SPIN
-/// completes it; the music stops); the box keeps the total and gives way to
-/// the meters 0.55 s after the count is complete. The official app instead
-/// tallies onto an empty WIN banner over the reels (2.86 s after FREE SPINS
-/// COMPLETED, its first coin a frame later, 0.45 s comets, the letters 0.8 s
-/// after the last value); the app follows the cabinet. The rumble
+/// 2:25-2:45, y8c8lEdPW8Y 1001.9-1019.9, f5sMl9a5jds 4:18-4:38, rwatCLs3QO0):
+/// in the frame the banner goes (3.07-3.10 s after it showed), the jackpot
+/// meters give way to an empty flame-bordered WINNER box, with a line of the
+/// live Grand and Major under it, and nothing shows over the reels; each
+/// coin in turn, reel by reel and top to bottom, 1.33-1.37 s apart (the
+/// first 0.33-0.43 s after the box), flares and its fire comet (the game's
+/// bolt animations) flies up to the box, which adds its value 0.57-0.73 s
+/// later (mean 0.67; the first coin's 0.70-0.73) with a splash, to
+/// SND_Small_5 (SND_Medium_1 for a big coin); after the last value the count
+/// begins: the WIN banner over the reels, counting up from nothing with WIN,
+/// its letters bursting from its first moment (again every 59 frames until
+/// the next game), the payout music and a coin shower, WIN counting the total
+/// up over the music's length (SPIN completes it; the music stops); the box
+/// keeps the total and gives way to the meters 0.55 s after the count is
+/// complete. Measured at 30 fps on four club recordings (1bAevGz0K2k 145.200
+/// box, 145.533 first flare, 146.267 value; y8c8lEdPW8Y 998.867 COMPLETED,
+/// 1001.933, 1002.267, 1003.000; f5sMl9a5jds 255.700, 258.800, 259.233,
+/// 259.933; rwatCLs3QO0 clip 1.95, 5.033, 5.467, 6.167). The official app
+/// instead tallies onto an empty WIN banner over the reels (2.86 s after FREE
+/// SPINS COMPLETED, its first coin a frame later, 0.45 s comets, the letters
+/// 0.8 s after the last value); the app follows the cabinet. The rumble
 /// (SND_Rumble, 0.37 s in) and the pause before the count (0.87 s) are the
-/// official app's: the cabinet copies have no sound, and the cabinets
+/// official app's: the cabinet copies have no sound (whether the cabinet
+/// rumbles there is UNKNOWN; its place here HYPOTHESIS), and the cabinets
 /// disagree on the pause (1.6 s and 3.8 s). Our cabinet keeps its own
 /// meters; a Grand is added to the box after the coins, its plaque on the
 /// box while it is (owner: coins first).
 const COMPLETED_SECONDS: f32 = 3.0;
 const COLLECT_RUMBLE: f32 = 0.37;
-const COLLECT_BANNER: f32 = 0.1;
-const COLLECT_FIRST: f32 = COLLECT_BANNER + 0.4;
+const COLLECT_FIRST: f32 = 0.38;
 const COLLECT_STEP: f32 = 1.347;
 /// From a coin's flare to its value on the box (the comet's flight).
-const BOLT_FLIGHT: f32 = 0.6;
+const BOLT_FLIGHT: f32 = 0.67;
+/// The frame at which each of the game's five bolt animations (bolt0 to
+/// bolt4, 30 fps) reaches the box: its comet's first opaque pixels in the
+/// frame's top row (measured on the frames, the same in every title's pack;
+/// bolt2 grazes the top at frame 16). The frames up to it are stretched over
+/// `BOLT_FLIGHT`, so the comet lands as the value does; the rest play at
+/// 30 fps.
+const BOLT_ARRIVE: [f32; 5] = [16.0, 13.0, 17.0, 12.0, 12.0];
+
+/// The frame of bolt animation `k` to show `since` seconds after its coin
+/// flared.
+fn bolt_frame(k: usize, since: f32) -> usize {
+    let arrive = BOLT_ARRIVE
+        .get(k)
+        .copied()
+        .unwrap_or(BOLT_FLIGHT * ANIM_FPS);
+    let since = since.max(0.0);
+    let n = if since < BOLT_FLIGHT {
+        since * arrive / BOLT_FLIGHT
+    } else {
+        arrive + (since - BOLT_FLIGHT) * ANIM_FPS
+    };
+    n as usize
+}
 /// From the last value to the count, and the WIN letters' bursts' period.
 const PAY_DELAY: f32 = 0.87;
 const FLARE_EVERY: f32 = 59.0 / 30.0;
@@ -6494,9 +6617,19 @@ struct CollectStep {
 }
 
 impl FeatureShow {
-    /// Run the collection on by `dt` seconds (at `self.clock`): the box,
-    /// each coin's comet and its value on the box with a splash, then the
-    /// count.
+    /// Begin the collection of `coins` (in order; the Grand last), WIN
+    /// standing at `pay_base`: the empty WINNER box shows from this frame,
+    /// the one FREE SPINS COMPLETED goes (club cabinets).
+    fn begin_collect(&mut self, coins: Vec<CollectCoin>, pay_base: u64) {
+        self.winner = Some(0);
+        self.paid = 0;
+        self.pay_base = pay_base;
+        self.flares_at = None;
+        self.collect = Some(Collect { coins, ..default() });
+    }
+
+    /// Run the collection on by `dt` seconds (at `self.clock`): each coin's
+    /// comet and its value on the box with a splash, then the count.
     fn advance_collect(&mut self, dt: f32, total_bet: u64) -> CollectStep {
         let mut step = CollectStep::default();
         let Some(mut c) = self.collect.take() else {
@@ -6505,12 +6638,7 @@ impl FeatureShow {
         let clock = self.clock;
         let t0 = c.t;
         c.t += dt;
-        let crossed = |at: f32| t0 < at && c.t >= at;
-        step.rumble = crossed(COLLECT_RUMBLE);
-        // The empty WINNER box over the jackpot bar.
-        if crossed(COLLECT_BANNER) {
-            self.winner = Some(0);
-        }
+        step.rumble = crossed(t0, c.t, COLLECT_RUMBLE);
         // Each coin in turn flares and sends its comet to the box.
         while c.launched < c.coins.len() && c.t >= COLLECT_FIRST + c.launched as f32 * COLLECT_STEP
         {
@@ -7416,21 +7544,8 @@ pub fn hold_and_spin_motion(
         show.started = true;
         show.count_up = Some(0.0);
     }
-    if let Some(t0) = show.count_up {
-        let t = t0 + dt;
-        show.count_up = Some(t);
-        let target = show.pending_left;
-        let step_at = |n: u8| COUNT_FIRST + f32::from(n) * COUNT_STEP;
-        while show.counter < target && t >= step_at(show.counter) {
-            show.counter += 1;
-            sounds.play(&mut commands, "SND_Fea_Inc");
-            if show.counter == target {
-                show.banner_burst = Some(clock);
-            }
-        }
-        if show.counter >= target && t >= step_at(target.saturating_sub(1)) + COUNT_HOLD {
-            show.count_up = None;
-        }
+    for _ in 0..show.advance_count_up(dt) {
+        sounds.play(&mut commands, "SND_Fea_Inc");
     }
 
     // A respin was presented: every open position spins and stops in turn.
@@ -7617,11 +7732,7 @@ pub fn hold_and_spin_motion(
             coins.push((GRAND_STEP, GRAND_STEP, g, true, Some(JackpotTier::Grand)));
         }
         show.grand = grand;
-        show.winner = None;
-        show.paid = 0;
-        show.pay_base = rollup.to;
-        show.flares_at = None;
-        show.collect = Some(Collect { coins, ..default() });
+        show.begin_collect(coins, rollup.to);
     }
     let step = show.advance_collect(dt, total_bet);
     if step.rumble {
@@ -7693,6 +7804,31 @@ pub fn hold_and_spin_motion(
 }
 
 impl FeatureShow {
+    /// Run the counter's count-up on by `dt` seconds (at `self.clock`): its
+    /// steps (each a tick), the burst on its last, and its end `COUNT_HOLD`
+    /// after that. Returns the steps taken.
+    fn advance_count_up(&mut self, dt: f32) -> u32 {
+        let Some(t0) = self.count_up else {
+            return 0;
+        };
+        let t = t0 + dt;
+        self.count_up = Some(t);
+        let target = self.pending_left;
+        let step_at = |n: u8| COUNT_FIRST + f32::from(n) * COUNT_STEP;
+        let mut steps = 0;
+        while self.counter < target && t >= step_at(self.counter) {
+            self.counter += 1;
+            steps += 1;
+            if self.counter == target {
+                self.banner_burst = Some(self.clock);
+            }
+        }
+        if self.counter >= target && t >= step_at(target.saturating_sub(1)) + COUNT_HOLD {
+            self.count_up = None;
+        }
+        steps
+    }
+
     /// The count's total has been paid (`PAY_AFTER` after the count was
     /// complete): the WINNER box stays until `WINNER_HOLD` after the count
     /// was complete.
@@ -7922,11 +8058,14 @@ pub fn hold_and_spin_draw(
         }
     }
 
-    // The collection bolt and the splash it makes on the WINNER box.
+    // The collection bolt and the splash it makes on the WINNER box. Its
+    // comet reaches the box as the value lands (`bolt_frame`).
     for (mut image, mut vis, mut node) in &mut bolt {
         let f = show.bolt.and_then(|(reel, row, s)| {
             let (k, flip, left, top, w, h) = bolt_for(reel, row);
-            frame(&format!("bolt{k}"), clock - s, false).map(|f| (f, flip, left, top, w, h))
+            let frames = art.anims.get(&format!("bolt{k}"))?;
+            let f = frames.get(bolt_frame(k, clock - s))?.clone();
+            Some((f, flip, left, top, w, h))
         });
         match f {
             Some((f, flip, left, top, w, h)) => {
@@ -8079,6 +8218,15 @@ pub fn spawn_door_fx(cell: &mut ChildSpawnerCommands, art: &ArtPack, reel: u8, r
     ));
 }
 
+/// The WIN banner's amount: white with a faint cool tint, between its gold
+/// WIN words, for Hold & Spin's count and a free game's win alike (club
+/// cabinets: the digits' brightest pixels as bright and as neutral as white
+/// text on the same screen, the WIN words gold, the WINNER total yellow in
+/// the same frames; f5sMl9a5jds 278.6, 281.1, 282.6, 795.8; y8c8lEdPW8Y
+/// 1018.7, 1019.5, 1029.8; 1bAevGz0K2k 164.3, 165.5; VERIFIED). The official
+/// app's is yellow.
+const BANNER_AMOUNT_WHITE: Color = Color::srgb(0.93, 0.94, 1.0);
+
 /// The amount text inside the feature banner.
 pub fn spawn_banner_amount(b: &mut ChildSpawnerCommands, font: &Handle<Font>, w: f32, h: f32) {
     b.spawn((
@@ -8089,7 +8237,7 @@ pub fn spawn_banner_amount(b: &mut ChildSpawnerCommands, font: &Handle<Font>, w:
             font_size: FontSize::Px(h * 0.62),
             ..default()
         },
-        TextColor(Color::srgb(1.0, 0.9, 0.35)),
+        TextColor(BANNER_AMOUNT_WHITE),
         TextLayout::justify(Justify::Center),
         Node {
             position_type: PositionType::Absolute,
@@ -10733,20 +10881,156 @@ pub fn free_games_trigger(
 #[derive(Component)]
 pub struct BannerBurst;
 
+/// The counter's burst as club cabinets show it: a white to blue-white star
+/// flash with sparks on the digit for about 0.23 s, then a thin ring round
+/// it, gone by about 0.37-0.43 s (VERIFIED, four features on three
+/// recordings at two venues: y8c8lEdPW8Y 970.967-971.30 and 2522.167-
+/// 2522.567, 1bAevGz0K2k 115.867-116.233, f5sMl9a5jds 212.700-213.133), about
+/// 1.9 banner heights across with its sparks (PARTIAL, camera-measured). The
+/// pack has no white flash, so its orange burst is drawn recoloured
+/// blue-white (`BannerBurstFrames`), its visible frames (0-17) at 40 fps, on
+/// a square whose ring (0.81 of the frame) spans about 1.9 banner heights.
+/// The official app's is the orange burst at 30 fps, larger.
+const COUNTER_BURST_FPS: f32 = 40.0;
+const COUNTER_BURST_LAST: usize = 17;
+const COUNTER_BURST_SIZE: f32 = 230.0;
+
+/// The frame of the counter's burst `since` seconds after the 3 showed,
+/// while it shows.
+fn counter_burst_frame(since: f32) -> Option<usize> {
+    let n = (since.max(0.0) * COUNTER_BURST_FPS) as usize;
+    (n <= COUNTER_BURST_LAST).then_some(n)
+}
+
+/// The pack's burst frames recoloured blue-white for the counter's flash,
+/// built once they have loaded (the pack itself is untouched; empty until
+/// then, or when the pack has no burst).
+#[derive(Resource, Default)]
+pub struct BannerBurstFrames(pub Vec<Handle<Image>>);
+
+/// A burst pixel made blue-white: its alpha kept, its colour from pale blue
+/// (200, 215, 255) to white by its brightness.
+fn blue_white(px: [u8; 4]) -> [u8; 4] {
+    let k = f32::from(px[0].max(px[1]).max(px[2])) / 255.0;
+    let lerp = |from: f32| (from + (255.0 - from) * k).round().clamp(0.0, 255.0) as u8;
+    [lerp(200.0), lerp(215.0), 255, px[3]]
+}
+
+/// Prepare the feature art once it has loaded: the counter's blue-white
+/// burst frames (copies), and the Hold & Spin frame without its own row
+/// lines (`clear_row_lines`; ours are drawn thinner and paler).
+pub fn prepare_feature_art(
+    fidelity: Res<Fidelity>,
+    art: Res<ArtPack>,
+    mut images: ResMut<Assets<Image>>,
+    mut flash: ResMut<BannerBurstFrames>,
+    mut frame_done: Local<bool>,
+) {
+    if !fidelity.0 {
+        return;
+    }
+    if flash.0.is_empty()
+        && let Some(src) = art.anims.get("burst")
+        && !src.is_empty()
+        && src.iter().all(|h| images.get(h).is_some())
+    {
+        let copies: Vec<Image> = src
+            .iter()
+            .filter_map(|h| images.get(h).cloned())
+            .map(|mut image| {
+                if image.texture_descriptor.format
+                    == bevy::render::render_resource::TextureFormat::Rgba8UnormSrgb
+                    && let Some(data) = image.data.as_mut()
+                    && data.len() % 4 == 0
+                {
+                    for px in data.as_chunks_mut::<4>().0 {
+                        *px = blue_white(*px);
+                    }
+                }
+                image
+            })
+            .collect();
+        flash.0 = copies.into_iter().map(|i| images.add(i)).collect();
+    }
+    if !*frame_done && let Some(handle) = art.ui.get("hs_frame") {
+        if let Some(image) = images.get(handle)
+            && image.texture_descriptor.format
+                != bevy::render::render_resource::TextureFormat::Rgba8UnormSrgb
+        {
+            *frame_done = true;
+        } else if let Some(mut image) = images.get_mut(handle) {
+            let (w, h) = (image.width() as usize, image.height() as usize);
+            if let Some(data) = image.data.as_mut() {
+                clear_row_lines(data, w, h);
+            }
+            *frame_done = true;
+        }
+    }
+}
+
+/// Clear an RGBA image's inner row lines: rows opaque across most of its
+/// width, away from its top and bottom tenths (its border), with two pixels'
+/// margin for anti-aliasing each side. Where an upright line (a divider or a
+/// side border) runs through, shown by pixels just above and below the
+/// cleared band, its pixels stay. Returns the number of lines cleared.
+fn clear_row_lines(data: &mut [u8], w: usize, h: usize) -> usize {
+    const MARGIN: usize = 2;
+    if w == 0 || h == 0 || data.len() != w.saturating_mul(h).saturating_mul(4) {
+        return 0;
+    }
+    let alpha = |data: &[u8], x: usize, y: usize| data[(y * w + x) * 4 + 3];
+    let line = |data: &[u8], y: usize| {
+        let opaque = (0..w).filter(|&x| alpha(data, x, y) > 128).count();
+        opaque * 10 > w * 6
+    };
+    let mut bands = Vec::new();
+    let mut y = h / 10;
+    while y < h - h / 10 {
+        if line(data, y) {
+            let start = y;
+            while y + 1 < h - h / 10 && line(data, y + 1) {
+                y += 1;
+            }
+            bands.push((start.saturating_sub(MARGIN), (y + MARGIN).min(h - 1)));
+        }
+        y += 1;
+    }
+    for &(top, bottom) in &bands {
+        for x in 0..w {
+            let above = top.checked_sub(1).map_or(0, |y| alpha(data, x, y));
+            let below = if bottom + 1 < h {
+                alpha(data, x, bottom + 1)
+            } else {
+                0
+            };
+            let keep = if above > 0 && below > 0 {
+                above.max(below)
+            } else {
+                0
+            };
+            for y in top..=bottom {
+                let a = &mut data[(y * w + x) * 4 + 3];
+                *a = (*a).min(keep);
+            }
+        }
+    }
+    bands.len()
+}
+
 /// Spawn the banner's burst (hidden).
 pub fn spawn_counter_burst(c: &mut ChildSpawnerCommands) {
     // The banner's counter digit sits near its left end (real game).
     let bw = BANNER_SIZE.0;
-    let (sw, sh) = (1.2 * PITCH.0, 1.4 * PITCH.1);
+    let s = COUNTER_BURST_SIZE;
     let (x, y) = (GRID_CENTER.0 - bw / 2.0 + bw * 0.083, BANNER_Y);
     c.spawn((
         BannerBurst,
         Node {
             position_type: PositionType::Absolute,
-            left: Val::Px(x - sw / 2.0),
-            top: Val::Px(y - sh / 2.0),
-            width: Val::Px(sw),
-            height: Val::Px(sh),
+            left: Val::Px(x - s / 2.0),
+            top: Val::Px(y - s / 2.0),
+            width: Val::Px(s),
+            height: Val::Px(s),
             ..default()
         },
         ImageNode {
@@ -10758,10 +11042,12 @@ pub fn spawn_counter_burst(c: &mut ChildSpawnerCommands) {
     ));
 }
 
-/// Show the banner's burst as the counter reaches 3.
+/// Show the banner's burst as the counter reaches 3: the blue-white flash
+/// (the pack's orange burst until its copies are made).
 pub fn counter_burst(
     fidelity: Res<Fidelity>,
     art: Res<ArtPack>,
+    flash: Res<BannerBurstFrames>,
     show: Res<FeatureShow>,
     mut burst: Query<(&mut ImageNode, &mut Visibility), With<BannerBurst>>,
 ) {
@@ -10769,8 +11055,12 @@ pub fn counter_burst(
         return;
     }
     let f = show.banner_burst.and_then(|s| {
-        let frames = art.anims.get("burst")?;
-        let n = ((show.clock - s).max(0.0) * ANIM_FPS) as usize;
+        let n = counter_burst_frame(show.clock - s)?;
+        let frames = if flash.0.is_empty() {
+            art.anims.get("burst")?
+        } else {
+            &flash.0
+        };
         frames.get(n).cloned()
     });
     for (mut image, mut vis) in &mut burst {
@@ -11598,12 +11888,15 @@ mod tests {
             full_grid: false,
         });
         assert!(!show.winner_showing());
+        assert_eq!(show.caption().as_deref(), Some("Free Spins Completed"));
         show.completed_wait = None;
-        show.pay_base = 1_000;
-        show.collect = Some(Collect {
-            coins: vec![(0, 0, 60, false, None), (1, 1, 40, false, None)],
-            ..default()
-        });
+        // The box shows from the collection's first frame, empty.
+        show.begin_collect(
+            vec![(0, 0, 60, false, None), (1, 1, 40, false, None)],
+            1_000,
+        );
+        assert!(show.winner_showing());
+        assert_eq!(show.winner_amount(), None);
         let dt = 1.0 / 60.0;
         let mut t = 0.0;
         let mut first_value = None;
@@ -11620,8 +11913,9 @@ mod tests {
             // are collected.
             assert_eq!(show.pay_banner(), None);
             assert_eq!(show.grand_win(), None);
-            // The box arrives 0.1 s in, empty until the first value.
-            assert_eq!(show.winner_showing(), t >= COLLECT_BANNER, "{t}");
+            // The box stays, empty until the first value.
+            assert!(show.winner_showing(), "{t}");
+            assert_eq!(show.caption().as_deref(), Some("Free Spins Completed"));
             if show.winner_amount().is_some() && first_value.is_none() {
                 first_value = Some(t);
                 assert!(show.splash_at.is_some(), "a splash with each value");
@@ -11630,9 +11924,11 @@ mod tests {
             assert!(show.flares_at.is_none());
             assert!(t < 10.0);
         };
-        // The first value 0.4 s after the box plus the comet's 0.6 s.
+        // The first value 0.38 s after the box plus the comet's 0.67 s (club
+        // cabinets: 1.03-1.13 s).
         let first = first_value.unwrap_or_default();
-        assert!((first - 1.1).abs() < 0.03, "{first}");
+        assert!((first - 1.05).abs() < 0.03, "{first}");
+        assert!((1.03..=1.13).contains(&(COLLECT_FIRST + BOLT_FLIGHT)));
         assert_eq!(total, 100);
         assert_eq!(sounds, ["SND_Small_5", "SND_Small_5"]);
         // The count: the banner from nothing in step with WIN; the box keeps
@@ -11645,6 +11941,7 @@ mod tests {
         assert!(show.winner_showing());
         assert_eq!(show.pay_banner(), Some(0));
         assert_eq!(show.grand_win(), Some(1_000));
+        assert_eq!(show.caption().as_deref(), Some("Free Spins Completed"));
         if let Some(p) = show.pay.as_mut() {
             p.t = 2.5;
         }
@@ -11662,6 +11959,8 @@ mod tests {
         show.hold_winner(total);
         assert_eq!(show.winner, None);
         assert_eq!(show.collected, Some(total));
+        // The base game's bet line returns after the count.
+        assert_eq!(show.caption(), None);
         assert_eq!(show.pay_banner(), Some(100));
         assert_eq!(show.grand_win(), Some(1_100));
         assert!(show.winner_showing());
@@ -11710,6 +12009,214 @@ mod tests {
             winner_jackpots_line("$12,018.71", "$714.89"),
             "GRAND JACKPOT: $12,018.71   MAJOR JACKPOT: $714.89"
         );
+    }
+
+    /// Each comet reaches the box as its value lands: its animation's frames
+    /// up to its arrival stretched over the flight, the rest at 30 fps (club
+    /// cabinets: flare to value 0.57-0.73 s, the first flare 0.33-0.43 s after
+    /// the box).
+    #[test]
+    fn each_comet_lands_with_its_value() {
+        assert!((0.33..=0.43).contains(&COLLECT_FIRST));
+        assert!((0.57..=0.73).contains(&BOLT_FLIGHT));
+        assert!((1.33..=1.37).contains(&COLLECT_STEP));
+        for (k, &arrive) in BOLT_ARRIVE.iter().enumerate() {
+            let arrive = arrive as usize;
+            assert_eq!(bolt_frame(k, 0.0), 0);
+            assert_eq!(bolt_frame(k, -0.1), 0);
+            assert!(bolt_frame(k, BOLT_FLIGHT - 0.01) < arrive, "bolt{k}");
+            assert_eq!(bolt_frame(k, BOLT_FLIGHT + 0.001), arrive, "bolt{k}");
+            // After the arrival, one frame each 30th of a second.
+            assert_eq!(bolt_frame(k, BOLT_FLIGHT + 0.25), arrive + 7, "bolt{k}");
+        }
+        // An unknown animation falls back to 30 fps.
+        assert_eq!(bolt_frame(9, 0.5), 15);
+    }
+
+    /// The first respin starts by itself 0.59 s after the counter's 3 (club
+    /// cabinets 0.55-0.63 s, four features): the count holds the 3 that
+    /// long (blocking what follows), and the respin the press played shows
+    /// as it ends.
+    #[test]
+    fn the_first_respin_follows_the_count_in_0_59_s() {
+        let mut show = FeatureShow::default();
+        show.on_event(&Event::HoldAndSpinStarted {
+            respins: 3,
+            locked: Vec::new(),
+        });
+        show.intro = None;
+        show.started = true;
+        show.count_up = Some(0.0);
+        let dt = 1.0 / 60.0;
+        let (mut ticks, mut three, mut end) = (0, None, None);
+        for _ in 0..240 {
+            show.clock += dt;
+            ticks += show.advance_count_up(dt);
+            if show.counter == 3 && three.is_none() {
+                three = Some(show.clock);
+                assert_eq!(show.banner_burst, Some(show.clock), "the burst on the 3");
+            }
+            if show.count_up.is_none() {
+                end = Some(show.clock);
+                break;
+            }
+            assert!(show.blocks());
+        }
+        assert_eq!(ticks, 3);
+        let (three, end) = (three.unwrap_or_default(), end.unwrap_or_default());
+        assert!(
+            (three - (COUNT_FIRST + 2.0 * COUNT_STEP)).abs() < dt,
+            "{three}"
+        );
+        assert!((0.55..=0.63).contains(&(end - three)), "{}", end - three);
+        assert!(!show.blocks());
+    }
+
+    /// The status line through a base game's Hold & Spin: blank through the
+    /// intro, the prompt from its start through the count-up until the
+    /// first respin, blank while a respin runs, "Press SPIN button" between,
+    /// "Free Spins Completed" from the end through the count, then the bet
+    /// line (club cabinets: 1bAevGz0K2k 107.6-165.5, f5sMl9a5jds 204-282.6).
+    #[test]
+    fn the_status_line_follows_a_hold_and_spin() {
+        let press = Some("Press START FEATURE button".to_string());
+        let blank = Some(String::new());
+        let mut show = FeatureShow::default();
+        assert_eq!(show.caption(), None, "the bet line while the reels spin");
+        show.on_event(&Event::HoldAndSpinStarted {
+            respins: 3,
+            locked: Vec::new(),
+        });
+        assert_eq!(show.caption(), blank, "the intro");
+        show.intro = None;
+        show.grid = true;
+        show.wait_for(Await::Start(Feature::HoldAndSpin));
+        assert_eq!(show.caption(), press);
+        // The press: the counter counts up under the same line.
+        show.awaiting = None;
+        show.started = true;
+        show.count_up = Some(0.0);
+        assert_eq!(show.caption(), press);
+        show.count_up = None;
+        assert_eq!(show.caption(), press, "until the first respin");
+        // The first respin starts: blank while it runs.
+        show.on_event(&Event::HoldAndSpinRespin {
+            respin: 1,
+            landed: Vec::new(),
+            respins_left: 2,
+            locked_total: 6,
+        });
+        show.respin_landed = None;
+        show.respin = Some(RespinAnim::default());
+        assert_eq!(show.caption(), blank);
+        show.respin = None;
+        assert_eq!(show.caption().as_deref(), Some("Press SPIN button"));
+        // The last respin, then the end.
+        show.awaiting = None;
+        show.stage = Stage::HoldSpin { respins_left: 0 };
+        show.respin = Some(RespinAnim::default());
+        assert_eq!(show.caption(), blank);
+        show.respin = None;
+        show.on_event(&Event::HoldAndSpinCompleted {
+            total_award: 100,
+            full_grid: false,
+        });
+        assert_eq!(show.caption().as_deref(), Some("Free Spins Completed"));
+        // Inside the free games the free game shows from the press on, the
+        // end still "Free Spins Completed", and the free game after it.
+        let game = Some("Free Game 3 of 6".to_string());
+        let mut show = FeatureShow::default();
+        show.on_event(&Event::FreeGameStarted {
+            number: 3,
+            remaining: 3,
+        });
+        show.on_event(&Event::HoldAndSpinStarted {
+            respins: 3,
+            locked: Vec::new(),
+        });
+        assert_eq!(show.caption(), game, "the intro");
+        show.intro = None;
+        show.grid = true;
+        show.wait_for(Await::Start(Feature::HoldAndSpin));
+        assert_eq!(show.caption(), press);
+        show.awaiting = None;
+        show.started = true;
+        show.count_up = Some(0.0);
+        assert_eq!(show.caption(), game, "the count-up");
+        show.count_up = None;
+        show.respin = Some(RespinAnim::default());
+        assert_eq!(show.caption(), game, "a respin");
+        show.respin = None;
+        show.on_event(&Event::HoldAndSpinCompleted {
+            total_award: 100,
+            full_grid: false,
+        });
+        assert_eq!(show.caption().as_deref(), Some("Free Spins Completed"));
+        show.completed_wait = None;
+        show.collected = Some(100);
+        assert_eq!(show.caption(), game, "after the count");
+    }
+
+    /// The counter's burst is a blue-white flash of the pack's burst frames
+    /// 0-17 at 40 fps (gone after about 0.45 s; club cabinets 0.37-0.43 s),
+    /// on a square about 1.9 banner heights across its ring.
+    #[test]
+    fn the_counter_burst_is_a_short_blue_white_flash() {
+        assert_eq!(counter_burst_frame(0.0), Some(0));
+        assert_eq!(counter_burst_frame(0.2), Some(8));
+        assert_eq!(counter_burst_frame(0.44), Some(17));
+        assert_eq!(counter_burst_frame(0.46), None);
+        let ring = COUNTER_BURST_SIZE * 0.81 / BANNER_SIZE.1;
+        assert!((1.8..=2.1).contains(&ring), "{ring}");
+        // The burst's orange becomes near white; its alpha is kept; a dark
+        // pixel pale blue.
+        let [r, g, b, a] = blue_white([249, 100, 35, 77]);
+        assert!(r >= 250 && g >= 250 && b == 255 && a == 77, "{r} {g} {b}");
+        assert_eq!(blue_white([0, 0, 0, 255]), [200, 215, 255, 255]);
+        assert_eq!(blue_white([10, 255, 0, 0]), [255, 255, 255, 0]);
+    }
+
+    /// The pack frame's own row lines are cleared, anti-aliasing included,
+    /// leaving its border and the dividers that cross them.
+    #[test]
+    fn the_hold_and_spin_frame_loses_its_row_lines() {
+        let (w, h) = (40usize, 30usize);
+        let mut data = vec![0u8; w * h * 4];
+        let mut put = |x: usize, y: usize, a: u8| data[(y * w + x) * 4 + 3] = a;
+        for x in 0..w {
+            // The border, top and bottom, and a row line with soft edges.
+            for y in [0, 1, 28, 29] {
+                put(x, y, 255);
+            }
+            put(x, 13, 60);
+            put(x, 14, 255);
+            put(x, 15, 255);
+            put(x, 16, 40);
+        }
+        for y in 0..h {
+            // The side borders and a divider.
+            for x in [0, 1, 19, 20, 38, 39] {
+                put(x, y, 255);
+            }
+        }
+        let alpha = |data: &[u8], x: usize, y: usize| data[(y * w + x) * 4 + 3];
+        assert_eq!(clear_row_lines(&mut data, w, h), 1);
+        for y in 12..=17 {
+            for x in [2, 10, 18, 21, 37] {
+                assert_eq!(alpha(&data, x, y), 0, "{x},{y}");
+            }
+            for x in [0, 1, 19, 20, 38, 39] {
+                assert_eq!(alpha(&data, x, y), 255, "{x},{y}");
+            }
+        }
+        // The border rows stay; a second pass finds nothing.
+        assert_eq!(alpha(&data, 10, 0), 255);
+        assert_eq!(alpha(&data, 10, 29), 255);
+        assert_eq!(clear_row_lines(&mut data, w, h), 0);
+        // A buffer of the wrong size is left alone.
+        assert_eq!(clear_row_lines(&mut data, w + 1, h), 0);
+        // Our row lines sit on the grid's row boundaries, thin.
+        const { assert!(HS_ROW_LINE_H <= 3.0) };
     }
 
     /// START FEATURE to the first free game: the flags go still at the press,

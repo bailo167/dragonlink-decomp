@@ -2943,6 +2943,7 @@ fn main() -> AppExit {
     .insert_resource(cabinet::Sounds::default())
     .insert_resource(cabinet::Rollup::default())
     .insert_resource(cabinet::FeatureShow::default())
+    .init_resource::<cabinet::BannerBurstFrames>()
     .insert_resource(cabinet::GambleShow::with_history(cli.seed))
     .insert_resource(cabinet::GamesMenu::default())
     .insert_resource(cabinet::AttractIdle::default())
@@ -3056,7 +3057,7 @@ fn main() -> AppExit {
                 cabinet::fit_reel_panel,
                 cabinet::lines_digits,
                 cabinet::attract_bar,
-                cabinet::additive_fire,
+                (cabinet::additive_fire, cabinet::prepare_feature_art),
                 cabinet::machine_menu,
                 cabinet::fit,
             )
@@ -3352,7 +3353,8 @@ mod tests {
             total_award: 100,
             full_grid: false,
         });
-        assert_eq!(show.caption().as_deref(), Some("Free Game 3 of 6"));
+        // Its end reads "Free Spins Completed" (club cabinet, y8c8lEdPW8Y).
+        assert_eq!(show.caption().as_deref(), Some("Free Spins Completed"));
         show.on_event(&Event::FreeGamesResumed { remaining: 3 });
         assert!(!show.inside_free_games() && !show.hold_and_spin());
         assert_eq!(show.caption().as_deref(), Some("Free Game 3 of 6"));

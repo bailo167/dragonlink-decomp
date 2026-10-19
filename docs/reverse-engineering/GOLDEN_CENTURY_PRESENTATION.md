@@ -144,7 +144,7 @@ WIN`, `1bAevGz0K2k` 164.3).
 | Fire | Fire dragons rise and fill the screen (the fire animation at about 25 fps), clearing to the HOLD & SPIN medallion over the darkened board (official app only) | VERIFIED |
 | Medallion | 3.8 s, then "COLLECT 15 TO WIN GRAND JACKPOT" for 2 s, then a second fire to the board (official app only) | VERIFIED |
 | Owner's change | The app showed the medallion for about 1 s and left the COLLECT screen out; replaced by the cabinet's sequence (below) | owner, 2026-10-14; superseded |
-| Board | SELECT SPIN TO START FEATURE and SND_FreeSpin_BGM 0.57 s after the board clears (the wording and the 0.57 s the official app's); the press counts 1, 2, 3 (SND_Fea_Inc), a burst on the 3; the first respin starts by itself 1.9 s later | VERIFIED |
+| Board | SELECT SPIN TO START FEATURE and SND_FreeSpin_BGM 0.57 s after the board clears (the wording and the 0.57 s the official app's); the press counts 1, 2, 3 (SND_Fea_Inc), an orange burst on the 3; the first respin starts by itself 1.9 s later (official app only: the cabinet's 0.59 s, below) | VERIFIED |
 | Respins | Open positions of a reel stop together: reel 1 0.53 s after the press, each further reel 0.467 s later whether or not it has open positions; half a cell overshoot, settled in 11 frames; SND_Button at each start | VERIFIED |
 | Respin sounds | Every reel with positions spinning clinks; a new coin plays SND_HandSDoonk1 and the respin's first coin also SND_GrandStrike | VERIFIED |
 | Counter | Drops as a respin starts; back to 3 six frames after a coin lands, its burst a frame later; at 0 the banner is gone until a coin lands | VERIFIED |
@@ -162,6 +162,45 @@ cabinet (the owner's 2026-10-18 rule that cabinet footage outranks the app), whi
 owner's 2026-10-14 change: the fire from 0.87 s after the burst at 22.3 fps, the board coming up
 under its white, the prompt and the music at 3.50 s.
 
+**The cabinet's board differs too** (club recordings, 30 fps, frame by frame):
+
+- **The first respin** starts by itself 0.55-0.63 s after the counter's 3, mean 0.59 s
+  (`y8c8lEdPW8Y` 970.93 to 971.53 and 2522.15 to 2522.70, `1bAevGz0K2k` 115.78 to 116.37,
+  `f5sMl9a5jds` 212.67 to 213.30: four features, three recordings, two venues; VERIFIED). The
+  counter drops to 2 a frame or two before the reels move. The official app waits about 1.9 s.
+- **The counter's burst** on the 3 is a small white to blue-white star flash with white sparks on
+  the digit for about 0.23 s, then a thin ring round it (white-blue on one camera, fire-edged on
+  another), gone by 0.37-0.43 s (`y8c8lEdPW8Y` 970.967-971.30 and 2522.167-2522.567,
+  `1bAevGz0K2k` 115.867-116.233, `f5sMl9a5jds` 212.700-213.133; VERIFIED), about 1.9 banner
+  heights across with its sparks (PARTIAL, camera-measured). The official app's is the orange
+  burst, far larger, spilling over the jackpot values.
+- **The row lines** of the board are thin, about 2.5-3 px of our canvas, and far paler and less
+  saturated than the 15-16 px gold dividers, which are the base frame's own, the same in the base
+  game and Hold & Spin (`f5sMl9a5jds` 205.0 and 212.8, `y8c8lEdPW8Y` 973.0; VERIFIED). Their hue
+  depends on the camera: a pale cream-gold once one camera's blue cast is removed (PARTIAL); the
+  lavender that camera shows is its cast (HYPOTHESIS). The official app's frame draws them in
+  saturated gold, about twice as thick on our canvas.
+- **The status line** (VERIFIED for the base game on `1bAevGz0K2k` and `f5sMl9a5jds`): the bet line
+  while the reels spin; blank from the trigger's result through the bell, burst, fire and board
+  (`1bAevGz0K2k` 107.6-113.0, `f5sMl9a5jds` 206.5-211.5); "Press START FEATURE button" from the
+  prompt through the count-up, until the first respin starts (gone at 116.37 and 213.27, as the
+  reels move); blank while a respin runs; "Press SPIN button" between respins; "Free Spins
+  Completed" from FREE SPINS COMPLETED through the tally and the count (also `rwatCLs3QO0`); then
+  the bet line. Inside the free games (`y8c8lEdPW8Y` only, two of its features: STRONG) "Free Game
+  3 of 6" shows through the intro, from the press through the count-up and while respins run,
+  with the prompt and "Press SPIN button" as in the base game, "Free Spins Completed" through the
+  tally and the count, and "Free Game 3 of 6" again 0.23 s after the count ends.
+
+**The app** follows these: the count holds the 3 for 0.59 s and the first respin follows at once
+(the press has already played it; the earlier hold of 1.4 s was meant to precede the 0.5 s step
+pause, which never applied there, so the app waited about 1.4 s); the burst is the pack's own
+burst recoloured blue-white at load (its alpha kept; the pack untouched), its visible frames 0-17
+at 40 fps, on a 230 px square at the digit (its ring about 1.9 banner heights); the pack frame's
+own row lines are cleared at load, anti-aliasing included, and 3 px lines of srgb(0.94, 0.82,
+0.58) are drawn on the row boundaries under its dividers and border (the hue PARTIAL); the status
+line as above, in the bet line's yellow and spacing, the trigger's result to our
+HoldAndSpinStarted (about 0.2 s) still on the bet line.
+
 ## Hold & Spin payout
 
 | Step | Real app | Label |
@@ -174,31 +213,44 @@ under its white, the prompt and the music at 3.50 s.
 | Music | Not among the game's own clips: one of three tracks in the app's shared sound bank. The same tracks play under the cabinet's coin-shower counts; across one cabinet session they ran in turn | VERIFIED (app); STRONG (cabinet, rotation) |
 
 **The cabinet's collection differs** (VERIFIED: club recordings 1bAevGz0K2k 2:25-2:45 and
-145.2-165.2 s, y8c8lEdPW8Y 1001.9-1019.9 s, f5sMl9a5jds 4:18-4:38, all Golden Century; a casino
-build, OL6Pu1AI-cQ 86 s, and the owner's Happy & Prosperous cabinet agree). The table above is the
-official app's. On the cabinet, in the frame FREE SPINS COMPLETED goes (within 0.1 s), the top
-screen's jackpot meters give way to WINNER over an empty flame-bordered box, with a small line
-"GRAND JACKPOT: $x   MAJOR JACKPOT: $y" under it whose values keep climbing; nothing shows over the
-reels and WIN does not move. This happens for every Hold & Spin, not only a Grand. The first coin
-flares 0.3-0.5 s after the box appears; each coin's comet flies up to the box, its value landing
-0.6-0.8 s after the flare, with white splash arcs over the box each time. The WIN banner over the
-reels appears only when the count begins, counting up from nothing in step with WIN (banner $1.08
-with WIN $11.08 from $10.00; banner $0.29 with WIN $0.29), its WIN letters bursting from that
-moment; the box keeps the total through the count, then gives way to the meters 0.53-0.60 s after
-the count is complete, through one dark frame; the WIN banner stays until the next game. The line's
-colour differs between cameras (yellow on one, green-tinted on another): PARTIAL. The pause from
-the last value to the count differs between cabinets (1.6 s and 3.8 s), so the app's 0.87 s is
-kept.
+145.2-165.2 s, y8c8lEdPW8Y 1001.9-1019.9 s, f5sMl9a5jds 4:18-4:38, rwatCLs3QO0 about 1170-1174 s,
+all Golden Century; a casino build, OL6Pu1AI-cQ 86 s, and the owner's Happy & Prosperous cabinet
+agree). The table above is the official app's. On the cabinet, in the frame FREE SPINS COMPLETED
+goes (3.07-3.10 s after it showed), the top screen's jackpot meters give way to WINNER over an
+empty flame-bordered box, with a small line "GRAND JACKPOT: $x   MAJOR JACKPOT: $y" under it whose
+values keep climbing; nothing shows over the reels and WIN does not move. This happens for every
+Hold & Spin, not only a Grand. The first coin flares 0.33-0.43 s after the box appears; each coin's
+comet flies up to the box, its value landing 0.57-0.73 s after the flare (mean 0.67; the first
+coin's 0.70-0.73), the coins 1.33-1.37 s apart, with white splash arcs over the box each time
+(measured at 30 fps on four recordings: box, first flare and first value at 1bAevGz0K2k 145.200,
+145.533, 146.267; y8c8lEdPW8Y 1001.933, 1002.267, 1003.000; f5sMl9a5jds 258.800, 259.233, 259.933;
+rwatCLs3QO0 clip 5.033, 5.467, 6.167; this replaces the first audit's 0.1 s, 0.3-0.5 s and
+0.6-0.8 s, read at a coarser step). The WIN banner over the reels appears only when the count
+begins, counting up from nothing in step with WIN (banner $1.08 with WIN $11.08 from $10.00;
+banner $0.29 with WIN $0.29), its amount white between the gold WIN words (as bright and neutral
+as white text in the same frames, while the WINNER total is yellow: f5sMl9a5jds 278.6, 281.1,
+282.6, y8c8lEdPW8Y 1018.7, 1019.5, 1bAevGz0K2k 164.3, 165.5; the same on the free games' win
+banner, y8c8lEdPW8Y 1029.8, f5sMl9a5jds 795.8; VERIFIED; the official app's amount is yellow), its
+WIN letters bursting from that moment; the box keeps the total through the count, then gives way
+to the meters 0.53-0.60 s after the count is complete, through one dark frame; the WIN banner
+stays until the next game. The line's colour differs between cameras (yellow on one,
+green-tinted on another): PARTIAL. The pause from the last value to the count differs between
+cabinets (1.6 s and 3.8 s), so the app's 0.87 s is kept. Whether the cabinet plays SND_Rumble at
+the collection's start is UNKNOWN (the copies have no sound).
 
 **The app** follows the free games, Hold & Spin and payout sequences above at the measured times,
 and the cabinet where it differs (the prompt, the intro and the collection above), with the owner's
 order of the Grand (below). Its collection: a navy plate over the whole jackpot bar (our single
 canvas has no top screen; the plate, the box's size and the line's place are our layout, the
 owner's call), "WINNER" over the pack's flame-bordered box (440 x 80, the total in it), the live
-Grand and Major under it; the box 0.1 s after FREE SPINS COMPLETED goes, the first coin 0.4 s
-later, 1.35 s apart, each comet 0.6 s to the box with the pack's splash; the count's banner from
-nothing with WIN, its letters bursting as it appears; the plate gone 0.55 s after the count. The
-rumble and the 0.87 s pause are the official app's (the cabinet copies have no sound). It keeps the
+Grand and Major under it; the box in the frame FREE SPINS COMPLETED goes, the first coin 0.38 s
+later, 1.35 s apart, each comet 0.67 s to the box with the pack's splash (the bolt animation's
+frames up to the one where it reaches the box, 12-17 of them by animation, stretched over the
+flight, so the comet lands with the value; the rest at 30 fps); the count's banner from nothing
+with WIN, its amount white with a faint cool tint (srgb(0.93, 0.94, 1.0); the free games' win
+banner too), its letters bursting as it appears; the plate gone 0.55 s after the count. The
+rumble (its place on the cabinet HYPOTHESIS) and the 0.87 s pause are the official app's (the
+cabinet copies have no sound). It keeps the
 cabinet's own meters, button deck and gamble (owner), rebuilt from cabinet footage in
 [GOLDEN_CENTURY_CABINET_DECK.md](GOLDEN_CENTURY_CABINET_DECK.md).
 
