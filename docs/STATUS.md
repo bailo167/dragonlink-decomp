@@ -168,6 +168,23 @@ owner; docs/DECISIONS.md). Every run muted. Progress, newest last:
   (synthetic). Unit tests cover each; checked on muted captures (the doors run, Golden Gong, Spring
   Festival, the casino profile) and an event trace (doors at the rest + 0.30 s, wins + 1.50 s,
   no-win next game + 2.00 s).
+- **Audit fixes, second pass: the button deck.** Checked frame by frame on club recordings
+  ([GOLDEN_CENTURY_CABINET_DECK.md](reverse-engineering/GOLDEN_CENTURY_CABINET_DECK.md)): every Hold
+  & Spin respin now spells GOOD LUCK, as each cabinet respin does (VERIFIED); as the reels start
+  each key keeps its idle face until its letter arrives, and as they stop the idle faces wipe
+  back from the left, 0.08 s a column (VERIFIED, one machine). The teardrop points up (four
+  machines) and is dark and smoky with a pale-blue legend, lit blue only for START FEATURE, which
+  stays lit on the club profile with its legend turning like a coin (STRONG for deck A; the
+  casino profile keeps deck B's blink). GAMBLE and TAKE WIN are always lit, TAKE WIN pale khaki
+  with blue letters; the selected lines key is light blue with white ink and the selected credits
+  key pale with a red numeral; the credits keys a denomination does not offer are lit; on the
+  flash's plain half the keys turn light blue with faint legends; in the gamble the black choices
+  are dark with light-blue icons and the unused keys a white-silver lattice. The keys are an eighth
+  of a key apart, the teardrop about 1.7 keys wide a quarter key clear (STRONG): each key's art had
+  been drawn inside its legend padding, widening the gaps and squashing the teardrop. The teardrop
+  and the lattice key are our own new drawings in the local packs (nothing in Git). Unit tests
+  cover each rule; checked on muted captures (base, the minors run, the autogambler, Golden Gong,
+  Spring Festival, the casino profile).
 
 ## Project interpretation (owner reset, 2026-10-14)
 

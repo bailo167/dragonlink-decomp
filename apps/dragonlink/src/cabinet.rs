@@ -3292,6 +3292,7 @@ pub fn system_message(
     show: Res<FeatureShow>,
     gamble: Res<GambleShow>,
     deck: Res<DeckState>,
+    reels: Res<Reels>,
     mut slot: ResMut<SystemSlot>,
     mut seen: Local<SlotSeen>,
     mut texts: Query<&mut Text, With<SystemMessage>>,
@@ -3304,8 +3305,9 @@ pub fn system_message(
         let credit = credit_shown(&sim, &presentation, &rollup, &show, &gamble)
             .saturating_mul(cents)
             .saturating_add(sim.game.state().residue);
-        // A start: the reels set off (free games' too) or a respin begins.
-        let spinning = deck.mode == DeckMode::Spinning;
+        // A start: the reels set off (free games' too) or a respin begins
+        // (the deck's spinning mode covers both, so the reels are read).
+        let spinning = reels.any_moving();
         let respinning = show.respinning();
         let started = (spinning && !seen.spinning) || (respinning && !seen.respinning);
         seen.spinning = spinning;
@@ -3389,12 +3391,16 @@ fn spawn_deck(
         GlobalZIndex(DECK_LAYER),
         ZIndex(1),
     ));
-    // Square keys, as on the cabinet (its keys are about as tall as wide),
-    // in two rows, and the teardrop beside them spanning both.
+    // Near-square keys, as on the cabinet, in two rows, and the teardrop
+    // beside them spanning both, the whole centred on what shows: the
+    // teardrop's art fills about [`TEARDROP_VISIBLE`] of its node from
+    // [`TEARDROP_INSET`] in, and it stands a quarter of a key clear of the
+    // keys (cabinet footage).
     let (kw, kh, gx, gy) = DECK_KEY;
     let cluster = 6.0 * kw + 5.0 * gx;
     let (sw, sh) = DECK_TEARDROP;
-    let left = (CANVAS_W - (cluster + 60.0 + sw)) / 2.0;
+    let gap = TEARDROP_GAP * kw;
+    let left = (CANVAS_W - (cluster + gap + TEARDROP_VISIBLE * sw)) / 2.0;
     let top = DECK_TOP + 8.0;
     for row in 0..2u8 {
         for col in 0..6u8 {
@@ -3415,17 +3421,32 @@ fn spawn_deck(
         font,
         symbols,
         CabButton::Spin,
-        left + cluster + 60.0,
+        left + cluster + gap - TEARDROP_INSET * sw,
         top + kh + gy / 2.0 - sh / 2.0,
         sw,
         sh,
     );
 }
 
-/// A key's width and height and the gaps between keys, and the teardrop's
-/// size (cabinet footage: square keys about a third of a key apart, the
-/// teardrop about 1.75 keys wide and as tall as both rows).
-const DECK_KEY: (f32, f32, f32, f32) = (96.0, 80.0, 30.0, 10.0);
+/// A key's width and height and the gaps between keys (cabinet footage:
+/// near-square keys about a tenth of a key apart along a row, 0.09-0.14 on
+/// three machines, STRONG; the key art's bezel runs to its edge, so the
+/// node gap is the gap seen). Truly square keys would need a taller deck
+/// strip.
+const DECK_KEY: (f32, f32, f32, f32) = (96.0, 80.0, 12.0, 10.0);
+
+/// The teardrop's node: its art shows about 1.7 keys wide (cabinet 1.6-1.74
+/// keys) and as tall as both rows.
+const DECK_TEARDROP: (f32, f32) = (204.0, 170.0);
+
+/// The share of the teardrop's node its art fills across, and how far in
+/// from the node's left edge it starts (the pack's `spin_*` art).
+const TEARDROP_VISIBLE: f32 = 0.8;
+const TEARDROP_INSET: f32 = 0.1;
+
+/// The gap between the keys and the teardrop, in keys (cabinet footage:
+/// 0.2-0.4 of a key).
+const TEARDROP_GAP: f32 = 0.25;
 
 /// The deck's stacking layer: above every screen effect (the Hold & Spin
 /// transition 30, the coin shower, bolt bursts and win flares 26, the bolts
@@ -3433,7 +3454,6 @@ const DECK_KEY: (f32, f32, f32, f32) = (96.0, 80.0, 30.0, 10.0);
 /// and the gamble 12-13, the WINNER plate 4) and below the rules overlay (50)
 /// and the machine menu (60), which still cover the deck.
 const DECK_LAYER: i32 = 40;
-const DECK_TEARDROP: (f32, f32) = (170.0, 170.0);
 
 /// A key's legend as the cabinet stacks it: lines of their own sizes (a lines
 /// key reads a small PLAY, its count large, LINES, then the credits it bets),
@@ -3595,6 +3615,13 @@ pub struct DeckState {
     /// choice, since the YES): the one clock of the deck's flash, the
     /// teardrop's legends and the meters' switch.
     pub since: f32,
+    /// The mode before this one, and seconds since the mode changed (not
+    /// restarted by the offer): the clock of the wipe back to the idle
+    /// faces as the reels stop.
+    pub prev: DeckMode,
+    pub mode_t: f32,
+    /// Seconds START FEATURE has been awaited (0 while it is not).
+    pub wait_t: f32,
 }
 
 impl DeckState {
@@ -3751,9 +3778,11 @@ fn deck_button(
     w: f32,
     h: f32,
 ) {
-    // The play button's legend sits in the teardrop's wide upper part.
+    // The teardrop points up, as on every cabinet filmed; its legend sits in
+    // its ring, centred 0.55 of the way down (cabinet 0.52-0.57 from the
+    // apex).
     let pad = if button == CabButton::Spin {
-        UiRect::bottom(Val::Px(h * 0.22))
+        UiRect::top(Val::Px(h * TEARDROP_LEGEND_PAD))
     } else {
         UiRect::all(Val::Px(6.0))
     };
@@ -3771,8 +3800,12 @@ fn deck_button(
             align_items: AlignItems::Center,
             ..default()
         },
+        // The art fills the whole key: an image node draws in its content
+        // box by default, and the legend's padding would shrink every key
+        // (to 84 x 68, widening the gaps) and squash the teardrop.
         ImageNode {
             image_mode: NodeImageMode::Stretch,
+            visual_box: bevy::ui::VisualBox::BorderBox,
             ..default()
         },
         // Above the bezel and the panel inside the deck's layer; the legend
@@ -3819,14 +3852,279 @@ fn deck_button(
     );
 }
 
-/// Light the deck and set its legends, as the cabinet does: the selected
-/// credits and lines keys pale white among red credits keys and blue lines
-/// keys; GAMBLE purple and TAKE WIN gold, glowing while a win can be gambled;
-/// the teardrop's PLAY / REPEAT BET at rest, START FEATURE blinking while a
-/// feature waits, SPIN in Hold & Spin, a lattice in the gamble; GOOD LUCK
-/// wiping in from the left as the reels start; on the club machines the 1 Hz
-/// flash of the keys that can be pressed while a win is offered and in the
-/// gamble, with the chosen key steady light blue once a card is turned.
+/// The teardrop legend's top padding, in its height: the legend centres on
+/// the art's ring, 0.55 of the way down.
+const TEARDROP_LEGEND_PAD: f32 = 0.10;
+
+/// GOOD LUCK's wipe as the reels start: a letter every 0.1 s from the left,
+/// each key keeping its idle face and legend until its letter arrives, the
+/// bottom row a frame behind, the right column dark 0.1 s after the D
+/// (cabinet footage: four wipes on one machine, two of them respins,
+/// VERIFIED).
+const WIPE_IN_STEP: f32 = 0.1;
+const WIPE_ROW_LAG: f32 = 1.0 / 30.0;
+
+/// The wipe back to the idle faces as the reels stop: from the left, a
+/// column every 0.08 s (two stops on one machine, VERIFIED).
+const WIPE_BACK_STEP: f32 = 0.08;
+
+/// The legend's alpha on the plain face of the flash: faint (PARTIAL).
+const PLAIN_LEGEND_ALPHA: f32 = 0.35;
+
+/// The club teardrop's START FEATURE turns edge-on and back like a coin,
+/// over [`LEGEND_TURN`] s at the end of every [`LEGEND_TURN_PERIOD`] s from
+/// the wait's start (a Golden Century Dragon Cash deck A, STRONG; the phase
+/// ours).
+const LEGEND_TURN_PERIOD: f32 = 1.28;
+const LEGEND_TURN: f32 = 0.3;
+
+/// Faces a pack may lack, drawn as another of its images under a tint:
+/// (face, stand-in, tint). Tints multiply, so the coloured stand-ins tint
+/// the white key.
+const STAND_IN_FACES: [(&str, &str, Color); 6] = [
+    // The selected lines key, the chosen gamble key and the plain flash.
+    ("key_lightblue", "key_white", Color::srgb(0.62, 0.80, 1.0)),
+    // The red gamble choices' plain flash.
+    ("key_lavender", "key_white", Color::srgb(0.86, 0.84, 1.0)),
+    // The selected credits key: pale lavender-white.
+    ("key_pale", "key_white", Color::srgb(0.94, 0.92, 1.0)),
+    // TAKE WIN: pale khaki.
+    ("key_khaki", "key_white", Color::srgb(1.0, 0.88, 0.60)),
+    // A pack built before the purple key draws GAMBLE blue.
+    ("key_purple", "key_blue", Color::WHITE),
+    // The gamble's unused keys: the card back if the pack has no lattice key.
+    ("key_lattice", "card_back", Color::WHITE),
+];
+
+/// The pack image and tint that draw a face: its own image if the pack has
+/// one, else its stand-in (see [`STAND_IN_FACES`]).
+fn resolve_face(face: &'static str, has: impl Fn(&str) -> bool) -> (&'static str, Color) {
+    if has(face) {
+        return (face, Color::WHITE);
+    }
+    STAND_IN_FACES
+        .iter()
+        .find(|(f, ..)| *f == face)
+        .map_or((face, Color::WHITE), |&(_, image, tint)| (image, tint))
+}
+
+/// What the deck shows this frame: its state and the facts of the game its
+/// faces, legends and inks follow (see [`light_deck`]).
+#[derive(Clone, Copy, Debug, Default)]
+pub struct DeckLook {
+    pub deck: DeckState,
+    /// At rest: the game idle with nothing queued.
+    pub idle: bool,
+    /// START FEATURE is awaited.
+    pub start_wait: bool,
+    /// The Hold & Spin board shows.
+    pub hold_and_spin: bool,
+    /// The gamble's suits may be chosen (within the gamble win limit).
+    pub suits_open: bool,
+    /// The gamble choice, once its card is turned.
+    pub chosen: Option<GamblePick>,
+    pub lines: u16,
+    pub bet: u32,
+}
+
+impl DeckLook {
+    /// The role a key shows. It trails the deck's own while the deck changes
+    /// over: as the reels start, GOOD LUCK wipes in from the left, each key
+    /// keeping its idle face and legend until its letter arrives; as they
+    /// stop, the idle faces wipe back from the left.
+    pub fn shown(&self, cap: CabButton) -> Role {
+        let d = self.deck;
+        if let CabButton::Slot { row, col } = cap {
+            let c = f32::from(col.min(5));
+            match d.mode {
+                DeckMode::Spinning if col > 0 => {
+                    let lag = if row == 1 { WIPE_ROW_LAG } else { 0.0 };
+                    if d.since < WIPE_IN_STEP * c + lag {
+                        let idle = DeckState {
+                            mode: DeckMode::Base,
+                            offer: false,
+                            ..d
+                        };
+                        return role(cap, &idle);
+                    }
+                }
+                DeckMode::Base if d.prev == DeckMode::Spinning && d.mode_t < WIPE_BACK_STEP * c => {
+                    let spinning = DeckState {
+                        mode: DeckMode::Spinning,
+                        ..d
+                    };
+                    return role(cap, &spinning);
+                }
+                _ => {}
+            }
+        }
+        role(cap, &d)
+    }
+
+    /// Whether a key shows the plain face of the club machines' 1 Hz flash:
+    /// the keys that can be pressed while a win is offered (top keys 1-2 and
+    /// the bottom row), and the gamble's open choices until a card is turned
+    /// (suits past the gamble limit stay dark and still).
+    pub fn flashing(&self, cap: CabButton, shown: Role) -> bool {
+        let d = self.deck;
+        if d.profile != Profile::Club || !d.plain() {
+            return false;
+        }
+        match (d.mode, cap, shown) {
+            (_, _, Role::Letter(_) | Role::Off | Role::Blank | Role::Lattice) => false,
+            (DeckMode::Base, CabButton::Slot { row, col }, _) => d.offer && (row == 1 || col <= 1),
+            (DeckMode::Gamble, _, Role::Pick(p)) => {
+                self.chosen.is_none() && (is_colour(p) || self.suits_open)
+            }
+            _ => false,
+        }
+    }
+
+    /// A key's face: a pack image, or a stand-in face (see
+    /// [`resolve_face`]). Every key is lit at full brightness, GAMBLE and
+    /// TAKE WIN whether or not a gamble is offered and the credits keys a
+    /// denomination does not offer too (club footage).
+    pub fn face(&self, cap: CabButton) -> &'static str {
+        let d = self.deck;
+        let r = self.shown(cap);
+        if cap == CabButton::Spin {
+            // A dark smoky teardrop at rest, while the reels spin and through
+            // Hold & Spin; lit blue only while START FEATURE waits: steadily
+            // on the club deck (deck A), blinking 0.5 s on, 0.5 s off on the
+            // casino's (US deck B).
+            let blink_off = d.profile == Profile::Casino && ((d.wait_t * 2.0) as u32) % 2 == 1;
+            return match r {
+                Role::Off | Role::Lattice => "spin_dim",
+                _ if self.start_wait && !blink_off => "spin_lit",
+                _ => "spin_dim",
+            };
+        }
+        if self.flashing(cap, r) {
+            return match r {
+                Role::Pick(p) if is_red(p) => "key_lavender",
+                _ => "key_lightblue",
+            };
+        }
+        match r {
+            Role::Pick(p) if self.chosen == Some(p) => "key_lightblue",
+            Role::Credits(m) if m == self.bet => "key_pale",
+            Role::Bet(m) if m == self.bet => "key_white",
+            Role::Bet(_) | Role::Credits(_) | Role::Blank => "key_red",
+            Role::Lines(n) if n == self.lines => "key_lightblue",
+            Role::Lines(_) | Role::Play => "key_blue",
+            Role::Gamble => "key_purple",
+            Role::TakeWin => "key_khaki",
+            // Hearts, diamonds and RED orange; clubs, spades and BLACK dark
+            // (club footage, the vivid phase); a suit past the limit dark.
+            Role::Pick(p) if is_red(p) && (is_colour(p) || self.suits_open) => "key_red",
+            Role::Pick(_) | Role::Letter(_) | Role::Off => "key_dark",
+            Role::Lattice => "key_lattice",
+        }
+    }
+
+    /// A key's legend colour: faint on the plain face of the flash.
+    pub fn ink(&self, cap: CabButton) -> Color {
+        let r = self.shown(cap);
+        let ink = match (r, self.face(cap)) {
+            // Spelled letters glow blue on a dark key.
+            (Role::Letter(_), _) => Color::srgb(0.35, 0.65, 1.0),
+            // The dark teardrop's legend pale blue; white on the lit one.
+            (_, "spin_dim") => Color::srgb(0.45, 0.62, 1.0),
+            (_, "key_lightblue" | "key_lavender" | "spin_lit") => Color::WHITE,
+            // TAKE WIN's letters blue on its pale face.
+            (Role::TakeWin, _) => Color::srgb(0.20, 0.42, 0.95),
+            // The selected credits key's numeral pink-red, the others' light
+            // blue on orange.
+            (Role::Credits(_), "key_pale") => Color::srgb(0.85, 0.35, 0.45),
+            (Role::Credits(_), _) => Color::srgb(0.7, 0.85, 1.0),
+            // The gamble's choices: light-blue icons on orange and on dark.
+            (Role::Pick(_), "key_red") => Color::srgb(0.75, 0.88, 1.0),
+            (Role::Pick(_), "key_dark") => Color::srgb(0.6, 0.8, 1.0),
+            (_, "key_white" | "key_pale" | "key_khaki" | "key_gold") => {
+                Color::srgb(0.06, 0.08, 0.2)
+            }
+            (_, "key_dark") => Color::srgb(0.45, 0.5, 0.62),
+            _ => Color::WHITE,
+        };
+        if self.flashing(cap, r) {
+            ink.with_alpha(PLAIN_LEGEND_ALPHA)
+        } else {
+            ink
+        }
+    }
+
+    /// A key's legend, line by line with sizes.
+    pub fn words(&self, cap: CabButton) -> Vec<(String, f32)> {
+        let d = self.deck;
+        let r = self.shown(cap);
+        let lines_of = |v: &[(&str, f32)]| -> Vec<(String, f32)> {
+            v.iter().map(|(w, z)| ((*w).to_string(), *z)).collect()
+        };
+        match (cap, r) {
+            (CabButton::Spin, Role::Off | Role::Lattice) => Vec::new(),
+            // Footage: START FEATURE while a feature waits, SPIN through Hold
+            // & Spin, PLAY and REPEAT BET in turn at rest (club); sized to
+            // sit inside the teardrop's ring.
+            (CabButton::Spin, _) if self.start_wait => {
+                lines_of(&[("START", 17.0), ("FEATURE", 15.0)])
+            }
+            (CabButton::Spin, _) if self.hold_and_spin => lines_of(&[("SPIN", 25.0)]),
+            (CabButton::Spin, _)
+                if d.profile == Profile::Club
+                    && d.mode == DeckMode::Base
+                    && self.idle
+                    && (d.since as u32) % 2 == 1 =>
+            {
+                lines_of(&[("REPEAT", 16.0), ("BET", 16.0)])
+            }
+            (CabButton::Spin, _) => lines_of(&[("PLAY", 25.0)]),
+            // Top left is blank purple in the gamble.
+            (_, Role::Gamble) if d.mode == DeckMode::Gamble => Vec::new(),
+            (_, Role::Pick(p)) if !is_colour(p) && !self.suits_open => Vec::new(),
+            _ => legend(r, self.lines, self.bet),
+        }
+    }
+
+    /// The teardrop legend's width as a share of its own: 1, but while the
+    /// club's START FEATURE turns like a coin.
+    pub fn legend_turn(&self) -> f32 {
+        if !self.start_wait || self.deck.profile != Profile::Club {
+            return 1.0;
+        }
+        let into = self.deck.wait_t % LEGEND_TURN_PERIOD - (LEGEND_TURN_PERIOD - LEGEND_TURN);
+        if into < 0.0 {
+            1.0
+        } else {
+            (std::f32::consts::PI * into / LEGEND_TURN).cos().abs()
+        }
+    }
+}
+
+/// The deck's mode: the GAMES MENU, the gamble, a spin, or the game. A Hold
+/// & Spin respin spins the deck as the reels do (club footage: GOOD LUCK on
+/// every respin, the teardrop keeping SPIN; VERIFIED).
+fn deck_mode(menu: bool, gambling: bool, reels_moving: bool, respinning: bool) -> DeckMode {
+    if menu {
+        DeckMode::Menu
+    } else if gambling {
+        DeckMode::Gamble
+    } else if reels_moving || respinning {
+        DeckMode::Spinning
+    } else {
+        DeckMode::Base
+    }
+}
+
+/// Light the deck and set its legends, as the cabinet does (see
+/// [`DeckLook`]): the selected credits key pale and the selected lines key
+/// light blue among orange credits keys and blue lines keys; GAMBLE purple
+/// and TAKE WIN pale khaki, always lit; the teardrop dark with a pale-blue
+/// PLAY / REPEAT BET at rest, PLAY while the reels spin and SPIN in Hold &
+/// Spin, lit for START FEATURE, a lattice in the gamble; GOOD LUCK wiping in
+/// from the left as the reels start or a Hold & Spin respin turns, and the
+/// idle faces wiping back as they stop; on the club machines the 1 Hz flash
+/// of the keys that can be pressed while a win is offered and in the gamble,
+/// with the chosen key steady light blue once a card is turned.
 #[allow(clippy::too_many_arguments, clippy::type_complexity)]
 pub fn light_deck(
     fidelity: Res<Fidelity>,
@@ -3851,6 +4149,7 @@ pub fn light_deck(
         &mut TextFont,
         &mut TextColor,
         &mut Node,
+        &mut UiTransform,
     )>,
 ) {
     if !fidelity.0 {
@@ -3861,129 +4160,61 @@ pub fn light_deck(
     let idle = sim.game.is_idle() && presentation.queue.is_empty();
     let cents = denom.cents();
     let can_gamble = idle && gamble_open(&sim.game, cents, &show) && !rollup.active() && !waiting;
-    // A suit's four times the stake may pass the gamble win limit.
-    let suits_open = within_gamble_limit(gamble.stake, 4, cents);
-    let mode = if menu.showing() {
-        DeckMode::Menu
-    } else if gambling {
-        DeckMode::Gamble
-    } else if reels.any_moving() {
-        DeckMode::Spinning
-    } else {
-        DeckMode::Base
-    };
+    let mode = deck_mode(
+        menu.showing(),
+        gambling,
+        reels.any_moving(),
+        show.respinning(),
+    );
     let offer = mode == DeckMode::Base && can_gamble;
     // After a denomination choice, until the first game (club footage).
     let selecting = menu.selecting && mode == DeckMode::Base;
+    let start_wait = matches!(show.awaiting, Some(Await::Start(_)));
+    let dt = smoke.dt(&time).min(0.05);
     if deck.mode != mode || deck.offer != offer {
         deck.since = deck_clock_restart(deck.mode, selecting);
     } else {
-        deck.since += smoke.dt(&time).min(0.05);
+        deck.since += dt;
     }
+    if deck.mode != mode {
+        deck.prev = deck.mode;
+        deck.mode_t = 0.0;
+    } else {
+        deck.mode_t += dt;
+    }
+    deck.wait_t = if start_wait { deck.wait_t + dt } else { 0.0 };
     deck.mode = mode;
     deck.offer = offer;
     deck.selecting = selecting;
     deck.profile = *profile;
     deck.cents = cents;
-    let d = *deck;
-    let lines = sim.game.lines();
-    let bet = sim.game.credits_per_line();
-    let t = time.elapsed_secs();
-    let glow = 0.84 + 0.16 * (t * 3.5).sin().abs();
-    let start_wait = matches!(show.awaiting, Some(Await::Start(_)));
-    // Once a card is turned the flash stops; the chosen key stays light blue.
-    let chosen = gamble.card.and(gamble.last.map(|(p, _)| p));
-    let flashing = |cap: CabButton, r: Role| -> bool {
-        if d.profile != Profile::Club || !d.plain() {
-            return false;
-        }
-        match (d.mode, cap) {
-            (DeckMode::Base, CabButton::Slot { row, col }) => d.offer && (row == 1 || col <= 1),
-            (DeckMode::Gamble, _) => chosen.is_none() && matches!(r, Role::Pick(_)),
-            _ => false,
-        }
-    };
-    let face = |cap: CabButton| -> (&'static str, f32) {
-        let r = role(cap, &d);
-        if flashing(cap, r) {
-            return ("key_blue", 1.0);
-        }
-        match (cap, r) {
-            (CabButton::Spin, Role::Off | Role::Lattice) => ("spin_dim", 1.0),
-            (CabButton::Spin, _) if start_wait && ((t * 2.0) as u32) % 2 == 1 => ("spin_dim", 1.0),
-            (CabButton::Spin, _) if idle || waiting => ("spin_lit", glow),
-            (CabButton::Spin, _) => ("spin_dim", 1.0),
-            (_, Role::Pick(p)) if chosen == Some(p) => ("key_blue", 1.0),
-            (_, Role::Bet(m) | Role::Credits(m)) if m == bet => ("key_white", 1.0),
-            (_, Role::Bet(_) | Role::Credits(_)) => ("key_red", 1.0),
-            (_, Role::Blank) => ("key_red", 0.45),
-            (_, Role::Lines(n)) if n == lines => ("key_white", 1.0),
-            (_, Role::Lines(_) | Role::Play) => ("key_blue", 1.0),
-            (_, Role::Gamble) if can_gamble || (gambling && gamble.stake >= 2) => {
-                ("key_purple", glow)
-            }
-            (_, Role::Gamble) => ("key_purple", 0.5),
-            (_, Role::TakeWin) if can_gamble || gambling => ("key_gold", glow),
-            (_, Role::TakeWin) => ("key_gold", 0.5),
-            (_, Role::Pick(p)) if !is_colour(p) && !suits_open => ("key_dark", 1.0),
-            (_, Role::Pick(p)) if is_red(p) => ("key_red", 1.0),
-            (_, Role::Pick(_)) => ("key_blue", 1.0),
-            (_, Role::Lattice) => ("card_back", 1.0),
-            (_, Role::Letter(_) | Role::Off) => ("key_dark", 1.0),
-        }
+    let look = DeckLook {
+        deck: *deck,
+        idle,
+        start_wait,
+        hold_and_spin: show.hold_and_spin(),
+        // A suit's four times the stake may pass the gamble win limit.
+        suits_open: within_gamble_limit(gamble.stake, 4, cents),
+        // Once a card is turned the flash stops; the chosen key stays light
+        // blue.
+        chosen: gamble.card.and(gamble.last.map(|(p, _)| p)),
+        lines: sim.game.lines(),
+        bet: sim.game.credits_per_line(),
     };
     for (cap, mut image) in &mut caps {
-        let (key, k) = face(cap.0);
-        // A pack built before the purple key draws GAMBLE blue.
-        let h = art.ui.get(key).or_else(|| {
-            (key == "key_purple")
-                .then(|| art.ui.get("key_blue"))
-                .flatten()
-        });
-        if let Some(h) = h
+        let (key, tint) = resolve_face(look.face(cap.0), |k| art.ui.contains_key(k));
+        if let Some(h) = art.ui.get(key)
             && image.image != *h
         {
             image.image = h.clone();
         }
-        let tint = Color::srgb(k, k, k);
         if image.color != tint {
             image.color = tint;
         }
     }
-    for (label, fonts, mut text, mut font, mut color, mut node) in &mut labels {
-        let r = role(label.0, &d);
-        let lines_of = |v: &[(&str, f32)]| -> Vec<(String, f32)> {
-            v.iter().map(|(w, z)| ((*w).to_string(), *z)).collect()
-        };
-        let words: Vec<(String, f32)> = match (label.0, r) {
-            (CabButton::Spin, Role::Off | Role::Lattice) => Vec::new(),
-            // Footage: START FEATURE while a feature waits, SPIN through Hold
-            // & Spin, PLAY and REPEAT BET in turn at rest (club); sized to sit
-            // inside the teardrop's face.
-            (CabButton::Spin, _) if start_wait => lines_of(&[("START", 17.0), ("FEATURE", 15.0)]),
-            (CabButton::Spin, _) if show.hold_and_spin() => lines_of(&[("SPIN", 25.0)]),
-            (CabButton::Spin, _)
-                if d.profile == Profile::Club
-                    && d.mode == DeckMode::Base
-                    && idle
-                    && (d.since as u32) % 2 == 1 =>
-            {
-                lines_of(&[("REPEAT", 16.0), ("BET", 16.0)])
-            }
-            (CabButton::Spin, _) => lines_of(&[("PLAY", 25.0)]),
-            // The plain face of the flash carries no legend.
-            (cap, r) if flashing(cap, r) => Vec::new(),
-            // Top left is blank purple in the gamble.
-            (_, Role::Gamble) if d.mode == DeckMode::Gamble => Vec::new(),
-            (_, Role::Pick(p)) if !is_colour(p) && !suits_open => Vec::new(),
-            // The letters wipe in from the left, one every 0.1 s.
-            (CabButton::Slot { col, .. }, Role::Letter(_))
-                if d.mode == DeckMode::Spinning && d.since < 0.1 * f32::from(col) =>
-            {
-                Vec::new()
-            }
-            _ => legend(r, lines, bet),
-        };
+    let turn = look.legend_turn();
+    for (label, fonts, mut text, mut font, mut color, mut node, mut transform) in &mut labels {
+        let words = look.words(label.0);
         let (word, size) = words
             .get(label.1 as usize)
             .cloned()
@@ -4002,22 +4233,23 @@ pub fn light_deck(
         if font.font_size != FontSize::Px(size) {
             font.font_size = FontSize::Px(size);
         }
-        let suit = matches!(r, Role::Pick(p) if !is_colour(p));
+        let suit = matches!(look.shown(label.0), Role::Pick(p) if !is_colour(p));
         let want = if suit { &fonts.symbols } else { &fonts.text };
         let source = bevy::text::FontSource::Handle(want.clone());
         if font.font != source {
             font.font = source;
         }
-        // Dark lettering on the white and gold caps, white on the others;
-        // spelled letters glow blue on a dark key (footage).
-        let ink = match (r, face(label.0).0) {
-            (Role::Letter(_), _) => Color::srgb(0.35, 0.65, 1.0),
-            (_, "key_white" | "key_gold") => Color::srgb(0.06, 0.08, 0.2),
-            (_, "key_dark") => Color::srgb(0.45, 0.5, 0.62),
-            _ => Color::WHITE,
-        };
+        let ink = look.ink(label.0);
         if color.0 != ink {
             color.0 = ink;
+        }
+        let sx = if label.0 == CabButton::Spin {
+            turn
+        } else {
+            1.0
+        };
+        if transform.scale.x != sx {
+            transform.scale.x = sx;
         }
     }
 }
@@ -12824,6 +13056,247 @@ mod tests {
         // No change pending: the bet itself.
         assert_eq!(bet_meter(None, true, 50, 2), "50");
         assert_eq!(bet_meter(None, false, 50, 2), "$1.00");
+    }
+
+    /// A club deck at 1c, 1 credit a line on 10 lines (credits keys 1, 2, 3,
+    /// 5, 10; lines keys 1, 5, 10, 30, 50).
+    fn club_look(mode: DeckMode) -> DeckLook {
+        DeckLook {
+            deck: DeckState {
+                mode,
+                profile: Profile::Club,
+                cents: 1,
+                ..Default::default()
+            },
+            idle: true,
+            suits_open: true,
+            lines: 10,
+            bet: 1,
+            ..Default::default()
+        }
+    }
+
+    fn key(row: u8, col: u8) -> CabButton {
+        CabButton::Slot { row, col }
+    }
+
+    /// Club footage: GOOD LUCK on every Hold & Spin respin, the teardrop
+    /// keeping SPIN on its dark face.
+    #[test]
+    fn a_hold_and_spin_respin_spins_the_deck() {
+        assert_eq!(deck_mode(false, false, false, true), DeckMode::Spinning);
+        assert_eq!(deck_mode(false, false, true, false), DeckMode::Spinning);
+        assert_eq!(deck_mode(false, false, false, false), DeckMode::Base);
+        assert_eq!(deck_mode(false, true, false, true), DeckMode::Gamble);
+        assert_eq!(deck_mode(true, false, true, false), DeckMode::Menu);
+        let mut look = club_look(DeckMode::Spinning);
+        look.hold_and_spin = true;
+        look.deck.since = 0.6;
+        assert_eq!(look.shown(key(0, 1)), Role::Letter('G'));
+        assert_eq!(look.shown(key(1, 4)), Role::Letter('K'));
+        assert_eq!(look.words(CabButton::Spin)[0].0, "SPIN");
+        assert_eq!(look.face(CabButton::Spin), "spin_dim");
+    }
+
+    /// Club footage, four wipes: GAMBLE and TAKE WIN go dark first; every
+    /// other key keeps its idle face and legend until its letter arrives, a
+    /// letter every 0.1 s, the bottom row a frame behind, the right column
+    /// dark 0.1 s after the D.
+    #[test]
+    fn good_luck_wipes_in_over_the_idle_faces() {
+        let mut look = club_look(DeckMode::Spinning);
+        look.deck.since = 0.0;
+        assert_eq!(look.shown(key(0, 0)), Role::Off);
+        assert_eq!(look.shown(key(1, 0)), Role::Off);
+        assert_eq!(look.shown(key(0, 1)), Role::Credits(1));
+        assert_eq!(look.face(key(0, 1)), "key_pale");
+        assert_eq!(look.shown(key(1, 3)), Role::Lines(10));
+        assert!(!look.words(key(1, 3)).is_empty());
+        look.deck.since = 0.105;
+        assert_eq!(look.shown(key(0, 1)), Role::Letter('G'));
+        assert_eq!(look.face(key(0, 1)), "key_dark");
+        assert_eq!(look.shown(key(1, 1)), Role::Lines(1));
+        assert_eq!(look.shown(key(0, 2)), Role::Credits(2));
+        look.deck.since = 0.14;
+        assert_eq!(look.shown(key(1, 1)), Role::Letter('L'));
+        look.deck.since = 0.41;
+        assert_eq!(look.shown(key(0, 4)), Role::Letter('D'));
+        assert_eq!(look.shown(key(0, 5)), Role::Credits(10));
+        look.deck.since = 0.51;
+        assert_eq!(look.shown(key(0, 5)), Role::Off);
+        assert_eq!(look.shown(key(1, 5)), Role::Lines(50));
+        look.deck.since = 0.54;
+        assert_eq!(look.shown(key(1, 5)), Role::Off);
+    }
+
+    /// Club footage, two stops: the idle faces come back from the left, a
+    /// column every 0.08 s, on the mode's own clock (the offer does not
+    /// restart it).
+    #[test]
+    fn the_idle_faces_wipe_back_from_the_left_as_the_reels_stop() {
+        let mut look = club_look(DeckMode::Base);
+        look.deck.prev = DeckMode::Spinning;
+        look.deck.mode_t = 0.0;
+        assert_eq!(look.shown(key(0, 0)), Role::Gamble);
+        assert_eq!(look.shown(key(0, 1)), Role::Letter('G'));
+        assert_eq!(look.shown(key(1, 5)), Role::Off);
+        look.deck.mode_t = 0.17;
+        assert_eq!(look.shown(key(0, 2)), Role::Credits(2));
+        assert_eq!(look.shown(key(1, 3)), Role::Letter('C'));
+        look.deck.offer = true;
+        look.deck.since = 0.0;
+        assert_eq!(look.shown(key(1, 3)), Role::Letter('C'));
+        look.deck.mode_t = 0.41;
+        assert_eq!(look.shown(key(1, 3)), Role::Lines(10));
+        assert_eq!(look.shown(key(1, 5)), Role::Lines(50));
+        // After the gamble or the menu nothing wipes.
+        look.deck.prev = DeckMode::Gamble;
+        look.deck.mode_t = 0.0;
+        assert_eq!(look.shown(key(1, 3)), Role::Lines(10));
+    }
+
+    /// Club footage: a dark smoky teardrop with a pale-blue legend at rest
+    /// and while the reels spin, lit steadily for START FEATURE with the
+    /// legend turning like a coin; the casino's deck B blinks.
+    #[test]
+    fn the_teardrop_is_dark_but_for_start_feature() {
+        let mut look = club_look(DeckMode::Base);
+        assert_eq!(look.face(CabButton::Spin), "spin_dim");
+        assert_eq!(look.words(CabButton::Spin)[0].0, "PLAY");
+        let pale = look.ink(CabButton::Spin).to_srgba();
+        assert!(pale.blue > 0.9 && pale.red < 0.6);
+        look.deck.mode = DeckMode::Spinning;
+        assert_eq!(look.face(CabButton::Spin), "spin_dim");
+        look.deck.mode = DeckMode::Base;
+        look.start_wait = true;
+        for wait in [0.1, 0.7, 1.6, 2.3] {
+            look.deck.wait_t = wait;
+            assert_eq!(look.face(CabButton::Spin), "spin_lit", "at {wait} s");
+        }
+        assert_eq!(look.ink(CabButton::Spin), Color::WHITE);
+        assert_eq!(look.words(CabButton::Spin)[0].0, "START");
+        look.deck.wait_t = 0.5;
+        assert_eq!(look.legend_turn(), 1.0);
+        look.deck.wait_t = 1.13;
+        assert!(look.legend_turn() < 0.05);
+        look.deck.wait_t = 1.27;
+        assert!(look.legend_turn() > 0.9);
+        look.deck.profile = Profile::Casino;
+        look.deck.wait_t = 0.2;
+        assert_eq!(look.face(CabButton::Spin), "spin_lit");
+        look.deck.wait_t = 0.7;
+        assert_eq!(look.face(CabButton::Spin), "spin_dim");
+        look.deck.wait_t = 1.13;
+        assert_eq!(look.legend_turn(), 1.0);
+        // The legend sits on the ring, 0.55 of the way down (cabinet
+        // 0.52-0.57 from the apex).
+        assert!((0.52..=0.57).contains(&((1.0 + TEARDROP_LEGEND_PAD) / 2.0)));
+    }
+
+    /// Club footage: every key lit at full brightness; GAMBLE purple and
+    /// TAKE WIN pale khaki with blue letters with no gamble offered; the
+    /// selected lines key light blue with white ink, the selected credits key
+    /// pale with a pink-red numeral, unoffered credits keys lit orange.
+    #[test]
+    fn every_key_is_lit_with_the_cabinets_faces() {
+        let look = club_look(DeckMode::Base);
+        let pack = |k: &str| {
+            matches!(
+                k,
+                "key_white" | "key_blue" | "key_red" | "key_purple" | "key_dark" | "card_back"
+            )
+        };
+        assert!(!look.deck.offer);
+        assert_eq!(
+            resolve_face(look.face(key(0, 0)), pack),
+            ("key_purple", Color::WHITE)
+        );
+        let (image, tint) = resolve_face(look.face(key(1, 0)), pack);
+        assert_eq!(image, "key_white");
+        let khaki = tint.to_srgba();
+        assert!(khaki.red > khaki.green && khaki.green > khaki.blue && khaki.blue > 0.5);
+        let ink = look.ink(key(1, 0)).to_srgba();
+        assert!(ink.blue > 0.9 && ink.red < 0.3);
+        assert_eq!(look.face(key(1, 3)), "key_lightblue");
+        assert_eq!(look.ink(key(1, 3)), Color::WHITE);
+        let (image, tint) = resolve_face("key_lightblue", pack);
+        assert_eq!(image, "key_white");
+        assert!(tint.to_srgba().red < 0.7);
+        assert_eq!(
+            resolve_face("key_lightblue", |_| true),
+            ("key_lightblue", Color::WHITE)
+        );
+        assert_eq!(look.face(key(0, 1)), "key_pale");
+        let numeral = look.ink(key(0, 1)).to_srgba();
+        assert!(numeral.red > 0.8 && numeral.green < 0.4);
+        assert_eq!(look.face(key(0, 2)), "key_red");
+        assert!(look.ink(key(0, 2)).to_srgba().blue > 0.9);
+        let mut dollar = look;
+        dollar.deck.cents = 100;
+        assert_eq!(dollar.shown(key(0, 5)), Role::Blank);
+        assert_eq!(
+            resolve_face(dollar.face(key(0, 5)), pack),
+            ("key_red", Color::WHITE)
+        );
+        assert!(dollar.words(key(0, 5)).is_empty());
+    }
+
+    /// Club footage: on the flash's plain half the pressable keys turn light
+    /// blue (the gamble's red choices lavender) with faint legends; on the
+    /// vivid half the gamble's red choices are orange and the black ones
+    /// dark, light-blue icons on both; a chosen key is steady light blue;
+    /// suits past the limit stay dark and still.
+    #[test]
+    fn the_flash_shows_light_blue_faces_with_faint_legends() {
+        let mut look = club_look(DeckMode::Base);
+        look.deck.offer = true;
+        look.deck.since = 0.2;
+        assert_eq!(look.face(key(1, 2)), "key_blue");
+        look.deck.since = 0.7;
+        assert_eq!(look.face(key(1, 2)), "key_lightblue");
+        assert_eq!(look.face(key(0, 0)), "key_lightblue");
+        assert_eq!(look.face(key(1, 0)), "key_lightblue");
+        assert!(!look.words(key(1, 2)).is_empty());
+        assert!((look.ink(key(1, 2)).alpha() - PLAIN_LEGEND_ALPHA).abs() < 1e-6);
+        assert_eq!(look.face(key(0, 3)), "key_red");
+        let mut g = club_look(DeckMode::Gamble);
+        let (hearts, clubs, black) = (key(0, 1), key(0, 4), key(1, 5));
+        g.deck.since = 0.2;
+        assert_eq!(g.face(hearts), "key_red");
+        assert_eq!(g.face(clubs), "key_dark");
+        assert_eq!(g.face(black), "key_dark");
+        let icon = g.ink(clubs).to_srgba();
+        assert!(icon.blue > 0.9 && icon.red > 0.5);
+        g.deck.since = 0.7;
+        assert_eq!(g.face(hearts), "key_lavender");
+        assert_eq!(g.face(clubs), "key_lightblue");
+        assert_eq!(g.face(key(0, 3)), "key_lattice");
+        g.chosen = Some(GamblePick::Clubs);
+        assert_eq!(g.face(clubs), "key_lightblue");
+        assert_eq!(g.face(hearts), "key_red");
+        g.chosen = None;
+        g.suits_open = false;
+        assert_eq!(g.face(hearts), "key_dark");
+        assert!(g.words(hearts).is_empty());
+        assert_eq!(g.face(key(1, 1)), "key_lavender");
+        // A pack without the lattice key shows the card back.
+        assert_eq!(
+            resolve_face("key_lattice", |k| k == "card_back"),
+            ("card_back", Color::WHITE)
+        );
+    }
+
+    /// Cabinet footage: keys about a tenth of a key apart, the teardrop
+    /// about 1.7 keys wide a quarter of a key clear of them.
+    #[test]
+    fn the_deck_keys_and_teardrop_are_spaced_as_on_the_cabinet() {
+        let (kw, _, gx, _) = DECK_KEY;
+        assert!((0.09..=0.14).contains(&(gx / kw)));
+        let shown = TEARDROP_VISIBLE * DECK_TEARDROP.0 / kw;
+        assert!((1.6..=1.75).contains(&shown));
+        assert!((0.2..=0.4).contains(&TEARDROP_GAP));
+        // Its node starts right of the keys.
+        assert!(TEARDROP_GAP * kw >= TEARDROP_INSET * DECK_TEARDROP.0);
     }
 
     /// Step a system message `secs` seconds in frames of 0.05 s.
