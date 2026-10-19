@@ -3006,6 +3006,8 @@ fn main() -> AppExit {
                 cabinet::clear_cells,
                 cabinet::update_meters,
                 cabinet::fit_jackpots,
+                cabinet::fit_reel_panel,
+                cabinet::lines_digits,
                 cabinet::attract_bar,
                 cabinet::additive_fire,
                 cabinet::machine_menu,

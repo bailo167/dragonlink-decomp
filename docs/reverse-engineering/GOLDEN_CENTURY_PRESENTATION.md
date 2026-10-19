@@ -59,6 +59,15 @@ refused until then.
 | Lines | Each winning line 43-45 frames in turn; its badges light twice; its winning symbols that do not animate blink out twice | VERIFIED |
 | Stacked wild | Two or three stacked emperors become the tall emperor only on a winning line, when the win would show, to SND_Wild_2 or SND_Wild_3 by height; the win waits 2.5 s; the animation runs at 20 fps. A stack on no winning line stays as heads | VERIFIED (2 cases) |
 
+**The cabinet's line pieces differ** (club footage rectified onto our canvas: `CAM8vranI9Y`,
+`y8c8lEdPW8Y`, `f5sMl9a5jds`). The badge is sized to the denomination's line configuration: about
+37x22 at 50 lines, 97x43 at 25 and 100x44 at 5 (STRONG). A line has one badge at 50 lines, one at
+25 lines except line 1, and both ends only at 5 lines (STRONG, 40 line wins); which end is fixed per
+line and differs between the 50- and 25-line maps (VERIFIED for the lines filmed; no rule fits).
+The badge sits outside the reel frame touching it, with a stub of its colour across the frame. The
+app draws them so ([GOLDEN_CENTURY_CABINET_DECK.md](GOLDEN_CENTURY_CABINET_DECK.md), "Win line
+pieces"); the mobile app's two large badges per line are gone.
+
 ## Free games
 
 | Step | Real app | Label |

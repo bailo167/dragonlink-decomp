@@ -63,6 +63,18 @@ owner; docs/DECISIONS.md). Every run muted. Progress, newest last:
   line first, with a 0.1 s "Game Over - Play Now" at each debit (VERIFIED). The message row's start
   prompt changes only at the first game start after a base game's win, never on a timer (STRONG;
   after a feature HYPOTHESIS). Unit tests cover each rule; checked on muted captures.
+- **Audit fixes: lines boxes and line badges.** The club's "N LINES" boxes are now the large
+  panels club footage shows (geometry STRONG, look VERIFIED on four machines): the game's own
+  lines-box fill, a gold rim, the inner edge under the reel frame, "50" over "LINES" at the
+  cabinet's glyph heights (the number in the game's own brush-serif numerals, Impact standing in
+  for "LINES"). Golden Gong, whose reel art
+  carries its own tabs, now has its reel panel fitted so the frame sits on the reels and its tabs
+  stand outside it, where the cabinet's boxes are; it gets no panels of ours. Winning lines show
+  the cabinet's pieces: badges sized to the denomination's line configuration (small at 50 lines,
+  wide at 25 and 5), one badge per line at 50 and 25 lines on the side filmed for that line (both
+  ends at 5 lines and for line 1 at 25), outside the frame with a stub across it (sizes and count
+  STRONG; sides VERIFIED for the lines filmed, unfilmed lines by parity HYPOTHESIS). Unit tests
+  cover the sizes, sides, crop and panel fit; checked on muted captures at 50, 25 and 5 lines.
 
 ## Project interpretation (owner reset, 2026-10-14)
 

@@ -165,8 +165,10 @@ pub enum CabMeter {
     Denom,
     /// "MIN BET 50" (casino) or "$1 = 100 Credits" (club) under the badge.
     MinBet,
-    /// "50 LINES" either side of the reels.
+    /// The "50" of "50 LINES" either side of the reels.
     Lines,
+    /// Its "LINES" ("LINE" for one).
+    LinesWord,
     /// "Bet Multiplier 5" above the strip.
     Multiplier,
 }
@@ -1317,14 +1319,22 @@ pub fn spawn(
                 1242.0,
             ));
 
-            // The reel panel and the payline tabs either side.
+            // Club: the "N LINES" panels either side, under the reel frame.
+            if profile == Profile::Club {
+                spawn_lines_panels(c, art);
+            }
+
+            // The reel panel (with the lines tabs, where its art has them).
             let (gx, gy) = GRID_CENTER;
-            c.spawn(sprite(
-                ui("reel_background"),
-                gx,
-                gy + 4.5 * PANEL_SCALE.1,
-                1240.0 * PANEL_SCALE.0,
-                629.0 * PANEL_SCALE.1,
+            c.spawn((
+                ReelPanel { fitted: false },
+                sprite(
+                    ui("reel_background"),
+                    gx,
+                    gy + 4.5 * PANEL_SCALE.1,
+                    1240.0 * PANEL_SCALE.0,
+                    629.0 * PANEL_SCALE.1,
+                ),
             ));
             // Hold & Spin: the whole grid goes dark slate (footage); the
             // coins sit on it, open positions show their symbol faintly.
@@ -1647,6 +1657,212 @@ fn status_text(s: &str, fonts: &CabFonts, profile: Profile, justify: Justify) ->
 pub struct StartPrompt {
     /// Which of the two prompts this is.
     which: u8,
+}
+
+/// The club's "N LINES" panels, left and right: (left edge, width) on the
+/// canvas, both from y 407, 204 tall. Club footage (CAM8vranI9Y,
+/// T49m2COe0Ho, y8c8lEdPW8Y, 1bAevGz0K2k, rectified onto our reel frame,
+/// within 3 px): with the outline, x 12-13 and 1901-1903, y 405-613; the
+/// inner edge runs under the frame, with no corner showing there.
+const LINES_PANELS: [(f32, f32); 2] = [(14.0, 136.0), (1762.0, 138.0)];
+const LINES_PANEL_TOP: f32 = 407.0;
+const LINES_PANEL_H: f32 = 204.0;
+/// The centres of the panels' text: "50" and "LINES" (footage: x 84 and
+/// 1831; y 478 and 550).
+const LINES_TEXT_X: [f32; 2] = [84.0, 1831.0];
+const LINES_TEXT_Y: (f32, f32) = (478.0, 550.0);
+
+/// The part of the game's own lines-box art (`payline_tab`) that fills a
+/// panel: its fill without the gold rim, with the bright band centred
+/// (measured on Golden Century's 111 x 225 image: x 14-78, y 14-211, the
+/// band 0.41 of the fill as on the cabinet's 0.40). The image's own
+/// proportions are taller and narrower than the cabinet's box, so only its
+/// fill is used. Another title's art is cropped in the same proportion.
+fn lines_panel_crop(size: (f32, f32)) -> Rect {
+    let (w, h) = size;
+    Rect::new(
+        w * 14.0 / 111.0,
+        h * 14.0 / 225.0,
+        w * 78.0 / 111.0,
+        h * 211.0 / 225.0,
+    )
+}
+
+/// Club: a large panel either side of the reels for "N LINES" (cabinet
+/// footage, four machines): the reels' own blue lattice fill (the game's
+/// lines-box art), a gold rim of about 10 px, gold outside and orange
+/// inside, in a thin dark outline. Spawned before the reel panel, so the
+/// frame covers its inner edge as the cabinet's does. The rim colours are
+/// our frame art's gold (the camera shifts the cabinet's). A title whose
+/// reel art carries its own lines tabs has no `payline_tab`, and no panels.
+fn spawn_lines_panels(c: &mut ChildSpawnerCommands, art: &ArtPack) {
+    let Some(fill) = art.ui.get("payline_tab") else {
+        return;
+    };
+    let crop = art.sizes.get("payline_tab").copied().map(lines_panel_crop);
+    for (left, width) in LINES_PANELS {
+        c.spawn((
+            Node {
+                position_type: PositionType::Absolute,
+                left: Val::Px(left),
+                top: Val::Px(LINES_PANEL_TOP),
+                width: Val::Px(width),
+                height: Val::Px(LINES_PANEL_H),
+                border: UiRect::all(Val::Px(5.0)),
+                border_radius: BorderRadius::all(Val::Px(14.0)),
+                ..default()
+            },
+            BorderColor::all(Color::srgb_u8(240, 200, 60)),
+            Outline::new(Val::Px(2.0), Val::ZERO, Color::srgb_u8(45, 15, 0)),
+        ))
+        .with_children(|b| {
+            b.spawn((
+                Node {
+                    width: Val::Percent(100.0),
+                    height: Val::Percent(100.0),
+                    border: UiRect::all(Val::Px(5.0)),
+                    border_radius: BorderRadius::all(Val::Px(9.0)),
+                    ..default()
+                },
+                BorderColor::all(Color::srgb_u8(170, 105, 20)),
+            ))
+            .with_children(|f| {
+                f.spawn((
+                    Node {
+                        width: Val::Percent(100.0),
+                        height: Val::Percent(100.0),
+                        ..default()
+                    },
+                    ImageNode {
+                        image: fill.clone(),
+                        rect: crop,
+                        image_mode: NodeImageMode::Stretch,
+                        ..default()
+                    },
+                ));
+            });
+        });
+    }
+}
+
+/// The reel panel's sprite, fitted once its image has loaded.
+#[derive(Component)]
+pub struct ReelPanel {
+    fitted: bool,
+}
+
+/// Where the opaque frame of a reel panel lies across its art, as fractions
+/// of the image's width (Golden Century's 749-pixel panel: opaque from x 2
+/// to 746; the four later titles' 1229-pixel panels agree within a pixel).
+const PANEL_FRAME: (f32, f32) = (2.0 / 749.0, 747.0 / 749.0);
+
+/// The (left, width) on the canvas of a reel panel whose art is `w` pixels
+/// wide with its frame opaque from `first` to `last` across a row above the
+/// lines tabs, given where every title's panel goes (`left0`, `width0`).
+/// None when the frame fills the image (no tabs: it stays where it is). A
+/// panel whose art carries the lines tabs either side (Golden Gong's) is
+/// drawn wider, so that its frame lands on the reels as every other title's
+/// does, and its tabs stand outside the frame.
+fn reel_panel_fit(w: f32, first: f32, last: f32, left0: f32, width0: f32) -> Option<(f32, f32)> {
+    let span = last + 1.0 - first;
+    if w <= 0.0 || span <= 0.0 || span >= w * (PANEL_FRAME.1 - PANEL_FRAME.0) * 0.98 {
+        return None;
+    }
+    let scale = width0 * (PANEL_FRAME.1 - PANEL_FRAME.0) / span;
+    Some((left0 + width0 * PANEL_FRAME.0 - first * scale, w * scale))
+}
+
+/// Fit the reel panel to its art once the image has loaded: a panel whose
+/// art carries the lines tabs is widened (see [`reel_panel_fit`]). The
+/// frame is read from the row at 15% of the image's height, above the tabs.
+pub fn fit_reel_panel(
+    images: Res<Assets<Image>>,
+    mut panels: Query<(&mut ReelPanel, &ImageNode, &mut Node)>,
+) {
+    for (mut panel, image_node, mut node) in &mut panels {
+        if panel.fitted {
+            continue;
+        }
+        let Some(image) = images.get(&image_node.image) else {
+            continue;
+        };
+        panel.fitted = true;
+        let Some((first, last)) = frame_span(image) else {
+            continue;
+        };
+        let (Val::Px(left0), Val::Px(width0)) = (node.left, node.width) else {
+            continue;
+        };
+        if let Some((left, width)) = reel_panel_fit(
+            image.width() as f32,
+            first as f32,
+            last as f32,
+            left0,
+            width0,
+        ) {
+            node.left = Val::Px(left);
+            node.width = Val::Px(width);
+        }
+    }
+}
+
+/// The first and last opaque pixel of a reel panel's frame, across the row
+/// at 15% of the image's height (above any lines tabs).
+fn frame_span(image: &Image) -> Option<(u32, u32)> {
+    let (w, h) = (image.width(), image.height());
+    let row = h * 3 / 20;
+    let opaque = |x: &u32| image.get_color_at(*x, row).is_ok_and(|c| c.alpha() > 0.5);
+    Some(((0..w).find(opaque)?, (0..w).rev().find(opaque)?))
+}
+
+/// The "N LINES" text for `lines` played: the number, and the word.
+fn lines_text(lines: u16) -> (String, &'static str) {
+    (lines.to_string(), if lines == 1 { "LINE" } else { "LINES" })
+}
+
+/// The height of a lines panel's numeral image: the banner numerals' gold
+/// is 31.5 px of each 45 px image, and the cabinet's "50" is 47 px tall.
+const LINES_DIGIT_H: f32 = 45.0 * 47.0 / 31.5;
+
+/// One numeral of a lines panel's number (club).
+#[derive(Component)]
+pub struct LinesDigit {
+    index: u8,
+}
+
+/// Club: the lines panels' number in the game's own banner numerals.
+pub fn lines_digits(
+    fidelity: Res<Fidelity>,
+    sim: Res<Sim>,
+    art: Res<ArtPack>,
+    mut digits: Query<(&LinesDigit, &mut ImageNode, &mut Node)>,
+) {
+    if !fidelity.0 {
+        return;
+    }
+    let number = lines_text(sim.game.lines()).0;
+    for (d, mut image, mut node) in &mut digits {
+        let glyph = number.chars().nth(d.index as usize).and_then(|c| {
+            let key = format!("bdigit_{c}");
+            art.ui.get(&key).zip(art.sizes.get(&key))
+        });
+        let Some((h, &(w, gh))) = glyph else {
+            if node.display != Display::None {
+                node.display = Display::None;
+            }
+            continue;
+        };
+        if image.image != *h {
+            image.image = h.clone();
+        }
+        let k = LINES_DIGIT_H / gh;
+        let (want_w, want_h) = (Val::Px(w * k), Val::Px(gh * k));
+        if node.width != want_w || node.height != want_h || node.display != Display::Flex {
+            node.width = want_w;
+            node.height = want_h;
+            node.display = Display::Flex;
+        }
+    }
 }
 
 /// The screen below the reels, laid out as the cabinet lays it out
@@ -2019,7 +2235,68 @@ fn spawn_meter_band(
         ),
     ));
 
-    // "N LINES" either side of the reels (footage, both presentations).
+    // "N LINES" either side of the reels. A title whose reel art carries
+    // its own lines tabs (no `payline_tab`: Golden Gong's, "50 LINES" in its
+    // art) has neither box nor text of ours.
+    if !art.ui.contains_key("payline_tab") {
+        return;
+    }
+    if club {
+        // On the panels (`spawn_lines_panels`), in the cabinet's sizes:
+        // "50" 47 px tall, "LINES" 34 px tall and about 95 wide (footage,
+        // three machines within 3 px). The cabinet's face is a gold brush
+        // serif; Impact stands in for it in "LINES".
+        let shadow = TextShadow {
+            offset: Vec2::new(2.0, 2.0),
+            color: Color::srgba(0.12, 0.05, 0.0, 0.9),
+        };
+        // The number in the game's own banner numerals where the pack has
+        // them (the cabinet's brush serif), else in Impact.
+        let numerals = (0..10).all(|d| art.ui.contains_key(&format!("bdigit_{d}")));
+        for cx in LINES_TEXT_X {
+            if numerals {
+                c.spawn(Node {
+                    position_type: PositionType::Absolute,
+                    left: Val::Px(cx - 60.0),
+                    top: Val::Px(LINES_TEXT_Y.0 - LINES_DIGIT_H / 2.0),
+                    width: Val::Px(120.0),
+                    height: Val::Px(LINES_DIGIT_H),
+                    justify_content: JustifyContent::Center,
+                    align_items: AlignItems::Center,
+                    ..default()
+                })
+                .with_children(|row| {
+                    for index in 0..2 {
+                        row.spawn((
+                            LinesDigit { index },
+                            Node {
+                                display: Display::None,
+                                ..default()
+                            },
+                            ImageNode {
+                                image_mode: NodeImageMode::Stretch,
+                                ..default()
+                            },
+                        ));
+                    }
+                });
+            } else {
+                c.spawn((
+                    CabMeter::Lines,
+                    label("50", font, 58.0, gold, cx, LINES_TEXT_Y.0, 120.0),
+                    shadow,
+                ));
+            }
+            c.spawn((
+                CabMeter::LinesWord,
+                label("LINES", font, 42.0, gold, cx, LINES_TEXT_Y.1, 120.0),
+                shadow,
+            ));
+        }
+        return;
+    }
+    // The casino style keeps its small dark box (its footage is not
+    // measured for this).
     for x in [68.0, CANVAS_W - 68.0] {
         c.spawn((
             Node {
@@ -2032,15 +2309,11 @@ fn spawn_meter_band(
         ));
         c.spawn((
             CabMeter::Lines,
-            label(
-                "50\nLINES",
-                font,
-                30.0,
-                gold,
-                x,
-                GRID_CENTER.1 - 14.0,
-                104.0,
-            ),
+            label("50", font, 30.0, gold, x, GRID_CENTER.1 - 14.0, 104.0),
+        ));
+        c.spawn((
+            CabMeter::LinesWord,
+            label("LINES", font, 30.0, gold, x, GRID_CENTER.1 + 22.0, 104.0),
         ));
     }
 }
@@ -2926,8 +3199,8 @@ pub fn update_meters(
                 )
             }
             CabMeter::MinBet => format!("MIN BET {}", sim.game.lines()),
-            CabMeter::Lines if sim.game.lines() == 1 => "1\nLINE".to_string(),
-            CabMeter::Lines => format!("{}\nLINES", sim.game.lines()),
+            CabMeter::Lines => lines_text(sim.game.lines()).0,
+            CabMeter::LinesWord => lines_text(sim.game.lines()).1.to_string(),
             CabMeter::Multiplier => show.caption(t).unwrap_or_else(|| {
                 let per_line = sim.game.credits_per_line();
                 let bet_line = match deck.profile {
@@ -8385,17 +8658,143 @@ const WIN_LINE_BLINK: [(f32, f32); 2] = [(0.33, 0.63), (0.97, 1.37)];
 fn in_spans(phase: f32, spans: &[(f32, f32)]) -> bool {
     spans.iter().any(|&(a, b)| phase >= a && phase < b)
 }
-/// The badge and dash sizes on the canvas (footage, scaled).
-const LINE_BADGE: (f32, f32) = (104.0, 80.0);
-const LINE_DASH: (f32, f32) = (52.0, 26.0);
+/// How a winning line is drawn in a line configuration (club footage,
+/// rectified onto our canvas: CAM8vranI9Y, y8c8lEdPW8Y, f5sMl9a5jds). Node
+/// sizes allow for the art's shaded rim (visible about 0.95 x 0.83 of the
+/// badge node, 0.88 x 0.78 of the dash's).
+#[derive(Clone, Copy, PartialEq, Debug)]
+struct LineLook {
+    /// The badge node: at 50 lines visible about 37 x 22 (three machines);
+    /// at 25 lines about 97 x 43 (two), and at 5 lines about 100 x 44 (one).
+    badge: (f32, f32),
+    /// The number's font size (digits about 14 px tall at 50 lines, 26 at
+    /// 25 and 5).
+    number: f32,
+    /// The dash in each gap (visible about 32 x 11 at 50 lines).
+    dash: (f32, f32),
+    /// The stub from the badge across the frame into the reel.
+    stub: (f32, f32),
+    /// Lines 1 to 5 show the art's own digit. Where the badge is far wider
+    /// than the art's proportions (25 and 5 lines) the digit would stretch,
+    /// so every line is the blank badge with its number set on it, and the
+    /// badge's rounded ends keep their shape (sliced).
+    own_digits: bool,
+}
+
+/// The line configuration a denomination plays, which the line pieces
+/// follow: 50 lines at 1c and 2c, 25 at 5c and 10c, 5 above. Club footage
+/// at 10c with 20 lines selected shows the 25-line badge (one case:
+/// HYPOTHESIS that the size follows the denomination, not the lines chosen).
+fn line_config(cents: u64) -> u16 {
+    lines_for(cents)
+}
+
+/// The line pieces' look in line configuration `config`.
+fn line_look(config: u16) -> LineLook {
+    if config >= 50 {
+        LineLook {
+            badge: (39.0, 27.0),
+            number: 20.0,
+            dash: (36.0, 14.0),
+            stub: (24.0, 8.0),
+            own_digits: true,
+        }
+    } else {
+        LineLook {
+            badge: (102.0, 52.0),
+            number: 38.0,
+            dash: (52.0, 26.0),
+            stub: (34.0, 16.0),
+            own_digits: false,
+        }
+    }
+}
+
+/// The badge's visible share of its node's width.
+const LINE_BADGE_VISIBLE: f32 = 0.95;
+/// The reel frame's outer gold on the canvas, left and right: every badge
+/// sits outside it, touching it (footage: the left badge's right edge at
+/// x 141-144, the right badge's left edge at x 1771-1775).
+const LINE_FRAME_OUTER: (f32, f32) = (142.0, 1771.0);
+
+/// The centre x of a badge `width` wide at the left or right end.
+fn line_badge_x(width: f32, right: bool) -> f32 {
+    let half = width * LINE_BADGE_VISIBLE / 2.0;
+    if right {
+        LINE_FRAME_OUTER.1 + half
+    } else {
+        LINE_FRAME_OUTER.0 - half
+    }
+}
+
+/// Which end of a line carries its one badge at 50 and 25 lines, by 1-based
+/// line number, as filmed (gameplay recordings y8c8lEdPW8Y, f5sMl9a5jds,
+/// CAM8vranI9Y: 40 line wins on three club machines; the side of a line
+/// agrees across machines). The two configurations have their own maps
+/// (lines 3, 7, 10 and 19 change sides). No simple rule fits: "left if the
+/// line is in the first half" fails 6 of 13 lines at 50 and 9 of 18 at 25.
+const SIDE_50_LEFT: [u16; 6] = [1, 3, 7, 17, 21, 23];
+const SIDE_50_RIGHT: [u16; 7] = [5, 10, 19, 20, 24, 25, 28];
+const SIDE_25_LEFT: [u16; 9] = [4, 9, 10, 11, 16, 17, 18, 19, 21];
+const SIDE_25_RIGHT: [u16; 8] = [2, 3, 7, 12, 13, 20, 22, 25];
+
+/// The ends of 1-based line `line` that carry a badge, (left, right), in
+/// line configuration `config`: both at 5 lines (seen 7 of 7 times); one at
+/// 25 lines, but both for line 1; one at 50 lines, line 1 included (no
+/// frame at 25 or 50 lines shows two badges for any other line).
+fn line_badge_ends(config: u16, line: u16) -> (bool, bool) {
+    let (left, right): (&[u16], &[u16]) = if config >= 50 {
+        (&SIDE_50_LEFT, &SIDE_50_RIGHT)
+    } else if config >= 25 && line != 1 {
+        (&SIDE_25_LEFT, &SIDE_25_RIGHT)
+    } else {
+        return (true, true);
+    };
+    if left.contains(&line) {
+        (true, false)
+    } else if right.contains(&line) {
+        (false, true)
+    } else {
+        // HYPOTHESIS: a line never filmed takes a side by its parity, odd
+        // left, which shares the badges between the two sides; nothing
+        // shows which side it really takes.
+        let odd = line % 2 == 1;
+        (odd, !odd)
+    }
+}
+
+/// The blank badge's rounded end, as a share of the art's width (Golden
+/// Century's 44 x 34 badge: about 14 px).
+const LINE_BADGE_END: f32 = 14.0 / 44.0;
+
+/// How a badge image of `width` art pixels is drawn: stretched where the
+/// art's digit is shown, otherwise sliced, its rounded ends scaled with
+/// the badge's height and only its middle stretched.
+fn line_badge_mode(look: &LineLook, width: Option<f32>) -> NodeImageMode {
+    match width {
+        Some(w) if !look.own_digits => NodeImageMode::Sliced(TextureSlicer {
+            border: BorderRect::axes(w * LINE_BADGE_END, 0.0),
+            center_scale_mode: SliceScaleMode::Stretch,
+            sides_scale_mode: SliceScaleMode::Stretch,
+            max_corner_scale: f32::MAX,
+        }),
+        _ => NodeImageMode::Stretch,
+    }
+}
 
 /// A badge at one end of the shown line.
 #[derive(Component)]
 pub struct LineBadge {
     right: bool,
 }
-/// The number on a badge (lines above five; the first five badges carry
-/// their own).
+/// The stub from a badge across the reel frame into the reel (footage: a
+/// short piece of the line's colour, at both ends where both are badged).
+#[derive(Component)]
+pub struct LineStub {
+    right: bool,
+}
+/// The number on a badge (at 50 lines, lines above five, the first five
+/// badges carrying their own digit; at 25 and 5 lines, every line).
 #[derive(Component)]
 pub struct LineBadgeNumber;
 /// The dash in one gap between reels.
@@ -8406,13 +8805,32 @@ pub struct LineDash {
 
 /// The pieces of the shown winning line, hidden until a line wins.
 pub fn spawn_win_lines(c: &mut ChildSpawnerCommands, font: &Handle<Font>) {
+    let look = line_look(50);
+    // The stubs first, so the badges cover their outer ends.
+    for right in [false, true] {
+        c.spawn((
+            LineStub { right },
+            Node {
+                position_type: PositionType::Absolute,
+                width: Val::Px(look.stub.0),
+                height: Val::Px(look.stub.1),
+                ..default()
+            },
+            ImageNode {
+                image_mode: NodeImageMode::Stretch,
+                ..default()
+            },
+            GlobalZIndex(6),
+            Visibility::Hidden,
+        ));
+    }
     for right in [false, true] {
         c.spawn((
             LineBadge { right },
             Node {
                 position_type: PositionType::Absolute,
-                width: Val::Px(LINE_BADGE.0),
-                height: Val::Px(LINE_BADGE.1),
+                width: Val::Px(look.badge.0),
+                height: Val::Px(look.badge.1),
                 justify_content: JustifyContent::Center,
                 align_items: AlignItems::Center,
                 ..default()
@@ -8430,7 +8848,7 @@ pub fn spawn_win_lines(c: &mut ChildSpawnerCommands, font: &Handle<Font>) {
                 Text::new(""),
                 TextFont {
                     font: bevy::text::FontSource::Handle(font.clone()),
-                    font_size: FontSize::Px(52.0),
+                    font_size: FontSize::Px(look.number),
                     ..default()
                 },
                 TextColor(Color::WHITE),
@@ -8446,8 +8864,8 @@ pub fn spawn_win_lines(c: &mut ChildSpawnerCommands, font: &Handle<Font>) {
             LineDash { gap },
             Node {
                 position_type: PositionType::Absolute,
-                width: Val::Px(LINE_DASH.0),
-                height: Val::Px(LINE_DASH.1),
+                width: Val::Px(look.dash.0),
+                height: Val::Px(look.dash.1),
                 ..default()
             },
             ImageNode {
@@ -8475,11 +8893,19 @@ pub fn win_lines(
     time: Res<Time>,
     smoke: Res<Smoke>,
     sim: Res<Sim>,
+    denom: Res<Denom>,
     art: Res<ArtPack>,
     gamble: Res<GambleShow>,
     mut show: ResMut<FeatureShow>,
-    mut badges: Query<(&LineBadge, &mut Node, &mut ImageNode, &mut Visibility), Without<LineDash>>,
-    mut numbers: Query<&mut Text, With<LineBadgeNumber>>,
+    mut badges: Query<
+        (&LineBadge, &mut Node, &mut ImageNode, &mut Visibility),
+        (Without<LineDash>, Without<LineStub>),
+    >,
+    mut stubs: Query<
+        (&LineStub, &mut Node, &mut ImageNode, &mut Visibility),
+        (Without<LineDash>, Without<LineBadge>),
+    >,
+    mut numbers: Query<(&mut Text, &mut TextFont), With<LineBadgeNumber>>,
     mut dashes: Query<
         (
             &LineDash,
@@ -8488,7 +8914,7 @@ pub fn win_lines(
             &mut UiTransform,
             &mut Visibility,
         ),
-        Without<LineBadge>,
+        (Without<LineBadge>, Without<LineStub>),
     >,
 ) {
     if !fidelity.0 {
@@ -8533,57 +8959,99 @@ pub fn win_lines(
         for (_, _, _, mut v) in &mut badges {
             set(&mut v, false);
         }
+        for (_, _, _, mut v) in &mut stubs {
+            set(&mut v, false);
+        }
         for (_, _, _, _, mut v) in &mut dashes {
             set(&mut v, false);
         }
         return;
     };
+    // The pieces follow the denomination's line configuration: their size,
+    // and how many badges a line has, and at which end.
+    let config = line_config(denom.cents());
+    let look = line_look(config);
+    let ends = line_badge_ends(config, line + 1);
     // The game's five line colours, by line number.
     let group = (line as usize % 5) + 1;
     let row_y = |reel: usize| {
         let row = rows.0.get(reel).copied().unwrap_or(1);
         cell_center(reel as u8, row).1
     };
-    let badge_key = if line < 5 {
+    let end_reel = |right: bool| {
+        if right {
+            rows.0.len().saturating_sub(1)
+        } else {
+            0
+        }
+    };
+    let shown = |right: bool| if right { ends.1 } else { ends.0 };
+    let digit = look.own_digits && line < 5;
+    let badge_key = if digit {
         format!("line{group}")
     } else {
         format!("line_blank{group}")
     };
-    let tab_x = 2.0 * PITCH.0 + 196.0;
+    let mode = line_badge_mode(&look, art.sizes.get(&badge_key).map(|s| s.0));
     for (b, mut node, mut image, mut vis) in &mut badges {
-        let reel = if b.right {
-            rows.0.len().saturating_sub(1)
-        } else {
-            0
-        };
-        let x = GRID_CENTER.0 + if b.right { tab_x } else { -tab_x };
-        node.left = Val::Px(x - LINE_BADGE.0 / 2.0);
-        node.top = Val::Px(row_y(reel) - LINE_BADGE.1 / 2.0);
+        let x = line_badge_x(look.badge.0, b.right);
+        node.width = Val::Px(look.badge.0);
+        node.height = Val::Px(look.badge.1);
+        node.left = Val::Px(x - look.badge.0 / 2.0);
+        node.top = Val::Px(row_y(end_reel(b.right)) - look.badge.1 / 2.0);
         if let Some(h) = art.ui.get(&badge_key)
             && image.image != *h
         {
             image.image = h.clone();
         }
-        set(&mut vis, true);
+        if image.image_mode != mode {
+            image.image_mode = mode.clone();
+        }
+        set(&mut vis, shown(b.right));
     }
-    let number = if line < 5 {
+    let number = if digit {
         String::new()
     } else {
         (line + 1).to_string()
     };
-    for mut t in &mut numbers {
+    for (mut t, mut font) in &mut numbers {
         if t.0 != number {
             t.0 = number.clone();
         }
+        if font.font_size != FontSize::Px(look.number) {
+            font.font_size = FontSize::Px(look.number);
+        }
     }
     let dash_key = format!("line{group}_s");
+    // A stub from each badge across the frame into the reel, tucked 4 px
+    // under the badge.
+    for (s, mut node, mut image, mut vis) in &mut stubs {
+        let (w, h) = look.stub;
+        let left = if s.right {
+            LINE_FRAME_OUTER.1 + 4.0 - w
+        } else {
+            LINE_FRAME_OUTER.0 - 4.0
+        };
+        node.width = Val::Px(w);
+        node.height = Val::Px(h);
+        node.left = Val::Px(left);
+        node.top = Val::Px(row_y(end_reel(s.right)) - h / 2.0);
+        if let Some(handle) = art.ui.get(&dash_key)
+            && image.image != *handle
+        {
+            image.image = handle.clone();
+        }
+        set(&mut vis, shown(s.right));
+    }
     for (d, mut node, mut image, mut transform, mut vis) in &mut dashes {
         let a = d.gap as usize;
         let (y0, y1) = (row_y(a), row_y(a + 1));
         let x = (cell_center(d.gap, 0).0 + cell_center(d.gap + 1, 0).0) / 2.0;
         let y = (y0 + y1) / 2.0;
-        node.left = Val::Px(x - LINE_DASH.0 / 2.0);
-        node.top = Val::Px(y - LINE_DASH.1 / 2.0);
+        node.width = Val::Px(look.dash.0);
+        node.height = Val::Px(look.dash.1);
+        node.left = Val::Px(x - look.dash.0 / 2.0);
+        node.top = Val::Px(y - look.dash.1 / 2.0);
         // Slanted where the line steps between rows.
         let angle = (y1 - y0).atan2(PITCH.0);
         let want = UiTransform {
@@ -9841,6 +10309,206 @@ mod tests {
         assert_eq!(line_win_note(12, 20), "Line 13 wins 20");
         assert_eq!(line_win_note(3, 100), "Line 4 wins 100");
         assert_eq!(line_win_note(0, 1000), "Line 1 wins 1000");
+    }
+
+    /// The line pieces follow the denomination's line configuration (50 at
+    /// 1c and 2c, 25 at 5c and 10c, 5 at $1), in the sizes measured on club
+    /// footage: a small badge at 50 lines, a wide one at 25 and 5.
+    #[test]
+    fn line_pieces_are_sized_to_the_denominations_line_configuration() {
+        assert_eq!(line_config(1), 50);
+        assert_eq!(line_config(2), 50);
+        assert_eq!(line_config(5), 25);
+        assert_eq!(line_config(10), 25);
+        assert_eq!(line_config(100), 5);
+        let fifty = line_look(50);
+        assert_eq!(fifty.badge, (39.0, 27.0));
+        assert_eq!(fifty.number, 20.0);
+        assert_eq!(fifty.dash, (36.0, 14.0));
+        assert!(fifty.own_digits);
+        let wide = line_look(25);
+        assert_eq!(wide.badge, (102.0, 52.0));
+        assert_eq!(wide.number, 38.0);
+        assert_eq!(wide.dash, (52.0, 26.0));
+        assert!(!wide.own_digits);
+        assert_eq!(line_look(5), wide);
+        // The badge's visible part touches the frame's outer gold from
+        // outside: x 142 on the left, 1771 on the right.
+        for look in [fifty, wide] {
+            let half = look.badge.0 * LINE_BADGE_VISIBLE / 2.0;
+            assert!((line_badge_x(look.badge.0, false) + half - 142.0).abs() < 1e-3);
+            assert!((line_badge_x(look.badge.0, true) - half - 1771.0).abs() < 1e-3);
+        }
+        // 50 lines: centres about 123 and 1790; 25 and 5: about 93 and 1820.
+        assert!((line_badge_x(39.0, false) - 123.0).abs() < 1.0);
+        assert!((line_badge_x(39.0, true) - 1790.0).abs() < 1.0);
+        assert!((line_badge_x(102.0, false) - 93.0).abs() < 1.0);
+        assert!((line_badge_x(102.0, true) - 1820.0).abs() < 1.0);
+    }
+
+    /// One badge per line at 50 and 25 lines, on the side footage shows for
+    /// each filmed line; both ends at 5 lines, and for line 1 at 25.
+    #[test]
+    fn a_line_has_one_badge_at_50_and_25_lines_on_its_filmed_side() {
+        for line in SIDE_50_LEFT {
+            assert_eq!(line_badge_ends(50, line), (true, false), "line {line}");
+        }
+        for line in SIDE_50_RIGHT {
+            assert_eq!(line_badge_ends(50, line), (false, true), "line {line}");
+        }
+        for line in SIDE_25_LEFT {
+            assert_eq!(line_badge_ends(25, line), (true, false), "line {line}");
+        }
+        for line in SIDE_25_RIGHT {
+            assert_eq!(line_badge_ends(25, line), (false, true), "line {line}");
+        }
+        // The filmed cases named in the evidence.
+        assert_eq!(line_badge_ends(50, 23), (true, false));
+        assert_eq!(line_badge_ends(50, 28), (false, true));
+        assert_eq!(line_badge_ends(25, 13), (false, true));
+        // Line 1: one badge at 50 lines, both at 25.
+        assert_eq!(line_badge_ends(50, 1), (true, false));
+        assert_eq!(line_badge_ends(25, 1), (true, true));
+        // Exactly one end for every other line, filmed or not.
+        for line in 1..=50 {
+            let (l, r) = line_badge_ends(50, line);
+            assert!(l != r, "50 lines, line {line}");
+        }
+        for line in 2..=25 {
+            let (l, r) = line_badge_ends(25, line);
+            assert!(l != r, "25 lines, line {line}");
+        }
+        // 5 lines: both ends, every line.
+        for line in 1..=5 {
+            assert_eq!(line_badge_ends(5, line), (true, true));
+        }
+        // No line is on both lists of a configuration.
+        assert!(SIDE_50_LEFT.iter().all(|l| !SIDE_50_RIGHT.contains(l)));
+        assert!(SIDE_25_LEFT.iter().all(|l| !SIDE_25_RIGHT.contains(l)));
+    }
+
+    /// The wide badges are the blank badge, sliced so its rounded ends keep
+    /// their shape; the small one is the art stretched, with its own digit.
+    #[test]
+    fn wide_line_badges_are_sliced() {
+        match line_badge_mode(&line_look(25), Some(44.0)) {
+            NodeImageMode::Sliced(s) => {
+                assert_eq!(s.border, BorderRect::axes(14.0, 0.0));
+                assert!(s.max_corner_scale > 2.0);
+            }
+            other => panic!("expected sliced, got {other:?}"),
+        }
+        assert_eq!(
+            line_badge_mode(&line_look(50), Some(44.0)),
+            NodeImageMode::Stretch
+        );
+        assert_eq!(
+            line_badge_mode(&line_look(25), None),
+            NodeImageMode::Stretch
+        );
+    }
+
+    /// The club's lines panels: large, from y 407 to 611 about the middle
+    /// row, their inner edges under the reel frame (outer gold at x 141 and
+    /// 1772), outlined out to x 12 and 1902.
+    #[test]
+    fn the_lines_panels_run_under_the_reel_frame() {
+        let [(l0, w0), (l1, w1)] = LINES_PANELS;
+        assert_eq!(l0 - 2.0, 12.0);
+        assert!(l0 + w0 > 141.0 + 5.0);
+        assert!(l1 < 1772.0 - 5.0);
+        assert_eq!(l1 + w1 + 2.0, 1902.0);
+        assert_eq!(LINES_PANEL_TOP + LINES_PANEL_H / 2.0, 509.0);
+        // The text sits on the panels' visible parts.
+        assert!(LINES_TEXT_X[0] > l0 && LINES_TEXT_X[0] < 141.0);
+        assert!(LINES_TEXT_X[1] > 1772.0 && LINES_TEXT_X[1] < l1 + w1);
+        assert!(
+            LINES_TEXT_Y.0 > LINES_PANEL_TOP && LINES_TEXT_Y.1 < LINES_PANEL_TOP + LINES_PANEL_H
+        );
+        // The numerals' gold (31.5 px of each 45 px image) comes out at the
+        // cabinet's 47 px.
+        assert!((LINES_DIGIT_H * 31.5 / 45.0 - 47.0).abs() < 1e-3);
+        assert_eq!(lines_text(50), ("50".to_string(), "LINES"));
+        assert_eq!(lines_text(1), ("1".to_string(), "LINE"));
+    }
+
+    /// The panel fill is the lines-box art's fill, cropped the same way at
+    /// any size.
+    #[test]
+    fn the_lines_panel_fill_is_cropped_in_proportion() {
+        assert_eq!(
+            lines_panel_crop((111.0, 225.0)),
+            Rect::new(14.0, 14.0, 78.0, 211.0)
+        );
+        let small = lines_panel_crop((67.0, 137.0));
+        assert!((small.min.x - 8.45).abs() < 0.01 && (small.max.y - 128.48).abs() < 0.01);
+    }
+
+    /// A reel panel whose art is the frame alone stays put; one that also
+    /// carries the lines tabs is drawn wider so its frame lands where every
+    /// other title's frame lands.
+    #[test]
+    fn a_reel_panel_with_its_own_lines_tabs_is_widened_to_fit_the_reels() {
+        let (left0, width0) = (960.0 - 620.0 * PANEL_SCALE.0, 1240.0 * PANEL_SCALE.0);
+        // Golden Century's frame-only art, and the later titles'.
+        assert_eq!(reel_panel_fit(749.0, 2.0, 746.0, left0, width0), None);
+        assert_eq!(reel_panel_fit(1229.0, 3.0, 1224.0, left0, width0), None);
+        // Golden Gong's: 1369 wide, the frame opaque from 70 to 1298.
+        let (left, width) = reel_panel_fit(1369.0, 70.0, 1298.0, left0, width0).unwrap();
+        let scale = width / 1369.0;
+        let frame_left = left + 70.0 * scale;
+        let frame_right = left + 1299.0 * scale;
+        assert!((frame_left - (left0 + width0 * PANEL_FRAME.0)).abs() < 0.01);
+        assert!((frame_right - (left0 + width0 * PANEL_FRAME.1)).abs() < 0.01);
+        // Its tabs stand outside the frame, out to x 48 or so.
+        assert!(left > 40.0 && left < 60.0, "left {left}");
+        // Degenerate input changes nothing.
+        assert_eq!(reel_panel_fit(0.0, 0.0, 0.0, left0, width0), None);
+        assert_eq!(reel_panel_fit(100.0, 50.0, 40.0, left0, width0), None);
+    }
+
+    /// The frame is found across a row above the tabs: in a synthetic panel
+    /// with tabs lower down, the row at 15% of the height spans the frame.
+    #[test]
+    fn the_frame_span_is_read_above_the_tabs() {
+        use bevy::asset::RenderAssetUsages;
+        use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};
+        let (w, h) = (40u32, 20u32);
+        let mut image = Image::new_fill(
+            Extent3d {
+                width: w,
+                height: h,
+                depth_or_array_layers: 1,
+            },
+            TextureDimension::D2,
+            &[0, 0, 0, 0],
+            TextureFormat::Rgba8UnormSrgb,
+            RenderAssetUsages::all(),
+        );
+        for y in 0..h {
+            // The frame from x 6 to 33; tabs out to the edges from y 8 to 12.
+            let (a, b) = if (8..=12).contains(&y) {
+                (0, w - 1)
+            } else {
+                (6, 33)
+            };
+            for x in a..=b {
+                image.set_color_at(x, y, Color::WHITE).unwrap();
+            }
+        }
+        assert_eq!(frame_span(&image), Some((6, 33)));
+        let empty = Image::new_fill(
+            Extent3d {
+                width: 4,
+                height: 4,
+                depth_or_array_layers: 1,
+            },
+            TextureDimension::D2,
+            &[0, 0, 0, 0],
+            TextureFormat::Rgba8UnormSrgb,
+            RenderAssetUsages::all(),
+        );
+        assert_eq!(frame_span(&empty), None);
     }
 
     /// At rest the status line shows the bet line for two seconds, then
