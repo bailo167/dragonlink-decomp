@@ -71,8 +71,11 @@ const STAKES: [(&str, u32, usize, u16); 8] = [
     ("$1 10x5", 100, 5, 5),
 ];
 
+/// A title's slug and a constructor for a fresh model of it.
+type Title = (&'static str, fn() -> dragonlink_model::MathModel);
+
 /// Every title the app plays, by its slug.
-fn all_titles() -> [(&'static str, fn() -> dragonlink_model::MathModel); 8] {
+fn all_titles() -> [Title; 8] {
     use dragonlink_model::fixtures::{
         autumn_moon_synthetic, genghis_khan_synthetic, golden_gong_synthetic,
         happy_prosperous_synthetic, panda_magic_synthetic, peace_long_life_synthetic,
