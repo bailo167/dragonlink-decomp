@@ -506,7 +506,7 @@ note = "Parameterised respin loop with tests; trigger count, respins, chances an
 id = "jackpots"
 name = "Jackpot model and presentation"
 status = "partial"
-note = "Four tiers on a jackpot bar, awarded in Hold & Spin (full grid awards the Grand). Golden Century: Mini and Minor fixed by denomination as club footage shows them (1,000 / 5,000 credits to 10c, 250 / 1,250 at $1); Major and Grand progressive meters the core pays and restarts, climbing irregularly in the app. Meter start values, rates, restarts and ceilings are synthetic; odds unknown."
+note = "Four tiers on a jackpot bar, awarded in Hold & Spin (full grid awards the Grand). Golden Century: Mini and Minor fixed by denomination as club footage shows them (1,000 / 5,000 credits to 10c, 250 / 1,250 at $1); Major and Grand progressive meters the core pays and restarts, climbing a cent or two every few seconds in the app with rolling figures; the Grand restarts at $10,000 as filmed. Meter openings, exact rates, the Major's restart and the ceilings are synthetic; odds unknown."
 
 [[category.item]]
 id = "free-games"
@@ -610,7 +610,7 @@ note = "Presentation follows the official app recording step by step (trigger, r
 id = "jackpots"
 name = "Jackpot levels and presentation"
 status = "partial"
-note = "Australia, from public footage: Grand and Major are running meters; Mini and Minor are fixed per denomination (1,000 and 5,000 credits up to 10c; 250 and 1,250 at $1). Strong evidence the Grand is linked and the Major stand-alone. Start-up values, rates and ceilings not public. Implemented: the Mini and Minor footage values by denomination; Major and Grand meters the core pays and restarts and the app climbs; each jackpot's chance the stake over its prize, so the return is about 90% at every bet (the national standard's rule). The meters' openings, climb, restarts and ceilings, the chances and the odds are synthetic; presentation not compared side by side."
+note = "Australia, from public footage: Grand and Major are running meters; Mini and Minor are fixed per denomination (1,000 and 5,000 credits up to 10c; 250 and 1,250 at $1). Strong evidence the Grand is linked and the Major stand-alone. Start-up values, rates and ceilings not public. Implemented: the Mini and Minor footage values by denomination; Major and Grand meters the core pays and restarts and the app climbs at the club machines' order of rate, rolling changed figures as filmed, the Grand restarting at $10,000 as filmed; each jackpot's chance the stake over its prize, so the return is about 90% at every bet (the national standard's rule); through Hold & Spin the cabinet's COLLECTED disc with the corner jackpots, a Major first on its own plaque, the Grand under the fire with its status and attendant lines. The meters' openings, exact rates, the Major's restart and the ceilings, the chances and the odds are synthetic; presentation not compared side by side."
 
 [[category.item]]
 id = "free-games"

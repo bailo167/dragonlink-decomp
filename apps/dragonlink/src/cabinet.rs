@@ -1210,10 +1210,12 @@ fn jackpot_value_colour(tier: JackpotTier) -> Color {
     }
 }
 
-/// A jackpot value's box width, in canvas pixels.
+/// A jackpot value's box width, in canvas pixels, and its largest type
+/// size.
 #[derive(Component)]
 pub struct JackpotFit {
     width: f32,
+    max: f32,
 }
 
 /// A value's width in ems in the jackpot values' heavy face (Arial Black's
@@ -1224,13 +1226,14 @@ fn meter_ems(text: &str) -> f32 {
         .sum()
 }
 
-/// The type size that keeps `text` inside a box `width` wide.
-fn jackpot_value_size(text: &str, width: f32) -> f32 {
+/// The type size, at most `max`, that keeps `text` inside a box `width`
+/// wide.
+fn jackpot_value_size(text: &str, width: f32, max: f32) -> f32 {
     let ems = meter_ems(text);
     if ems <= 0.0 {
-        return JACKPOT_VALUE_SIZE;
+        return max;
     }
-    JACKPOT_VALUE_SIZE.min(width * JACKPOT_VALUE_FILL / ems)
+    max.min(width * JACKPOT_VALUE_FILL / ems)
 }
 
 /// Set each jackpot value small enough to stay inside its box.
@@ -1242,11 +1245,11 @@ pub fn fit_jackpots(
         return;
     }
     for (fit, text, mut font, mut node) in &mut values {
-        let size = jackpot_value_size(&text.0, fit.width);
+        let size = jackpot_value_size(&text.0, fit.width, fit.max);
         if font.font_size != FontSize::Px(size) {
             let old = match font.font_size {
                 FontSize::Px(px) => px,
-                _ => JACKPOT_VALUE_SIZE,
+                _ => fit.max,
             };
             font.font_size = FontSize::Px(size);
             // Keep the value on the same middle line.
@@ -1255,6 +1258,275 @@ pub fn fit_jackpots(
             }
         }
     }
+}
+
+/// How long a changed figure of a progressive's value takes to roll, and
+/// how many figures a value may have. On a club cabinet the changed figure
+/// rolls up inside its box: the old one rises out of sight, the new one
+/// rises from below, clipped to the box, easing at both ends, over about
+/// 0.35-0.40 s; one-cent steps follow each other at once (y8c8lEdPW8Y,
+/// m_top1.jpg and two rolls at 30 fps in its 1105-1122 s section: .71 to
+/// .72 over 11-12 frames, .72 to .73 over 10-11; VERIFIED there). What a
+/// carry does was not seen: every changed figure rolls (HYPOTHESIS).
+const ROLL_SECONDS: f32 = 0.37;
+const ROLL_SLOTS: u8 = 12;
+/// The value box the figures roll inside: the dark panel under each
+/// level's title, rows 40-90 of the jackpot bar's 104 (every pack's bar).
+const ROLL_CLIP: (f32, f32) = (40.0 / 104.0, 90.0 / 104.0);
+
+/// A progressive's value as it rolls from one string to the next.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct Roll {
+    from: String,
+    to: String,
+    t: f32,
+}
+
+/// Where one figure of a rolling value is: its character and its offset in
+/// line heights (0 in place, positive below), and the character it replaces
+/// with that one's offset, while it rolls.
+#[derive(Clone, Debug, PartialEq)]
+pub struct RollPose {
+    pub now: char,
+    pub now_y: f32,
+    pub old: Option<(char, f32)>,
+}
+
+impl Roll {
+    /// Follow the value the meter shows: a change starts a roll from the
+    /// value last shown in full (a roll still running ends at once).
+    pub fn follow(&mut self, text: &str) {
+        if self.to == text {
+            return;
+        }
+        if self.to.is_empty() || self.to == "-" {
+            // The first value (after the placeholder) shows as it is.
+            self.from = text.to_string();
+            self.t = ROLL_SECONDS;
+        } else {
+            self.from = std::mem::take(&mut self.to);
+            self.t = 0.0;
+        }
+        self.to = text.to_string();
+    }
+
+    pub fn advance(&mut self, dt: f32) {
+        self.t = (self.t + dt).min(ROLL_SECONDS);
+    }
+
+    /// Each figure's pose now. The old value lines up with the new from the
+    /// right (the cents stay in place when a figure is added).
+    pub fn poses(&self) -> Vec<RollPose> {
+        let x = (self.t / ROLL_SECONDS).clamp(0.0, 1.0);
+        let e = x * x * (3.0 - 2.0 * x);
+        let old: Vec<char> = self.from.chars().collect();
+        let new: Vec<char> = self.to.chars().collect();
+        let shift = new.len() as isize - old.len() as isize;
+        new.iter()
+            .enumerate()
+            .map(|(i, &c)| {
+                let was = usize::try_from(i as isize - shift)
+                    .ok()
+                    .and_then(|j| old.get(j).copied());
+                let rolling = x < 1.0 && was != Some(c);
+                RollPose {
+                    now: c,
+                    now_y: if rolling { 1.0 - e } else { 0.0 },
+                    old: if rolling { was.map(|w| (w, -e)) } else { None },
+                }
+            })
+            .collect()
+    }
+}
+
+/// A progressive's value drawn as rolling figures over its meter, whose
+/// own text stays hidden (its size still fitted to the box).
+#[derive(Component)]
+pub struct JackpotRoll {
+    source: Entity,
+    roll: Roll,
+    /// The box's top and height on the canvas.
+    clip: (f32, f32),
+}
+/// One figure of a rolling value: its slot, and whether it is the figure
+/// leaving.
+#[derive(Component)]
+pub struct RollGlyph {
+    slot: u8,
+    old: bool,
+}
+
+/// The rolling figures for the meter `source`: a row across the value's
+/// box (`cx`, `w`; `clip` its top and height), one clipped slot a figure,
+/// each holding the figure coming (in the row's flow) and the figure
+/// leaving.
+fn spawn_roll(
+    c: &mut ChildSpawnerCommands,
+    source: Entity,
+    font: &Handle<Font>,
+    colour: Color,
+    (cx, w): (f32, f32),
+    clip: (f32, f32),
+) {
+    let glyph = |slot: u8, old: bool| {
+        (
+            RollGlyph { slot, old },
+            Text::new(""),
+            TextFont {
+                font: bevy::text::FontSource::Handle(font.clone()),
+                font_size: FontSize::Px(JACKPOT_VALUE_SIZE),
+                ..default()
+            },
+            TextColor(colour),
+            TextShadow {
+                offset: Vec2::new(2.0, 2.0),
+                color: Color::srgba(0.03, 0.03, 0.05, 0.9),
+            },
+            Node {
+                position_type: if old {
+                    PositionType::Absolute
+                } else {
+                    PositionType::Relative
+                },
+                left: Val::Px(0.0),
+                top: Val::Px(0.0),
+                ..default()
+            },
+        )
+    };
+    c.spawn((
+        JackpotRoll {
+            source,
+            roll: Roll::default(),
+            clip,
+        },
+        Node {
+            position_type: PositionType::Absolute,
+            left: Val::Px(cx - w / 2.0),
+            top: Val::Px(clip.0),
+            width: Val::Px(w),
+            height: Val::Px(clip.1),
+            flex_direction: FlexDirection::Row,
+            justify_content: JustifyContent::Center,
+            align_items: AlignItems::FlexStart,
+            ..default()
+        },
+    ))
+    .with_children(|r| {
+        for slot in 0..ROLL_SLOTS {
+            r.spawn(Node {
+                height: Val::Percent(100.0),
+                flex_shrink: 0.0,
+                overflow: Overflow::clip(),
+                ..default()
+            })
+            .with_children(|s| {
+                s.spawn(glyph(slot, false));
+                s.spawn(glyph(slot, true));
+            });
+        }
+    });
+}
+
+/// Roll each progressive's changed figures (after the meters are written
+/// and fitted): each figure at its meter's size, where the meter's own
+/// text would draw it, offset by its pose (a box's height a step).
+#[allow(clippy::type_complexity)]
+pub fn roll_jackpots(
+    fidelity: Res<Fidelity>,
+    time: Res<Time>,
+    smoke: Res<Smoke>,
+    sources: Query<(&Text, &TextFont, &Node), (With<JackpotFit>, Without<RollGlyph>)>,
+    mut rows: Query<
+        (Entity, &mut JackpotRoll, &mut Node),
+        (Without<JackpotFit>, Without<RollGlyph>),
+    >,
+    parents: Query<&ChildOf>,
+    mut glyphs: Query<
+        (
+            Entity,
+            &RollGlyph,
+            &mut Text,
+            &mut TextFont,
+            &mut Node,
+            &mut Visibility,
+        ),
+        (Without<JackpotFit>, Without<JackpotRoll>),
+    >,
+) {
+    if !fidelity.0 {
+        return;
+    }
+    let dt = smoke.dt(&time);
+    for (row_id, mut row, mut node) in &mut rows {
+        let Ok((text, font, source_node)) = sources.get(row.source) else {
+            continue;
+        };
+        row.roll.follow(&text.0);
+        row.roll.advance(dt);
+        let size = match font.font_size {
+            FontSize::Px(px) => px,
+            _ => JACKPOT_VALUE_SIZE,
+        };
+        let (clip_top, clip_h) = row.clip;
+        let base = match source_node.top {
+            Val::Px(top) => top - clip_top,
+            _ => 0.0,
+        };
+        if node.top != Val::Px(clip_top) {
+            node.top = Val::Px(clip_top);
+        }
+        let poses = row.roll.poses();
+        for (id, g, mut t, mut f, mut n, mut vis) in &mut glyphs {
+            // This row's figures only (glyph, slot, row).
+            let row_of = parents
+                .get(id)
+                .and_then(|slot| parents.get(slot.parent()))
+                .map(|r| r.parent());
+            if row_of != Ok(row_id) {
+                continue;
+            }
+            let pose = poses.get(usize::from(g.slot));
+            let (ch, y, show) = match (pose, g.old) {
+                (Some(p), false) => (Some(p.now), p.now_y, true),
+                (
+                    Some(RollPose {
+                        old: Some((c, y)), ..
+                    }),
+                    true,
+                ) => (Some(*c), *y, true),
+                _ => (None, 0.0, false),
+            };
+            let want: String = ch.map(String::from).unwrap_or_default();
+            if t.0 != want {
+                t.0 = want;
+            }
+            if f.font_size != FontSize::Px(size) {
+                f.font_size = FontSize::Px(size);
+            }
+            let top = Val::Px(base + y * clip_h);
+            if n.top != top {
+                n.top = top;
+            }
+            let v = if show {
+                Visibility::Inherited
+            } else {
+                Visibility::Hidden
+            };
+            if *vis != v {
+                *vis = v;
+            }
+        }
+    }
+}
+
+/// Whether the model's `tier` is a running (progressive) meter.
+fn is_progressive(model: &MathModel, tier: JackpotTier) -> bool {
+    model
+        .hold_and_spin
+        .as_ref()
+        .and_then(|hs| hs.jackpots.iter().find(|j| j.tier == tier))
+        .is_some_and(|j| j.progressive_reset.is_some())
 }
 
 /// A text block of width `w` centred at `(cx, cy)`.
@@ -1447,16 +1719,23 @@ pub fn spawn(
             // y 73-117 (measured on a capture; the app's centre is 93.4).
             for (tier, (left, right)) in JACKPOT_BOXES {
                 let width = (right - left) * k;
-                c.spawn((
+                let (cx, cy) = (
+                    960.0 - bar_w / 2.0 + (left + right) / 2.0 * k,
+                    bar_top + 64.5 * k,
+                );
+                let mut value = c.spawn((
                     JackpotMeter { tier },
-                    JackpotFit { width },
+                    JackpotFit {
+                        width,
+                        max: JACKPOT_VALUE_SIZE,
+                    },
                     label(
                         "-",
                         &fonts.heavy,
                         JACKPOT_VALUE_SIZE,
                         jackpot_value_colour(tier),
-                        960.0 - bar_w / 2.0 + (left + right) / 2.0 * k,
-                        bar_top + 64.5 * k,
+                        cx,
+                        cy,
                         width,
                     ),
                     TextShadow {
@@ -1464,7 +1743,27 @@ pub fn spawn(
                         color: Color::srgba(0.03, 0.03, 0.05, 0.9),
                     },
                 ));
+                // A running meter's figures roll as they change (drawn by
+                // `roll_jackpots` over its hidden text).
+                if is_progressive(model, tier) {
+                    value.insert(Visibility::Hidden);
+                    let source = value.id();
+                    spawn_roll(
+                        c,
+                        source,
+                        &fonts.heavy,
+                        jackpot_value_colour(tier),
+                        (cx, width),
+                        (
+                            bar_top + bar_h * ROLL_CLIP.0,
+                            bar_h * (ROLL_CLIP.1 - ROLL_CLIP.0),
+                        ),
+                    );
+                }
             }
+
+            // Through Hold & Spin, the collected-coin disc over the bar.
+            spawn_hs_collected(c, art, fonts);
 
             spawn_meter_band(c, fonts, art, gold, pale, profile);
 
@@ -2627,7 +2926,9 @@ pub fn system_message(
             offer: deck.offer && show.stage == Stage::Base,
             credit,
         });
-        slot.showing().text()
+        // A Grand calls the attendant from its award until the next game.
+        show.grand_call(cents)
+            .unwrap_or_else(|| slot.showing().text())
     } else {
         String::new()
     };
@@ -3468,6 +3769,30 @@ fn bet_meter(last_bet_cents: Option<u64>, in_credits: bool, total_bet: u64, cent
     }
 }
 
+/// The status line a base game's Hold & Spin leaves once it is counted and
+/// the machine is at rest, before any gamble: with its win `offered`, PLAY
+/// ON and "Free Spins Completed" in turn (`first_turn`: the first two
+/// seconds of each four from the offer's start), PLAY ON first (the owner's
+/// Happy & Prosperous club recording: 60 frames each, VERIFIED there; two
+/// Golden Century club recordings show PLAY ON first, then the win taken
+/// within 0.1-0.2 s: 1bAevGz0K2k 165.3-165.7, f5sMl9a5jds 282.5; PARTIAL
+/// for Golden Century). A win that `stands` unoffered (a progressive won,
+/// or past the gamble limit) keeps "Free Spins Completed" until the next
+/// game (HYPOTHESIS: the line the offer turns with). A win taken leaves the
+/// bet line (f5sMl9a5jds 282.6-283.9; `None`).
+fn hold_and_spin_end_line(offered: bool, stands: bool, first_turn: bool) -> Option<&'static str> {
+    match (offered, stands) {
+        (true, _) if first_turn => Some(PLAY_ON),
+        (true, _) | (false, true) => Some(FREE_SPINS_COMPLETED),
+        (false, false) => None,
+    }
+}
+
+/// The offer while a win may be gambled.
+const PLAY_ON: &str = "PLAY ON, GAMBLE or TAKE WIN";
+/// The status line at Hold & Spin's end.
+const FREE_SPINS_COMPLETED: &str = "Free Spins Completed";
+
 /// The cabinet's credit, bet and win meters.
 #[allow(clippy::too_many_arguments)]
 pub fn update_meters(
@@ -3515,6 +3840,22 @@ pub fn update_meters(
             money(credits, cents)
         }
     };
+    // A feature's own status line, if it has one now: a Grand's, the end of
+    // a base game's Hold & Spin at rest, or the feature's caption.
+    let hs_end = (at_rest && show.hold_and_spin_over() && gamble.ended.is_none())
+        .then(|| {
+            hold_and_spin_end_line(
+                gamble_open(&sim.game, cents, &show),
+                sim.game.can_gamble(),
+                rest.bet_line_turn(t),
+            )
+        })
+        .flatten()
+        .map(str::to_string);
+    let feature_caption = show
+        .grand_caption(cents)
+        .or(hs_end)
+        .or_else(|| show.caption());
     for (meter, mut text, mut colour, spacing) in &mut meters {
         let value = match meter {
             CabMeter::Credit => {
@@ -3545,7 +3886,7 @@ pub fn update_meters(
             CabMeter::MinBet => format!("MIN BET {}", sim.game.lines()),
             CabMeter::Lines => lines_text(sim.game.lines()).0,
             CabMeter::LinesWord => lines_text(sim.game.lines()).1.to_string(),
-            CabMeter::Multiplier => show.caption().unwrap_or_else(|| {
+            CabMeter::Multiplier => feature_caption.clone().unwrap_or_else(|| {
                 let per_line = sim.game.credits_per_line();
                 let bet_line = match deck.profile {
                     Profile::Club if per_line == 1 => "1 credit per line".to_string(),
@@ -3561,7 +3902,7 @@ pub fn update_meters(
                     bet_line
                 } else if gamble_open(&sim.game, cents, &show) {
                     // The offer while a win can be gambled.
-                    "PLAY ON, GAMBLE or TAKE WIN".to_string()
+                    PLAY_ON.to_string()
                 } else if let Some(lost) = gamble.ended {
                     // Footage: the gamble's end message in turn with the bet.
                     match (turn, lost) {
@@ -3594,7 +3935,13 @@ pub fn update_meters(
         // FEATURE button", "Free Game 1 of 6") are the bet line's yellow and
         // spacing too (club cabinet: 1bAevGz0K2k, their brightest pixels
         // blue/red 0.64-0.70 like the bet line's; STRONG).
-        let feature_line = show.caption().is_some_and(|c| !c.is_empty());
+        // So are "Free Spins Completed" and a Grand's line (club cabinets:
+        // the same yellow, 1bAevGz0K2k, f5sMl9a5jds, Wc7QU1C2jWo; VERIFIED
+        // for the first, STRONG for the second). The offer keeps its own
+        // look here.
+        let feature_line = feature_caption
+            .as_deref()
+            .is_some_and(|c| !c.is_empty() && c != PLAY_ON);
         let bet_line =
             deck.profile == Profile::Club && (text.0.ends_with("per line") || feature_line);
         let (want, gap) = match (bet_line, deck.profile) {
@@ -5224,7 +5571,8 @@ pub struct FeatureShow {
     bursts: Vec<(u8, u8, f32)>,
     /// Seconds of feature presentation, for the animations.
     clock: f32,
-    transition_at: Option<f32>,
+    /// The transition fire: when it began (`clock`) and its frame rate.
+    transition_at: Option<(f32, f32)>,
     /// The WINNER total while the coins are counted.
     pub winner: Option<u64>,
     /// After the count: until when (`clock`) the WINNER box stays, and the
@@ -5241,6 +5589,12 @@ pub struct FeatureShow {
     /// A full grid's Grand jackpot, while it is shown and after.
     pub grand: Option<u64>,
     grand_done: bool,
+    /// The Major this Hold & Spin won (credits), shown on its own plaque
+    /// before the coins; its own count while it runs; and what that count
+    /// has put on WIN.
+    major: Option<u64>,
+    major_pay: Option<Pay>,
+    major_paid: u64,
     /// This game won a progressive jackpot (the Major or the Grand).
     progressive: bool,
     /// The progressive jackpots this game won whose amounts the count has
@@ -5343,6 +5697,9 @@ impl FeatureShow {
                 self.resuming = false;
                 self.grand = None;
                 self.grand_done = false;
+                self.major = None;
+                self.major_pay = None;
+                self.major_paid = 0;
                 self.progressive = false;
                 self.link_won.clear();
                 self.win_lines.clear();
@@ -5484,6 +5841,9 @@ impl FeatureShow {
                 self.transition_at = None;
                 self.bolt = None;
                 self.splash_at = None;
+                self.major = None;
+                self.major_pay = None;
+                self.major_paid = 0;
             }
             Event::HoldAndSpinRespin {
                 respins_left,
@@ -5551,6 +5911,12 @@ impl FeatureShow {
         self.respin.is_some()
     }
 
+    /// A Hold & Spin respin has been presented and is not over: about to
+    /// turn, or turning.
+    pub fn respin_in_flight(&self) -> bool {
+        self.respin.is_some() || self.respin_landed.is_some()
+    }
+
     /// A feature is under way: the credit meter holds still and its wins
     /// collect on the win meter, paid to credit when the feature completes
     /// (footage: CREDIT unchanged through the free games, then raised by the
@@ -5594,6 +5960,9 @@ impl FeatureShow {
         self.winner = None;
         self.flares_at = None;
         self.grand = None;
+        self.major = None;
+        self.major_pay = None;
+        self.major_paid = 0;
         self.jackpots.clear();
         self.counter = 0;
         self.scatter_paid = false;
@@ -5648,7 +6017,7 @@ impl FeatureShow {
         // 1006.0, 1018.7; VERIFIED). Then the base game's bet line, or the
         // free game again.
         if self.stage == Stage::HoldSpinDone && self.hold_and_spin_ending() {
-            return Some("Free Spins Completed".into());
+            return Some(FREE_SPINS_COMPLETED.into());
         }
         match (self.awaiting, self.stage) {
             (Some(Await::Start(Feature::FreeGames)), _) if won_turn => {
@@ -5696,6 +6065,55 @@ impl FeatureShow {
             || self.collect_start
             || self.collect.is_some()
             || self.pay.as_ref().is_some_and(|p| p.t < p.seconds)
+    }
+
+    /// A base game's Hold & Spin has been counted and the next game has not
+    /// begun (free games that follow it clear it first).
+    pub fn hold_and_spin_over(&self) -> bool {
+        self.stage == Stage::HoldSpinDone
+            && self.fg_return.is_none()
+            && !self.hold_and_spin_ending()
+    }
+
+    /// The Grand this game won, in credits: from its award on the WINNER
+    /// display until the next game (or the free games it started).
+    pub fn grand_awarded(&self) -> Option<u64> {
+        self.grand.filter(|_| {
+            self.grand_done
+                || self.pay.is_some()
+                || self.collect.as_ref().is_some_and(|c| c.grand_up)
+        })
+    }
+
+    /// The status line after a Grand, at `cents` a credit: "GRAND JACKPOT
+    /// Win $24122.63", centred in the bet line's yellow, the dollars never
+    /// grouped, from the award until the next game, over the coins' tally
+    /// and the count (club cabinet: Wc7QU1C2jWo 3.6 s, one legible frame;
+    /// STRONG). The amount is the award in whole credits (the meter's odd
+    /// cent at 2c is held over). A casino build filmed other words
+    /// ("GRAND JACKPOT $13566.04", OL6Pu1AI-cQ 161-163.5 s; a conflict
+    /// recorded); the club's are used in both profiles.
+    pub fn grand_caption(&self, cents: u64) -> Option<String> {
+        self.grand_awarded().map(|g| {
+            format!(
+                "GRAND JACKPOT Win {}",
+                plain_dollars(g.saturating_mul(cents))
+            )
+        })
+    }
+
+    /// The system message after a Grand, at `cents` a credit: "Call
+    /// Attendant : JACKPOT HIT $24122.63" (club cabinet: Wc7QU1C2jWo 3.6 s,
+    /// STRONG; the casino build's "Call Attendant - You have won a ..." is
+    /// recorded as a conflict). It implies a hand pay; the app still
+    /// credits the Grand (the owner's call), and shows the line as filmed.
+    pub fn grand_call(&self, cents: u64) -> Option<String> {
+        self.grand_awarded().map(|g| {
+            format!(
+                "Call Attendant : JACKPOT HIT {}",
+                plain_dollars(g.saturating_mul(cents))
+            )
+        })
     }
 
     /// The message at the right, in place of the start prompts.
@@ -5866,7 +6284,13 @@ const HS_ROW_LINE_H: f32 = 3.0;
 pub struct FeatureMessage;
 
 const BANNER_SIZE: (f32, f32) = (760.0, 96.0);
-const BANNER_Y: f32 = GRID_CENTER.1 - 1.5 * PITCH.1 + 6.0;
+/// The banner's middle line: its gold rim (the node's top, canvas y 124.5)
+/// clear of the Major's and Minor's values above it, whose ink ends at
+/// about y 122 (shadow included). At + 6 the rim hid their bottom 7-8 px
+/// whenever a banner showed (measured on a capture). The cabinet has no
+/// overlap (separate screens); the official app's banner sits wholly below
+/// its bar (VERIFIED, official mobile app).
+const BANNER_Y: f32 = GRID_CENTER.1 - 1.5 * PITCH.1 + 16.0;
 /// Where the counter's two numbers sit across the banner, and their height.
 const COUNTER_X: [f32; 2] = [0.59, 0.795];
 const COUNTER_DIGIT_H: f32 = 52.0;
@@ -6509,12 +6933,45 @@ pub struct Collect {
     /// Steps begun, and amounts added to the banner.
     launched: usize,
     counted: usize,
-    /// The Grand's step has begun (its plaque shows).
+    /// The Grand's step has begun (its plaque shows), and its fire.
     grand_up: bool,
+    grand_fire: bool,
+    /// A Major's step has begun and its plaque shows, until its own count
+    /// is over.
+    major_up: bool,
 }
 
 /// The position of the Grand's step (it has no coin).
 const GRAND_STEP: u8 = u8::MAX;
+
+/// The collection's order: a Major first, on its own plaque with its own
+/// count, then the other coins reel by reel, top to bottom (club cabinet:
+/// Autumn Moon 5Z1-hFzpyh0 525-590 s, the Major's amount green on WINNER
+/// with a coin shower, then the coins tallied without it; its Hold & Spin
+/// scenes are Golden Century's in the mobile build: STRONG, PARTIAL for
+/// Golden Century itself). The owner chose coins first for the Grand; for
+/// the Major the cabinet's order is followed.
+fn majors_first(coins: Vec<CollectCoin>) -> Vec<CollectCoin> {
+    let (mut first, rest): (Vec<CollectCoin>, Vec<CollectCoin>) = coins
+        .into_iter()
+        .partition(|coin| coin.4 == Some(JackpotTier::Major));
+    first.extend(rest);
+    first
+}
+
+/// The Grand's fire. On the cabinet a fire wipes both screens, from the
+/// bottom up, and clears, bottom first, to reveal WINNER / GRAND JACKPOT
+/// (OL6Pu1AI-cQ 3.4-4.4 s at 0.1 s steps: first flames 3.4-3.5 s, the main
+/// screen covered 3.6-3.7, the top 3.8-4.1, clear at 4.2 and 4.3-4.4; one
+/// Golden Century machine, VERIFIED there). The pack's transition fire
+/// (the intro's) has the same shape: frames 15-20 fill from the bottom,
+/// 21-35 cover, 36-41 clear (alpha coverage measured), 26 frames from fill
+/// to clear, 0.87 s at 30 fps against the cabinet's 0.9-1.0 s (STRONG that
+/// it is the same fire). It starts `GRAND_FIRE_LEAD` before the Grand's
+/// step, so the plaque switches on under full cover (frame 27) and shows as
+/// the fire clears (our coins-first order: its timing HYPOTHESIS).
+const GRAND_FIRE_FPS: f32 = ANIM_FPS;
+const GRAND_FIRE_LEAD: f32 = 27.0 / GRAND_FIRE_FPS;
 
 /// The end of Hold & Spin. "FREE SPINS COMPLETED" with SND_Fea_End (3 s),
 /// then the collection, as club cabinets show it (VERIFIED: 1bAevGz0K2k
@@ -6614,6 +7071,8 @@ struct CollectStep {
     rumble: bool,
     sounds: Vec<&'static str>,
     done: Option<u64>,
+    /// A Major's amount has shown on its plaque: its own count begins.
+    major: Option<u64>,
 }
 
 impl FeatureShow {
@@ -6629,9 +7088,14 @@ impl FeatureShow {
     }
 
     /// Run the collection on by `dt` seconds (at `self.clock`): each coin's
-    /// comet and its value on the box with a splash, then the count.
+    /// comet and its value on the box with a splash, a Major's plaque and
+    /// its own count, the Grand's fire and plaque, then the count.
     fn advance_collect(&mut self, dt: f32, total_bet: u64) -> CollectStep {
         let mut step = CollectStep::default();
+        // A Major's own count holds the collection until it is over.
+        if self.major_pay.is_some() {
+            return step;
+        }
         let Some(mut c) = self.collect.take() else {
             return step;
         };
@@ -6639,12 +7103,26 @@ impl FeatureShow {
         let t0 = c.t;
         c.t += dt;
         step.rumble = crossed(t0, c.t, COLLECT_RUMBLE);
-        // Each coin in turn flares and sends its comet to the box.
+        // The Grand's fire starts ahead of its plaque.
+        let next_at = COLLECT_FIRST + c.launched as f32 * COLLECT_STEP;
+        if !c.grand_fire
+            && c.coins
+                .get(c.launched)
+                .is_some_and(|coin| coin.0 == GRAND_STEP)
+            && c.t >= next_at - GRAND_FIRE_LEAD
+        {
+            c.grand_fire = true;
+            self.transition_at = Some((clock, GRAND_FIRE_FPS));
+        }
+        // Each coin in turn flares and sends its comet to the box; a Major
+        // and the Grand show their plaques instead.
         while c.launched < c.coins.len() && c.t >= COLLECT_FIRST + c.launched as f32 * COLLECT_STEP
         {
-            let (reel, row, amount, jackpot, _) = c.coins[c.launched];
+            let (reel, row, amount, jackpot, tier) = c.coins[c.launched];
             if reel == GRAND_STEP {
                 c.grand_up = true;
+            } else if tier == Some(JackpotTier::Major) {
+                c.major_up = true;
             } else {
                 self.bolt = Some((reel, row, clock));
             }
@@ -6657,18 +7135,25 @@ impl FeatureShow {
             });
             c.launched += 1;
         }
-        // Its value on the box as the comet arrives, with a splash.
+        // Its value on the box as the comet arrives, with a splash; a
+        // Major's amount on its plaque, where its own count begins.
         while c.counted < c.launched
             && c.t >= COLLECT_FIRST + c.counted as f32 * COLLECT_STEP + BOLT_FLIGHT
         {
             let (_, _, amount, _, tier) = c.coins[c.counted];
-            self.winner = Some(self.winner.unwrap_or(0) + amount);
-            self.splash_at = Some(clock);
-            // A progressive's meter restarts as its amount is counted.
+            c.counted += 1;
+            // A progressive's meter restarts as its amount is shown.
             if let Some(tier @ (JackpotTier::Major | JackpotTier::Grand)) = tier {
                 self.link_won.push(tier);
             }
-            c.counted += 1;
+            if tier == Some(JackpotTier::Major) {
+                self.major = Some(amount);
+                step.major = Some(amount);
+                self.collect = Some(c);
+                return step;
+            }
+            self.winner = Some(self.winner.unwrap_or(0) + amount);
+            self.splash_at = Some(clock);
         }
         let last =
             COLLECT_FIRST + c.coins.len().saturating_sub(1) as f32 * COLLECT_STEP + BOLT_FLIGHT;
@@ -6680,15 +7165,55 @@ impl FeatureShow {
         step
     }
 
+    /// A Major's own count is over: its plaque gives way to the empty
+    /// WINNER box and the tally goes on, the next coin `COLLECT_FIRST`
+    /// after (club cabinet: the box empty again as a comet leaves the reels,
+    /// Autumn Moon 5Z1-hFzpyh0 560 s).
+    fn end_major(&mut self, amount: u64) {
+        self.major_paid += amount;
+        self.winner = Some(0);
+        if let Some(c) = self.collect.as_mut() {
+            c.major_up = false;
+            c.t = c.counted as f32 * COLLECT_STEP;
+        }
+    }
+
+    /// A Major's plaque shows (from its step until its own count is over),
+    /// and its amount on it once that count has begun.
+    pub fn major_showing(&self) -> bool {
+        self.collect.as_ref().is_some_and(|c| c.major_up)
+    }
+
+    fn major_amount(&self) -> Option<u64> {
+        self.major
+            .filter(|_| self.major_showing() && self.major_pay.is_some())
+    }
+
+    /// What a Major's own count has put on WIN so far.
+    fn major_counted(&self) -> Option<u64> {
+        match &self.major_pay {
+            Some(p) => {
+                let k = (p.t / p.seconds).clamp(0.0, 1.0);
+                Some(self.major_paid + (p.amount as f32 * k) as u64)
+            }
+            None => (self.major_paid > 0).then_some(self.major_paid),
+        }
+    }
+
     /// The Grand's plaque shows (from its step until the count is over).
     pub fn grand_showing(&self) -> bool {
         self.grand.is_some()
             && (self.collect.as_ref().is_some_and(|c| c.grand_up) || self.pay.is_some())
     }
 
-    /// What WIN shows while the feature's total is counted onto it.
+    /// What WIN shows while the feature's total is counted onto it: a
+    /// Major's own count, then the coins' (and the Grand's) on top.
     pub fn grand_win(&self) -> Option<u64> {
-        self.pay_banner().map(|w| self.pay_base + w)
+        let major = self.major_counted();
+        match self.pay_banner() {
+            Some(w) => Some(self.pay_base + major.unwrap_or(0) + w),
+            None => major.map(|m| self.pay_base + m),
+        }
     }
 
     /// What the WIN banner over the reels shows: nothing while the coins
@@ -6727,11 +7252,10 @@ impl FeatureShow {
         self.winner.or(self.held_winner()).filter(|w| *w > 0)
     }
 
-    /// A big payment is counting (coins rain).
+    /// A big payment is counting (coins rain): the count, or a Major's own.
     pub fn pay_shower(&self, bet: u64) -> bool {
-        self.pay
-            .as_ref()
-            .is_some_and(|p| p.t < p.seconds && p.amount >= PAY_SHOWER_RATIO * bet)
+        let big = |p: &Pay| p.t < p.seconds && p.amount >= PAY_SHOWER_RATIO * bet;
+        self.pay.as_ref().is_some_and(big) || self.major_pay.as_ref().is_some_and(big)
     }
 
     /// Seconds into the coins' collection.
@@ -6808,7 +7332,7 @@ fn bolt_for(reel: u8, row: u8) -> (usize, bool, f32, f32, f32, f32) {
 }
 
 /// The top of the WINNER total's flame box (y 33-113, above the WIN
-/// banner's top at 114.5).
+/// banner's top at 124.5).
 const WINNER_TOP: f32 = 33.0;
 /// The WINNER total's flame box: the pack's own flame-bordered box (536 x
 /// 128), its inner aspect about 5.6 as on the cabinet.
@@ -6821,7 +7345,7 @@ const SPLASH_BOX: (f32, f32, f32, f32) = (40.0, 145.0, 432.0, 78.0);
 
 /// The WINNER plate covers the whole jackpot bar (its bottom at canvas y
 /// 147.2), so none of the meters' digits show under it; the WIN banner
-/// (from y 114.5) draws over its foot while the count runs. Our single
+/// (from y 124.5) draws over its foot while the count runs. Our single
 /// canvas has no top screen: the plate standing in for it is our layout
 /// (the owner's call; the suggested default).
 const WINNER_PLATE_H: f32 = 148.0;
@@ -6834,6 +7358,326 @@ const WINNER_GREEN: Color = Color::srgb(0.86, 0.93, 0.36);
 /// The total's size in the box: the box's inner black is about 36 px tall,
 /// and on the cabinet the amount's caps are about 0.6 of it.
 const WINNER_AMOUNT_SIZE: f32 = 40.0;
+
+/// The Hold & Spin top screen's stand-in over the jackpot bar.
+#[derive(Component)]
+pub struct HsCollectedPlate;
+/// The number on the collected-coin disc.
+#[derive(Component)]
+pub struct HsCollectedCount;
+/// A fire dragon beside the disc (mirrored on the right).
+#[derive(Component)]
+pub struct HsDragon;
+
+/// The disc's diameter (its lettering clear of the feature banner's rim,
+/// canvas y 124.5) and the corner boxes' height on the plate.
+const HS_DISC: f32 = 140.0;
+const HS_BOX_H: f32 = 68.0;
+/// Each corner box's place: (tier, right-hand side, bottom row).
+const HS_CORNERS: [(JackpotTier, bool, bool); 4] = [
+    (JackpotTier::Grand, false, false),
+    (JackpotTier::Major, true, false),
+    (JackpotTier::Minor, false, true),
+    (JackpotTier::Mini, true, true),
+];
+/// The corner boxes' largest value size.
+const HS_BOX_VALUE: f32 = 34.0;
+/// The fire dragons' size and their centres' distance from the disc's.
+const HS_DRAGON: (f32, f32) = (70.0, 140.0);
+const HS_DRAGON_OFFSET: f32 = 330.0;
+
+/// Through every Hold & Spin the cabinet's top screen shows a sun disc
+/// reading "N COLLECTED / 15 WIN / GRAND JACKPOT", the count including the
+/// coins held (it steps as each coin lands), with the four jackpots in
+/// small boxes at its corners, Grand and Minor at the left, Major and Mini
+/// at the right, and fire dragons either side (VERIFIED: 1bAevGz0K2k
+/// 141.5 s, OL6Pu1AI-cQ 0.5 s and 130 s, Happy & Prosperous bUbSjAGwqs8
+/// 2.5-3.0 s; Autumn Moon 5Z1-hFzpyh0 by the research notes). Our single
+/// canvas has no top screen: as for the WINNER display, a plate over the
+/// jackpot bar stands in for it (our layout, the owner's call: HYPOTHESIS),
+/// with the game's own coin, its "GRAND JACKPOT" lettering (the bottom band
+/// of its COLLECT 15 TO WIN art), each box cropped from its jackpot bar
+/// with the live value, and its fire dragon. The wording is the cabinet's
+/// in a substitute face. The official app shows instead an "N COLLECTED"
+/// badge (VERIFIED for the app only).
+fn spawn_hs_collected(c: &mut ChildSpawnerCommands, art: &ArtPack, fonts: &CabFonts) {
+    let plate_left = 960.0 - JACKPOT_BAR_W / 2.0;
+    let disc_left = JACKPOT_BAR_W / 2.0 - HS_DISC / 2.0;
+    let ink = Color::srgb(0.12, 0.02, 0.02);
+    let red = Color::srgba(0.85, 0.05, 0.02, 0.9);
+    let heavy = |text: &str, size: f32, top: f32| {
+        (
+            Text::new(text),
+            TextFont {
+                font: bevy::text::FontSource::Handle(fonts.heavy.clone()),
+                font_size: FontSize::Px(size),
+                ..default()
+            },
+            TextColor(ink),
+            TextShadow {
+                offset: Vec2::new(1.5, 1.5),
+                color: red,
+            },
+            TextLayout::justify(Justify::Center),
+            Node {
+                position_type: PositionType::Absolute,
+                left: Val::Px(0.0),
+                top: Val::Px(top),
+                width: Val::Px(HS_DISC),
+                ..default()
+            },
+        )
+    };
+    let bar = art.ui.get("jackpot_bar").cloned();
+    let bar_size = art
+        .sizes
+        .get("jackpot_bar")
+        .copied()
+        .unwrap_or((1224.0, 104.0));
+    c.spawn((
+        HsCollectedPlate,
+        Node {
+            position_type: PositionType::Absolute,
+            left: Val::Px(plate_left),
+            top: Val::Px(0.0),
+            width: Val::Px(JACKPOT_BAR_W),
+            height: Val::Px(WINNER_PLATE_H),
+            border_radius: BorderRadius::bottom(Val::Px(14.0)),
+            ..default()
+        },
+        BackgroundColor(Color::srgb(0.06, 0.05, 0.20)),
+        GlobalZIndex(4),
+        Visibility::Hidden,
+    ))
+    .with_children(|p| {
+        // The fire dragons, facing the disc.
+        for right in [false, true] {
+            let side = if right { 1.0 } else { -1.0 };
+            let cx = JACKPOT_BAR_W / 2.0 + side * HS_DRAGON_OFFSET;
+            p.spawn((
+                HsDragon,
+                Node {
+                    position_type: PositionType::Absolute,
+                    left: Val::Px(cx - HS_DRAGON.0 / 2.0),
+                    top: Val::Px((WINNER_PLATE_H - HS_DRAGON.1) / 2.0),
+                    width: Val::Px(HS_DRAGON.0),
+                    height: Val::Px(HS_DRAGON.1),
+                    ..default()
+                },
+                ImageNode {
+                    flip_x: right,
+                    image_mode: NodeImageMode::Stretch,
+                    ..default()
+                },
+            ));
+        }
+        // The four jackpots in boxes cropped from the bar, the live values
+        // in their panels.
+        let k = bar_size.0 / 1225.0;
+        let scale = HS_BOX_H / bar_size.1.max(1.0);
+        for (tier, right, bottom) in HS_CORNERS {
+            let Some(&(_, (left, right_edge))) = JACKPOT_BOXES.iter().find(|(t, _)| *t == tier)
+            else {
+                continue;
+            };
+            let (x0, x1) = (
+                (left - 7.0).max(0.0) * k,
+                (right_edge + 7.0).min(1225.0) * k,
+            );
+            let w = (x1 - x0) * scale;
+            let x = if right {
+                JACKPOT_BAR_W - 24.0 - w
+            } else {
+                24.0
+            };
+            let y = if bottom {
+                WINNER_PLATE_H - 4.0 - HS_BOX_H
+            } else {
+                4.0
+            };
+            if let Some(bar) = &bar {
+                p.spawn((
+                    Node {
+                        position_type: PositionType::Absolute,
+                        left: Val::Px(x),
+                        top: Val::Px(y),
+                        width: Val::Px(w),
+                        height: Val::Px(HS_BOX_H),
+                        ..default()
+                    },
+                    ImageNode {
+                        image: bar.clone(),
+                        rect: Some(Rect::new(x0, 0.0, x1, bar_size.1)),
+                        image_mode: NodeImageMode::Stretch,
+                        ..default()
+                    },
+                ));
+            }
+            // The value in the box's black under its title (the bar art's
+            // y 40-95 of 104).
+            let width = (right_edge - left) * k * scale;
+            p.spawn((
+                JackpotMeter { tier },
+                JackpotFit {
+                    width,
+                    max: HS_BOX_VALUE,
+                },
+                label(
+                    "-",
+                    &fonts.heavy,
+                    HS_BOX_VALUE,
+                    jackpot_value_colour(tier),
+                    x + w / 2.0,
+                    y + HS_BOX_H * 67.0 / 104.0,
+                    width,
+                ),
+                TextShadow {
+                    offset: Vec2::new(1.5, 1.5),
+                    color: Color::srgba(0.03, 0.03, 0.05, 0.9),
+                },
+            ));
+        }
+        // The disc: the game's coin with the count, COLLECTED, 15 WIN and
+        // the GRAND JACKPOT lettering.
+        p.spawn((
+            Node {
+                position_type: PositionType::Absolute,
+                left: Val::Px(disc_left),
+                top: Val::Px(0.0),
+                width: Val::Px(HS_DISC),
+                height: Val::Px(HS_DISC),
+                ..default()
+            },
+            ImageNode {
+                image: art
+                    .symbols
+                    .get(&art.roles.coin)
+                    .cloned()
+                    .unwrap_or_default(),
+                image_mode: NodeImageMode::Stretch,
+                ..default()
+            },
+        ))
+        .with_children(|d| {
+            d.spawn((HsCollectedCount, heavy("", 52.0, 2.0)));
+            d.spawn(heavy("COLLECTED", 16.0, 62.0));
+            d.spawn(heavy("15 WIN", 12.0, 82.0));
+            if let Some(lettering) = art.ui.get("collect_grand") {
+                let (lw, lh) = art
+                    .sizes
+                    .get("collect_grand")
+                    .copied()
+                    .unwrap_or((510.0, 255.0));
+                let band = Rect::new(0.0, lh * 200.0 / 255.0, lw, lh);
+                let bw = HS_DISC * 0.72;
+                let bh = bw * band.height() / band.width().max(1.0);
+                d.spawn((
+                    Node {
+                        position_type: PositionType::Absolute,
+                        left: Val::Px((HS_DISC - bw) / 2.0),
+                        top: Val::Px(99.0),
+                        width: Val::Px(bw),
+                        height: Val::Px(bh),
+                        ..default()
+                    },
+                    ImageNode {
+                        image: lettering.clone(),
+                        rect: Some(band),
+                        image_mode: NodeImageMode::Stretch,
+                        ..default()
+                    },
+                ));
+            }
+        });
+    });
+}
+
+impl FeatureShow {
+    /// Coins presented but still to land on the screen: a respin's coins
+    /// not yet at their stops (the board's labels already carry them).
+    fn coins_to_land(&self) -> Vec<(u8, u8)> {
+        if let Some(landed) = &self.respin_landed {
+            return landed.clone();
+        }
+        self.respin
+            .as_ref()
+            .map(|a| {
+                a.stops
+                    .iter()
+                    .enumerate()
+                    .filter(|(i, s)| s.3 && *i >= a.done)
+                    .map(|(_, s)| (s.0, s.1))
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+
+    /// The collected-coin disc shows: the Hold & Spin board is up, until
+    /// the WINNER display takes the top over.
+    pub fn collected_showing(&self) -> bool {
+        self.grid && self.hold_and_spin() && !self.winner_showing()
+    }
+}
+
+/// The disc's count: the coins on the board (`coins`, held and landed),
+/// less those still to land.
+fn coins_collected(coins: &[(u8, u8)], to_land: &[(u8, u8)]) -> usize {
+    coins.iter().filter(|c| !to_land.contains(c)).count()
+}
+
+/// Show the collected-coin disc through Hold & Spin, its count stepping as
+/// each coin lands, its dragons' fire running.
+#[allow(clippy::type_complexity, clippy::too_many_arguments)]
+pub fn hs_collected(
+    fidelity: Res<Fidelity>,
+    time: Res<Time>,
+    show: Res<FeatureShow>,
+    gamble: Res<GambleShow>,
+    art: Res<ArtPack>,
+    labels: Query<(&CellLabel, &Text), Without<HsCollectedCount>>,
+    mut plate: Query<&mut Visibility, With<HsCollectedPlate>>,
+    mut count: Query<&mut Text, (With<HsCollectedCount>, Without<CellLabel>)>,
+    mut dragons: Query<&mut ImageNode, With<HsDragon>>,
+) {
+    if !fidelity.0 {
+        return;
+    }
+    let on = show.collected_showing() && !gamble.active;
+    for mut v in &mut plate {
+        let want = if on {
+            Visibility::Inherited
+        } else {
+            Visibility::Hidden
+        };
+        if *v != want {
+            *v = want;
+        }
+    }
+    if !on {
+        return;
+    }
+    let coins: Vec<(u8, u8)> = labels
+        .iter()
+        .filter(|(_, t)| t.0.starts_with("ORB\n"))
+        .map(|(l, _)| (l.reel, l.row))
+        .collect();
+    let n = coins_collected(&coins, &show.coins_to_land()).to_string();
+    for mut t in &mut count {
+        if t.0 != n {
+            t.0.clone_from(&n);
+        }
+    }
+    if let Some(frames) = art.anims.get("dragon") {
+        let i = (time.elapsed_secs() * ANIM_FPS) as usize % frames.len().max(1);
+        if let Some(h) = frames.get(i) {
+            for mut image in &mut dragons {
+                if image.image != *h {
+                    image.image = h.clone();
+                }
+            }
+        }
+    }
+}
 
 /// The slate under the Hold & Spin grid.
 #[derive(Component)]
@@ -7523,7 +8367,7 @@ pub fn hold_and_spin_motion(
             }
         }
         if crossed(t0, t, INTRO_TRANSITION) {
-            show.transition_at = Some(clock);
+            show.transition_at = Some((clock, FIRE_FPS));
         }
         if crossed(t0, t, INTRO_GRID) {
             show.grid = true;
@@ -7723,6 +8567,7 @@ pub fn hold_and_spin_motion(
                 ));
             }
         }
+        let mut coins = majors_first(coins);
         // A full grid's Grand jackpot is added after the coins.
         let grand = jackpots
             .iter()
@@ -7740,6 +8585,24 @@ pub fn hold_and_spin_motion(
     }
     for name in step.sounds {
         sounds.play(&mut commands, name);
+    }
+    // A Major's own count: the payout music and a coin shower for a big
+    // one (or the long win tune), WIN counting it up over the music's
+    // length; SPIN completes it (the cabinet held the plaque about 20 s).
+    if let Some(amount) = step.major {
+        let name = if amount >= PAY_SHOWER_RATIO * total_bet {
+            let n = PAYOUT_MUSIC[show.payout_track % PAYOUT_MUSIC.len()];
+            show.payout_track += 1;
+            n
+        } else {
+            PAY_TUNE
+        };
+        show.pay_sound = sounds.play(&mut commands, name);
+        show.major_pay = Some(Pay {
+            amount,
+            t: 0.0,
+            seconds: sounds.seconds(name).unwrap_or(20.0).max(1.0),
+        });
     }
     let mut done = step.done;
     if done.is_some()
@@ -7768,16 +8631,32 @@ pub fn hold_and_spin_motion(
         });
         done = None;
     }
+    let unattended = |p: &Option<Pay>| {
+        smoke.frames_left.is_some() && p.as_ref().is_some_and(|p| p.t > 3.0 && p.t < p.seconds)
+    };
     let slam = input.spin
         || keys.just_pressed(KeyCode::Space)
         || keys.just_pressed(KeyCode::Enter)
-        || (smoke.frames_left.is_some()
-            && show
-                .pay
-                .as_ref()
-                .is_some_and(|p| p.t > 3.0 && p.t < p.seconds));
-    if show.pay.is_some() && slam {
+        || unattended(&show.pay)
+        || unattended(&show.major_pay);
+    if (show.pay.is_some() || show.major_pay.is_some()) && slam {
         input.skip_spin = true;
+    }
+    if let Some(mut p) = show.major_pay.take() {
+        p.t += dt;
+        if p.t < p.seconds && slam {
+            p.t = p.seconds;
+        }
+        if p.t >= p.seconds
+            && let Some(id) = show.pay_sound.take()
+        {
+            commands.entity(id).try_despawn();
+        }
+        if p.t >= p.seconds + PAY_AFTER {
+            show.end_major(p.amount);
+        } else {
+            show.major_pay = Some(p);
+        }
     }
     if let Some(mut p) = show.pay.take() {
         p.t += dt;
@@ -8046,7 +8925,7 @@ pub fn hold_and_spin_draw(
     for (mut image, mut vis) in &mut fx {
         match show
             .transition_at
-            .and_then(|s| frame("transition", (clock - s) * FIRE_FPS / ANIM_FPS, false))
+            .and_then(|(s, fps)| frame("transition", (clock - s) * fps / ANIM_FPS, false))
         {
             Some(h) => {
                 if image.image != h {
@@ -8099,18 +8978,35 @@ pub fn hold_and_spin_draw(
 
     // The WINNER total in the pack's flame-bordered box (its flames looped);
     // on a Grand, the GRAND JACKPOT plaque (its own 729 x 108 shape, the
-    // title across its top, the amount below). The gamble shows the
-    // jackpots, not the box.
+    // title across its top, the amount below), on a Major the MAJOR JACKPOT
+    // plaque, its amount green (club cabinet: Autumn Moon 5Z1-hFzpyh0
+    // 530-555 s; a pack without the plaque keeps the flame box). The gamble
+    // shows the jackpots, not the box.
     let grand = show.grand_showing();
+    let major = !grand && show.major_showing();
+    let plaque = if grand {
+        art.ui
+            .get("grand_plaque")
+            .map(|h| (h.clone(), "grand_plaque"))
+    } else if major {
+        art.ui
+            .get("major_plaque")
+            .map(|h| (h.clone(), "major_plaque"))
+    } else {
+        None
+    };
     let boxed = show.winner_showing() && !gamble.active;
+    let (w, h) = WINNER_BOX;
+    let plaque_w = plaque.as_ref().map(|(_, key)| {
+        let (pw, ph) = art.sizes.get(*key).copied().unwrap_or((729.0, 108.0));
+        h * pw / ph.max(1.0)
+    });
     for (mut image, mut node, mut vis) in &mut winner {
-        let key = if grand {
-            art.ui.get("grand_plaque").cloned()
-        } else {
-            frame("flameborder_sm", clock, true)
+        let key = match &plaque {
+            Some((handle, _)) => Some(handle.clone()),
+            None => frame("flameborder_sm", clock, true),
         };
-        let (w, h) = WINNER_BOX;
-        let w = if grand { h * 729.0 / 108.0 } else { w };
+        let w = plaque_w.unwrap_or(w);
         if node.width != Val::Px(w) {
             node.width = Val::Px(w);
             node.left = Val::Px(960.0 - w / 2.0);
@@ -8127,29 +9023,35 @@ pub fn hold_and_spin_draw(
     }
     let amount = if grand {
         show.grand
+    } else if major {
+        show.major_amount()
     } else {
         show.winner_amount()
     }
     .filter(|_| boxed)
     .map(|w| money(w, denom.cents()))
     .unwrap_or_default();
-    let red = grand;
     for (mut t, mut color, mut font, mut node) in &mut winner_text {
         if t.0 != amount {
             t.0 = amount.clone();
         }
-        // On the plaque the amount sits in the band under GRAND JACKPOT.
-        let (size, drop) = if red {
+        // On a plaque the amount sits in the band under its title.
+        let (size, drop) = if plaque.is_some() {
             (WINNER_BOX.1 * 0.5, WINNER_BOX.1 * 0.17)
         } else {
             (WINNER_AMOUNT_SIZE, 0.0)
         };
+        // (The plaque's size equals the box's, so the drop is set apart.)
         if font.font_size != FontSize::Px(size) {
             font.font_size = FontSize::Px(size);
+        }
+        if node.top != Val::Px(drop) {
             node.top = Val::Px(drop);
         }
-        let want = if red {
+        let want = if grand {
             Color::srgb(0.95, 0.12, 0.1)
+        } else if major {
+            MAJOR_AMOUNT_GREEN
         } else {
             WINNER_GREEN
         };
@@ -8158,6 +9060,10 @@ pub fn hold_and_spin_draw(
         }
     }
 }
+
+/// A Major's amount on its plaque: green (club cabinet, Autumn Moon
+/// 5Z1-hFzpyh0 540-555 s; the tint from a 160 x 90 storyboard, PARTIAL).
+const MAJOR_AMOUNT_GREEN: Color = Color::srgb(0.30, 0.95, 0.35);
 
 // ---------------------------------------------------------------------------
 // Free games: the doors reveal and the win banner
@@ -11330,7 +12236,7 @@ mod tests {
                 "$15,000.00",
                 "$150,000.00",
             ] {
-                let size = jackpot_value_size(text, width);
+                let size = jackpot_value_size(text, width, JACKPOT_VALUE_SIZE);
                 assert!(size <= JACKPOT_VALUE_SIZE);
                 assert!(
                     meter_ems(text) * size <= width * JACKPOT_VALUE_FILL + 0.01,
@@ -11340,16 +12246,16 @@ mod tests {
         }
         // A value too wide for its box is set smaller, to fit.
         let mini = (1209.0 - 975.0) * k;
-        let size = jackpot_value_size("$1,234,567.89", mini);
+        let size = jackpot_value_size("$1,234,567.89", mini, JACKPOT_VALUE_SIZE);
         assert!(size < JACKPOT_VALUE_SIZE);
         assert!(meter_ems("$1,234,567.89") * size <= mini * JACKPOT_VALUE_FILL + 0.01);
         // The values the bar shows today keep the full size.
         assert_eq!(
-            jackpot_value_size("$250.00", (1209.0 - 975.0) * k),
+            jackpot_value_size("$250.00", (1209.0 - 975.0) * k, JACKPOT_VALUE_SIZE),
             JACKPOT_VALUE_SIZE
         );
         assert_eq!(
-            jackpot_value_size("$15,000.00", (351.0 - 14.0) * k),
+            jackpot_value_size("$15,000.00", (351.0 - 14.0) * k, JACKPOT_VALUE_SIZE),
             JACKPOT_VALUE_SIZE
         );
     }
@@ -12526,5 +13432,295 @@ mod tests {
             reels.states[1].quiet,
             "a dimmed flag leaving quiets its reel"
         );
+    }
+
+    /// A Major is awarded first, on its own plaque: no comet, SND_Credit1,
+    /// its amount on the plaque and its meter restarting as it shows, its
+    /// own count on WIN while the coins wait, then the empty box and the
+    /// coins' tally, which leaves it out (club cabinet, Autumn Moon
+    /// 5Z1-hFzpyh0 525-590 s).
+    #[test]
+    fn a_major_is_awarded_first_on_its_own_plaque() {
+        let coins = majors_first(vec![
+            (0, 0, 60, false, None),
+            (2, 1, 30_000, true, Some(JackpotTier::Major)),
+            (4, 2, 40, false, None),
+        ]);
+        assert_eq!(coins[0].4, Some(JackpotTier::Major));
+        assert_eq!((coins[1].0, coins[2].0), (0, 4), "the rest in grid order");
+        let mut show = FeatureShow::default();
+        show.on_event(&Event::HoldAndSpinStarted {
+            respins: 3,
+            locked: Vec::new(),
+        });
+        show.on_event(&Event::HoldAndSpinCompleted {
+            total_award: 30_100,
+            full_grid: false,
+        });
+        show.completed_wait = None;
+        show.begin_collect(coins, 1_000);
+        let dt = 1.0 / 60.0;
+        let mut sounds = Vec::new();
+        let mut major = None;
+        for _ in 0..600 {
+            show.clock += dt;
+            let step = show.advance_collect(dt, 50);
+            sounds.extend(step.sounds);
+            assert!(show.bolt.is_none(), "no comet for the Major");
+            assert_eq!(show.winner_amount(), None, "the box stays empty");
+            if let Some(m) = step.major {
+                major = Some(m);
+                break;
+            }
+        }
+        assert_eq!(major, Some(30_000));
+        assert_eq!(sounds, ["SND_Credit1"]);
+        assert!(show.major_showing());
+        assert!(show.link_won.contains(&JackpotTier::Major));
+        // Its own count (the motion system starts it with the music).
+        assert_eq!(show.major_amount(), None);
+        show.major_pay = Some(Pay {
+            amount: 30_000,
+            t: 0.0,
+            seconds: 10.0,
+        });
+        assert_eq!(show.major_amount(), Some(30_000));
+        assert_eq!(show.grand_win(), Some(1_000));
+        assert!(show.pay_shower(50), "a big Major rains coins");
+        assert_eq!(show.pay_banner(), None, "no banner over the reels");
+        // The collection waits for it.
+        let t = show.collect_t();
+        let step = show.advance_collect(1.0, 50);
+        assert!(step.sounds.is_empty());
+        assert_eq!(show.collect_t(), t);
+        if let Some(p) = show.major_pay.as_mut() {
+            p.t = 5.0;
+        }
+        assert_eq!(show.grand_win(), Some(16_000));
+        // Over: the box empty again, the next coin COLLECT_FIRST later.
+        show.major_pay = None;
+        show.end_major(30_000);
+        assert!(!show.major_showing());
+        assert_eq!(show.winner, Some(0));
+        assert_eq!(show.grand_win(), Some(31_000));
+        let mut first_coin = None;
+        let mut t = 0.0;
+        let total = loop {
+            show.clock += dt;
+            t += dt;
+            let step = show.advance_collect(dt, 50);
+            if show.bolt.is_some() && first_coin.is_none() {
+                first_coin = Some(t);
+            }
+            if let Some(total) = step.done {
+                break total;
+            }
+            assert!(t < 10.0);
+        };
+        let first = first_coin.unwrap_or_default();
+        assert!((first - COLLECT_FIRST).abs() < 0.03, "{first}");
+        // The tally leaves the Major out; WIN keeps it.
+        assert_eq!(total, 100);
+        show.pay = Some(Pay {
+            amount: total,
+            t: 10.0,
+            seconds: 10.0,
+        });
+        assert_eq!(show.pay_banner(), Some(100));
+        assert_eq!(show.grand_win(), Some(31_100));
+    }
+
+    /// The Grand's fire covers the screens as its plaque switches on: it
+    /// starts so that the plaque comes at its frame 27, under full cover
+    /// (frames 21-35), at the cabinet's 30 fps (OL6Pu1AI-cQ 3.4-4.4 s).
+    #[test]
+    fn the_grand_fire_covers_the_screens_as_its_plaque_switches_on() {
+        let mut show = FeatureShow {
+            grand: Some(1_000_000),
+            ..default()
+        };
+        show.begin_collect(
+            vec![
+                (0, 0, 60, false, None),
+                (1, 0, 40, false, None),
+                (
+                    GRAND_STEP,
+                    GRAND_STEP,
+                    1_000_000,
+                    true,
+                    Some(JackpotTier::Grand),
+                ),
+            ],
+            0,
+        );
+        let dt = 1.0 / 120.0;
+        let (mut fire_at, mut plaque_at) = (None, None);
+        for _ in 0..2_000 {
+            show.clock += dt;
+            let step = show.advance_collect(dt, 50);
+            if fire_at.is_none()
+                && let Some((s, fps)) = show.transition_at
+            {
+                assert_eq!(fps, GRAND_FIRE_FPS);
+                fire_at = Some(s);
+            }
+            if plaque_at.is_none() && show.grand_showing() {
+                plaque_at = Some(show.clock);
+            }
+            if step.done.is_some() {
+                break;
+            }
+        }
+        let (Some(fire), Some(plaque)) = (fire_at, plaque_at) else {
+            panic!("a fire and a plaque");
+        };
+        let frame = (plaque - fire) * GRAND_FIRE_FPS;
+        assert!(
+            (21.0..=35.0).contains(&frame) && (frame - 27.0).abs() < 0.6,
+            "{frame}"
+        );
+        // After the last coin's comet has left.
+        assert!(fire > COLLECT_FIRST + COLLECT_STEP);
+        // The intro's fire keeps its own rate.
+        assert!((FIRE_FPS - 22.3).abs() < 1e-3);
+    }
+
+    /// After a base game's Hold & Spin, at rest, the status line alternates
+    /// PLAY ON and "Free Spins Completed" while the win is offered, keeps
+    /// "Free Spins Completed" for a win never offered, and gives way to the
+    /// bet line once the win is taken; a Grand has its own line and its
+    /// call to the attendant, the dollars ungrouped (club cabinets).
+    #[test]
+    fn a_hold_and_spin_end_and_a_grand_have_their_own_status_lines() {
+        assert_eq!(hold_and_spin_end_line(true, true, true), Some(PLAY_ON));
+        assert_eq!(
+            hold_and_spin_end_line(true, true, false),
+            Some(FREE_SPINS_COMPLETED)
+        );
+        assert_eq!(
+            hold_and_spin_end_line(false, true, true),
+            Some(FREE_SPINS_COMPLETED)
+        );
+        assert_eq!(hold_and_spin_end_line(false, false, true), None);
+        let mut show = FeatureShow::default();
+        show.on_event(&Event::HoldAndSpinStarted {
+            respins: 3,
+            locked: Vec::new(),
+        });
+        show.on_event(&Event::HoldAndSpinCompleted {
+            total_award: 100,
+            full_grid: true,
+        });
+        assert!(!show.hold_and_spin_over(), "FREE SPINS COMPLETED shows");
+        show.completed_wait = None;
+        show.collected = Some(100);
+        assert!(show.hold_and_spin_over());
+        show.fg_return = Some((3, 6));
+        assert!(!show.hold_and_spin_over(), "inside the free games");
+        show.fg_return = None;
+        // The Grand's line, from its award until the next game.
+        assert_eq!(show.grand_caption(2), None);
+        show.grand = Some(1_206_131);
+        assert_eq!(show.grand_caption(2), None, "not before its award");
+        show.grand_done = true;
+        assert_eq!(
+            show.grand_caption(2).as_deref(),
+            Some("GRAND JACKPOT Win $24122.62")
+        );
+        assert_eq!(
+            show.grand_call(2).as_deref(),
+            Some("Call Attendant : JACKPOT HIT $24122.62")
+        );
+        show.on_event(&Event::SpinStarted { spin: 2 });
+        assert_eq!(show.grand_caption(2), None);
+        assert_eq!(show.grand_call(2), None);
+    }
+
+    /// The collected-coin disc counts the coins held and landed, each as it
+    /// lands, and shows with the board until the WINNER display.
+    #[test]
+    fn the_collected_disc_counts_each_coin_as_it_lands() {
+        let coins = [(0, 0), (1, 0), (2, 0), (3, 1)];
+        let mut show = FeatureShow::default();
+        assert_eq!(coins_collected(&coins, &show.coins_to_land()), 4);
+        // Presented, not yet turning: its coins are still to land.
+        show.respin_landed = Some(vec![(3, 1)]);
+        assert_eq!(coins_collected(&coins, &show.coins_to_land()), 3);
+        show.respin_landed = None;
+        show.respin = Some(RespinAnim {
+            stops: vec![(3, 1, 0.5, true), (4, 2, 0.9, false)],
+            ..default()
+        });
+        assert_eq!(coins_collected(&coins, &show.coins_to_land()), 3);
+        if let Some(a) = show.respin.as_mut() {
+            a.done = 1;
+        }
+        assert_eq!(coins_collected(&coins, &show.coins_to_land()), 4);
+        show.on_event(&Event::HoldAndSpinStarted {
+            respins: 3,
+            locked: Vec::new(),
+        });
+        assert!(!show.collected_showing(), "not before the board");
+        show.grid = true;
+        assert!(show.collected_showing());
+        show.winner = Some(0);
+        assert!(!show.collected_showing(), "the WINNER display takes over");
+    }
+
+    /// The feature banner's rim clears the jackpot values above it.
+    #[test]
+    fn the_feature_banner_clears_the_jackpot_values() {
+        let k = JACKPOT_BAR_W / 1225.0;
+        let middle = JACKPOT_BAR_TOP + 64.5 * k;
+        // The figures reach about 0.36 of the type size below the middle
+        // line (a capture: digits y 73-117 about 95), their edge 2 px more.
+        let ink_bottom = middle + 0.36 * JACKPOT_VALUE_SIZE + 2.0;
+        let banner_top = BANNER_Y - BANNER_SIZE.1 / 2.0;
+        assert!(banner_top >= ink_bottom + 2.0, "{banner_top} {ink_bottom}");
+        // It still stands across the reels' top edge.
+        assert!(BANNER_Y + BANNER_SIZE.1 / 2.0 > GRID_CENTER.1 - 1.5 * PITCH.1);
+    }
+
+    /// A progressive's changed figures roll up inside the box: the old one
+    /// rises out, the new one rises from below, eased, over 0.37 s; a
+    /// change mid-roll ends it and rolls on (y8c8lEdPW8Y).
+    #[test]
+    fn a_changed_figure_rolls_up_inside_its_box() {
+        assert!((0.35..=0.40).contains(&ROLL_SECONDS));
+        let still = |r: &Roll| r.poses().iter().all(|p| p.now_y == 0.0 && p.old.is_none());
+        let mut roll = Roll::default();
+        roll.follow("-");
+        roll.follow("$603.71");
+        assert!(still(&roll), "the first value shows as it is");
+        roll.follow("$603.72");
+        let p = roll.poses();
+        assert_eq!(p[6].now, '2');
+        assert!((p[6].now_y - 1.0).abs() < 1e-6);
+        assert_eq!(p[6].old, Some(('1', 0.0)));
+        assert!(
+            p[..6].iter().all(|p| p.old.is_none() && p.now_y == 0.0),
+            "only the changed figure rolls"
+        );
+        roll.advance(ROLL_SECONDS / 2.0);
+        let p = roll.poses();
+        assert!((p[6].now_y - 0.5).abs() < 1e-4);
+        assert!(p[6].old.is_some_and(|(_, y)| (y + 0.5).abs() < 1e-4));
+        roll.follow("$603.73");
+        let p = roll.poses();
+        assert_eq!(
+            p[6].old,
+            Some(('2', 0.0)),
+            "on from the value it was rolling to"
+        );
+        roll.advance(1.0);
+        assert!(still(&roll));
+        // Every changed figure rolls; a longer value lines up from the right.
+        roll.follow("$1,000.00");
+        let p = roll.poses();
+        assert_eq!(p[8].old.map(|o| o.0), Some('3'));
+        assert_eq!(p[0].old, None);
+        assert!(p[0].now_y > 0.0);
+        roll.advance(1.0);
+        assert!(still(&roll));
     }
 }

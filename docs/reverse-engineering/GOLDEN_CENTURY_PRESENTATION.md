@@ -254,6 +254,59 @@ cabinet copies have no sound). It keeps the
 cabinet's own meters, button deck and gamble (owner), rebuilt from cabinet footage in
 [GOLDEN_CENTURY_CABINET_DECK.md](GOLDEN_CENTURY_CABINET_DECK.md).
 
+**The jackpots through Hold & Spin** (second audit pass, 2026-10-19; [FOOTAGE.md](FOOTAGE.md)):
+
+- **The disc.** Through every Hold & Spin the cabinet's top screen shows a sun disc, "N COLLECTED /
+  15 WIN / GRAND JACKPOT", the count including the held coins and stepping as each coin lands, the
+  four jackpots in small boxes at its corners (Grand and Minor left, Major and Mini right) and fire
+  dragons either side (VERIFIED: 1bAevGz0K2k 141.5 s, OL6Pu1AI-cQ 0.5 and 130 s, Happy & Prosperous
+  bUbSjAGwqs8). The app shows it on a plate over the jackpot bar, as it does the WINNER display:
+  the game's coin with the count, "COLLECTED" and "15 WIN" in a substitute face, the GRAND JACKPOT
+  lettering cut from the game's COLLECT 15 TO WIN art, each box cropped from the game's jackpot bar
+  with its live value, and the game's fire dragon (our layout, the owner's call: HYPOTHESIS). The
+  official app's "N COLLECTED" badge (VERIFIED for the app) is not used.
+- **A Major first.** On an Autumn Moon club machine (5Z1-hFzpyh0 525-590 s, a storyboard; its Hold &
+  Spin scenes are Golden Century's) the Major is awarded before the coins: WINNER over the box with
+  the MAJOR JACKPOT title, empty, then its amount in green with a coin shower for about 20 s; the box
+  empty again as the first comet leaves; the other coins tallied without it; WIN shows the coins only
+  and CREDIT takes the Major apart (STRONG; PARTIAL for Golden Century). The app follows: the Major's
+  step first, no comet, the pack's MAJOR JACKPOT plaque (729 x 108, a pack without it keeps the flame
+  box), the amount green as it lands (its meter restarting then), its own count with the payout music
+  and the shower when it is 25 times the bet or more (SPIN completes it), then the empty box and the
+  coins. SND_Credit1 ticks its plaque as the cabinet's Grand plaque is ticked (HYPOTHESIS by analogy).
+  The money is the owner's call: WIN counts the Major up during its own count and keeps it, and the
+  count's banner shows the coins only (the cabinet credits the Major to CREDIT directly).
+- **The Grand's fire.** Before WINNER / GRAND JACKPOT shows, a fire wipes both screens from the
+  bottom up and clears, bottom first (OL6Pu1AI-cQ 3.4-4.4 s at 0.1 s steps: VERIFIED on one machine).
+  The pack's transition fire, the intro's, has the same shape (frames 15-20 fill, 21-35 cover, 36-41
+  clear; 26 frames, 0.87 s at 30 fps against the cabinet's 0.9-1.0 s: STRONG that it is the same
+  fire). The app plays it at 30 fps, started 0.9 s before the Grand's step, so the plaque switches on
+  under full cover (its frame 27) and shows as the fire clears (in the owner's coins-first order:
+  HYPOTHESIS). The intro keeps its own 22.3 fps.
+- **Status lines.** "Free Spins Completed" through the tally and the count (VERIFIED); then, at rest
+  with the win offered, PLAY ON and "Free Spins Completed" in 2.0 s turns from the offer, PLAY ON
+  first (VERIFIED on the owner's Happy & Prosperous club recording, 60 frames each; on two Golden
+  Century recordings PLAY ON shows first and the player takes the win within 0.2 s, the bet line
+  following: 1bAevGz0K2k 165.3-165.7, f5sMl9a5jds 282.5-283.9, so PARTIAL for Golden Century). A win
+  never offered (a progressive, or past the gamble limit) keeps "Free Spins Completed" until the next
+  game (HYPOTHESIS); a win taken leaves the bet line. After a Grand, from its award until the next
+  game, the club line reads "GRAND JACKPOT Win $24122.63" in the bet line's yellow, the dollars
+  ungrouped, and the system line "Call Attendant : JACKPOT HIT $24122.63" (Wc7QU1C2jWo 3.6 s, one
+  legible frame: STRONG; the casino build's "Call Attendant - You have won a ..." and "GRAND JACKPOT
+  $13566.04", OL6Pu1AI-cQ 161-163.5 s, recorded as a conflict). The line implies a hand pay; the app
+  still credits the Grand and shows the lines as filmed.
+- **The meters.** They climb in one- and two-cent steps at about the club machines' rate (STRONG on
+  five machines; the app's intervals synthetic) and stay live through the feature, as filmed; the app
+  holds every meter only while a respin the simulation has resolved plays out, so a meter it has
+  paid does not stop alone before its coin lands (HYPOTHESIS, an engineering choice). A changed figure
+  rolls up inside its box over 0.37 s, the old one out at the top, the new one in from below
+  (VERIFIED on y8c8lEdPW8Y at 30 fps; a carry not seen, so every changed figure rolls). The Grand
+  restarts at $10,000 (OL6Pu1AI-cQ 86-163.5 s: VERIFIED on one machine, STRONG for Australian Golden
+  Century).
+- **The banner.** The feature banner over the reels now sits 10 px lower, its gold rim (canvas y
+  124.5) clear of the Major's and Minor's values; it hid their bottom 7-8 px (measured on a capture;
+  the cabinet has separate screens, and the official app's banner sits below its bar).
+
 ## The other clips
 
 Every clip of the game's sound bank that the app did not yet play was searched for across the app
@@ -272,7 +325,7 @@ show is used here.
 | Others | anticipation1..5, SND_Pic1..4, SND_LargePrize, SND_GrandBell, SND_JackpotFanfare, SND_DrumRoll_*, SND_WindUp, BonusRollup, SND_Major, SND_Credit2/4/5/Small, the ST_ and reel/whirring clips: no placement shown by footage | UNKNOWN |
 
 Recorded but not followed here: on the cabinet a Grand is shown and counted before the coins; the
-owner chose the coins first, then the Grand.
+owner chose the coins first, then the Grand. A Major follows the cabinet (first; above).
 
 ## Not known
 

@@ -129,6 +129,26 @@ owner; docs/DECISIONS.md). Every run muted. Progress, newest last:
   COMPLETED goes, the first coin 0.38 s later, each comet 0.67 s and landing with its value (the
   bolt's frames stretched to its flight); the WIN banner's amount is white. Unit tests cover each;
   checked on muted captures (the jackpots run, Spring Festival's BIG coin feature).
+- **Audit fixes, second pass: jackpots.** The Grand restarts at $10,000, as a Golden Century
+  machine shows after its Grand (VERIFIED there, STRONG for Australian Golden Century), opening
+  below $13,000 and stopping at $25,000 (synthetic; a club Grand was won at $24,122.63); the
+  synthetic return stays flat at about 90% at every bet (the flat-return test re-run with the new
+  meters). Both meters now climb a cent or two every few seconds, the club machines' order of rate
+  (STRONG on five machines; it was 14-100 times faster), and a changed figure rolls up inside its
+  box over 0.37 s (VERIFIED on one machine). Every meter holds while a resolved respin plays out,
+  so a won meter no longer stops alone before its coin lands (HYPOTHESIS). Through Hold & Spin a
+  plate over the jackpot bar shows the cabinet's disc, "N COLLECTED / 15 WIN / GRAND JACKPOT",
+  counting each coin as it lands, with the four jackpots at its corners and the game's fire dragons
+  (the disc VERIFIED, our layout HYPOTHESIS). A Major is awarded first on the pack's MAJOR JACKPOT
+  plaque, its amount green, with its own count and coin shower, then the coins (STRONG on an Autumn
+  Moon club recording, PARTIAL for Golden Century; WIN keeping it is the owner's call). A Grand
+  comes under the pack's fire at 30 fps, the plaque switching on under full cover (the fire VERIFIED
+  on one machine), with "GRAND JACKPOT Win $x" on the status line and "Call Attendant : JACKPOT HIT
+  $x" on the club's system line (STRONG). After a base game's Hold & Spin the status line turns
+  PLAY ON and "Free Spins Completed" while the win is offered (VERIFIED on a Happy & Prosperous club
+  recording, PARTIAL for Golden Century). The feature banner moved 10 px down, clear of the Major's
+  and Minor's values. Unit tests cover each; checked on muted captures (the jackpots and both runs,
+  a base run for the roll).
 
 ## Project interpretation (owner reset, 2026-10-14)
 
@@ -521,14 +541,17 @@ The owner's next play test asked for the jackpots to behave as on the machines:
 - **Major and Grand** are progressive meters in money (that they climb: STRONG,
   `jackpots.meters-au`). The core pays the meter, in whole credits with the cents held over, and
   restarts it (`Command::SetProgressive`, `GameState::meters`). The app's link opens each meter at
-  random between its restart and 80% of a ceiling (Grand $5,000 to $12,000 of $15,000, Major $500
-  to $1,200 of $1,500, the owner's ranges), climbs it by a few cents at irregular moments with an
-  occasional jump, through features too, and holds a won meter at the amount won until the win is
-  counted. Start values, rates, restarts and ceilings are synthetic: no source shows them.
+  random between its restart and a mark below its ceiling (Grand $10,000 to $13,000 of $25,000,
+  Major $500 to $1,200 of $1,500), climbs it by a cent or two every few seconds with an occasional
+  jump, through features too, and holds a won meter at the amount won until the win is counted.
+  Updated 2026-10-19: the Grand's $10,000 restart is filmed (VERIFIED on one machine, STRONG for
+  Australian Golden Century) and the climb's order of rate too (STRONG); the openings, the exact
+  rates, the Major's restart and the ceilings stay synthetic (it was $5,000 to $12,000 of $15,000,
+  14-100 times faster).
 - **Chance follows the stake.** The national standard requires a jackpot's chance to be directly
   and linearly proportional to the bet (NS 4.17, PUBLISHED_RETURNS.md). A jackpot coin, or a full
   grid's Grand, stands only with chance stake / its prize (a progressive's restart value), so a
-  1c bet cannot win a $5,000 Grand at a $5 bet's chance (the return once ran past 8,000% at the
+  1c bet cannot win a $10,000 Grand at a $5 bet's chance (the return once ran past 8,000% at the
   smallest stake). Updated 2026-10-19: first a set stake per jackpot, now its prize.
 - **Prepared runs** (`DRAGONLINK_SCENARIO`): `both` (Hold & Spin then free games, the Grand),
   `jackpots` (a Major, four Minis and two Minors, then free games; no gamble after the Major) and

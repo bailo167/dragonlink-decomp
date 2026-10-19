@@ -727,11 +727,13 @@ struct Sim {
 /// machines the Major and the Grand are running meters that increase during
 /// play (STRONG, claims/family.toml, jackpots.meters-au); the simulation is
 /// told each new value (`Command::SetProgressive`), so a win pays what the
-/// meter shows. How they climb here (small irregular steps at irregular
-/// moments, an occasional jump), where they open and where they stop are
-/// this project's synthetic choices ([`LINK_SPECS`]): no source shows an
-/// increment rate or a ceiling. They draw on their own generator, never the
-/// outcome source.
+/// meter shows. They climb in one- and two-cent steps every few seconds, an
+/// order of magnitude filmed on five club machines (the Grand about 0.1-0.8
+/// cents a second, the Major about 0.25-0.8: p6OesyvM5vA, OL6Pu1AI-cQ,
+/// f5sMl9a5jds, 1bAevGz0K2k, y8c8lEdPW8Y; STRONG); the intervals, the
+/// occasional jump, where they open and where they stop are this project's
+/// synthetic choices ([`LINK_SPECS`]), the real rate following link traffic.
+/// They draw on their own generator, never the outcome source.
 #[derive(Resource, Default)]
 struct Link {
     rng: u64,
@@ -751,9 +753,14 @@ struct LinkMeter {
     held: bool,
 }
 
-/// How a progressive meter starts and climbs (synthetic, the owner's
-/// ranges: the Grand from $5,000 to $15,000, the Major from $500 to $1,500,
-/// opening anywhere up to 80% of the top).
+/// How a progressive meter starts and climbs. It opens between its restart
+/// (the model's: the Grand's $10,000 as filmed, the Major's $500 synthetic)
+/// and `opens_below`, and stops at `ceiling`: the Grand opens below $13,000
+/// (most filmed Australian Grands stood at $10,343 to about $13,000) and
+/// stops at $25,000 (a club Golden Century's Grand was won at $24,122.63,
+/// Wc7QU1C2jWo; the real ceiling is UNKNOWN); the Major opens below $1,200
+/// and stops at $1,500 (the owner's range). Openings, ceilings and rates
+/// are synthetic; the rates' order of magnitude is filmed (see [`Link`]).
 struct LinkSpec {
     tier: JackpotTier,
     /// The meter stops climbing here, in cents.
@@ -771,22 +778,24 @@ struct LinkSpec {
 const LINK_SPECS: [LinkSpec; 2] = [
     LinkSpec {
         tier: JackpotTier::Grand,
-        ceiling: 1_500_000,
-        opens_below: 1_200_000,
-        every: (0.15, 1.6),
-        climb: (1, 12),
-        jump: (25, 90),
+        ceiling: 2_500_000,
+        opens_below: 1_300_000,
+        every: (1.5, 4.5),
+        climb: (1, 2),
+        jump: (3, 10),
     },
     LinkSpec {
         tier: JackpotTier::Major,
         ceiling: 150_000,
         opens_below: 120_000,
-        every: (0.4, 3.0),
-        climb: (1, 4),
-        jump: (5, 20),
+        every: (1.5, 4.5),
+        climb: (1, 2),
+        jump: (3, 10),
     },
 ];
-const LINK_JUMP_ONE_IN: u64 = 15;
+/// One climb in this many is a jump: about 0.54 cents a second on average,
+/// inside what the club machines show (synthetic).
+const LINK_JUMP_ONE_IN: u64 = 40;
 
 impl Link {
     /// The next number of the meters' own generator (splitmix64).
@@ -828,7 +837,7 @@ fn set_progressive(game: &mut Game, tier: JackpotTier, value: u64) -> bool {
 }
 
 /// Open the link for a new game: each progressive the model has starts
-/// somewhere between its restart value and 80% of its ceiling.
+/// somewhere between its restart value and its `opens_below`.
 fn open_link(game: &mut Game, seed: u64) -> Link {
     let mut link = Link {
         rng: seed ^ 0x6C69_6E6B_6D65_7465,
@@ -873,9 +882,35 @@ fn link_creep(
         && presentation.queue.is_empty()
         && !show.in_feature()
         && !show.counting();
-    link.tick(&mut sim.game, smoke.dt(&time), &|tier| {
+    let dt = if respin_in_flight(&presentation.queue, show.respin_in_flight()) {
+        0.0
+    } else {
+        smoke.dt(&time)
+    };
+    link.tick(&mut sim.game, dt, &|tier| {
         shown_all || show.link_won.contains(&tier)
     });
+}
+
+/// A Hold & Spin respin the simulation has resolved is not yet over on the
+/// screen: its events wait in `queue`, or its positions are turning
+/// (`turning`). Every meter holds still meanwhile. The simulation pays a
+/// progressive in the respin that ends the feature and restarts its meter
+/// then, so that meter alone would stop climbing before its coin lands,
+/// giving the outcome away. On club machines the meters stay live through
+/// features (1bAevGz0K2k, f5sMl9a5jds, OL6Pu1AI-cQ; VERIFIED); holding them
+/// through every respin is this project's choice (HYPOTHESIS), unseen at a
+/// climb every few seconds.
+fn respin_in_flight(queue: &VecDeque<(f32, Event)>, turning: bool) -> bool {
+    turning
+        || queue.iter().any(|(_, e)| {
+            matches!(
+                e,
+                Event::HoldAndSpinRespin { .. }
+                    | Event::HoldAndSpinCompleted { .. }
+                    | Event::JackpotAwarded { .. }
+            )
+        })
 }
 
 impl Link {
@@ -3028,6 +3063,7 @@ fn main() -> AppExit {
                 cabinet::hold_and_spin_draw,
                 cabinet::hs_spin_digits,
                 cabinet::winner_plate,
+                cabinet::hs_collected,
                 cabinet::hs_backdrop,
                 cabinet::door_reveal,
                 cabinet::door_draw,
@@ -3054,6 +3090,7 @@ fn main() -> AppExit {
                 cabinet::update_meters,
                 cabinet::system_message,
                 cabinet::fit_jackpots,
+                cabinet::roll_jackpots,
                 cabinet::fit_reel_panel,
                 cabinet::lines_digits,
                 cabinet::attract_bar,
@@ -3282,14 +3319,18 @@ mod tests {
         );
     }
 
+    /// The Grand opens at $10,000 to $13,000 and the Major at $500 to
+    /// $1,200; both climb a cent or two at a time every few seconds, now
+    /// and then more, at the club machines' rate (about 0.1-0.8 cents a
+    /// second), and stop at their ceilings.
     #[test]
-    fn the_link_opens_below_eighty_percent_and_climbs_unevenly_to_its_ceiling() {
+    fn the_link_opens_from_its_restart_and_climbs_slowly_to_its_ceiling() {
         for seed in 0..50 {
             let mut game = Game::new(golden_century_synthetic(), 1000).unwrap();
             let link = open_link(&mut game, seed);
             let grand = link.shown(JackpotTier::Grand).unwrap();
             let major = link.shown(JackpotTier::Major).unwrap();
-            assert!((500_000..=1_200_000).contains(&grand), "{grand}");
+            assert!((1_000_000..=1_300_000).contains(&grand), "{grand}");
             assert!((50_000..=120_000).contains(&major), "{major}");
             // The simulation pays what the meters show.
             assert_eq!(game.meter(JackpotTier::Grand), Some(grand));
@@ -3298,9 +3339,10 @@ mod tests {
         let mut game = Game::new(golden_century_synthetic(), 1000).unwrap();
         let mut link = open_link(&mut game, 7);
         let mut rises = std::collections::BTreeSet::new();
-        let mut last = link.shown(JackpotTier::Grand).unwrap();
-        // A minute in tenths of a second: it climbs, by differing amounts.
-        for _ in 0..600 {
+        let start = link.shown(JackpotTier::Grand).unwrap();
+        let mut last = start;
+        // Half an hour in tenths of a second.
+        for _ in 0..18_000 {
             link.tick(&mut game, 0.1, &|_| true);
             let now = link.shown(JackpotTier::Grand).unwrap();
             assert!(now >= last);
@@ -3309,14 +3351,70 @@ mod tests {
             }
             last = now;
         }
-        assert!(rises.len() > 3, "uneven rises: {rises:?}");
+        assert!(rises.len() >= 2, "uneven rises: {rises:?}");
+        assert!(rises.iter().all(|r| *r <= 10), "small steps: {rises:?}");
+        assert!(rises.contains(&1) && rises.contains(&2), "{rises:?}");
+        let rate = (last - start) as f32 / 1800.0;
+        assert!((0.3..0.8).contains(&rate), "{rate} cents a second");
         assert_eq!(game.meter(JackpotTier::Grand), Some(last));
-        // A day later both meters wait at their ceilings.
-        for _ in 0..86_400 {
+        // Near its ceiling a meter climbs to it and waits there.
+        for (tier, top) in [
+            (JackpotTier::Grand, 2_500_000),
+            (JackpotTier::Major, 150_000),
+        ] {
+            let near = top - 5;
+            assert!(set_progressive(&mut game, tier, near));
+            if let Some(m) = link.meters.iter_mut().find(|m| m.spec.tier == tier) {
+                m.told = near;
+                m.shown = near;
+            }
+        }
+        for _ in 0..200 {
             link.tick(&mut game, 1.0, &|_| true);
         }
-        assert_eq!(link.shown(JackpotTier::Grand), Some(1_500_000));
+        assert_eq!(link.shown(JackpotTier::Grand), Some(2_500_000));
         assert_eq!(link.shown(JackpotTier::Major), Some(150_000));
+        assert_eq!(game.meter(JackpotTier::Grand), Some(2_500_000));
+    }
+
+    /// While a Hold & Spin respin is in flight every meter holds: no time
+    /// passes for the link, so nothing climbs, and a meter the simulation
+    /// has just paid shows the amount won, not a climbed value.
+    #[test]
+    fn no_meter_climbs_while_a_respin_is_in_flight() {
+        let mut game = Game::new(golden_century_synthetic(), 1000).unwrap();
+        let mut link = open_link(&mut game, 5);
+        let grand = link.shown(JackpotTier::Grand).unwrap();
+        let major = link.shown(JackpotTier::Major).unwrap();
+        for _ in 0..1_000 {
+            link.tick(&mut game, 0.0, &|_| true);
+        }
+        assert_eq!(link.shown(JackpotTier::Grand), Some(grand));
+        assert_eq!(link.shown(JackpotTier::Major), Some(major));
+        assert_eq!(game.meter(JackpotTier::Grand), Some(grand));
+        // The simulation pays the Grand mid-flight: the meter shows the
+        // amount won until its win is shown.
+        let mut state = game.state().clone();
+        state.meters.insert(JackpotTier::Grand, 1_000_000);
+        game = Game::resume(game.model().clone(), state).unwrap();
+        link.tick(&mut game, 0.0, &|_| false);
+        assert_eq!(link.shown(JackpotTier::Grand), Some(grand));
+        assert_eq!(link.shown(JackpotTier::Major), Some(major));
+        // What holds the link: a respin's events queued, or its turning.
+        let respin = Event::HoldAndSpinRespin {
+            respin: 1,
+            landed: Vec::new(),
+            respins_left: 3,
+            locked_total: 6,
+        };
+        let mut queue = VecDeque::new();
+        assert!(!respin_in_flight(&queue, false));
+        assert!(respin_in_flight(&queue, true));
+        queue.push_back((0.5, respin));
+        assert!(respin_in_flight(&queue, false));
+        queue.clear();
+        queue.push_back((0.5, Event::SpinStarted { spin: 2 }));
+        assert!(!respin_in_flight(&queue, false));
     }
 
     #[test]

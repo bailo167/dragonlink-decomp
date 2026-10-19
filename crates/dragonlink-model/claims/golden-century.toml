@@ -272,9 +272,31 @@ note = "What the pages say, not what a screen shows. The same sentence is on the
 
 [[claim]]
 id = "jackpots"
-statement = "What are the Major's start-up value and ceiling, and the increment rates of the Grand and the Major, in the Australian configuration?"
+statement = "What are the Major's start-up value and ceiling, the Grand's ceiling, and the exact increment rules of the Grand and the Major, in the Australian configuration?"
 confidence = "unknown"
-note = "Structure, fixed values and observed behaviour are in claims/family.toml (jackpots.progressive-levels, jackpots.meters-au, jackpots.minor-mini-au). Meter values seen on nine machines from 2020 to 2026: Grand between $10,343 and $15,545.85, Major between $512.94 and $1,190.03; a sample, not a range."
+note = "Structure, fixed values and observed behaviour are in claims/family.toml (jackpots.progressive-levels, jackpots.meters-au, jackpots.minor-mini-au); the Grand's restart and the meters' order of rate are below (jackpots.grand-restart, jackpots.meter-rate). Meter values seen on nine machines from 2020 to 2026: Grand between $10,343 and $15,545.85, Major between $512.94 and $1,190.03; a sample, not a range. A club Golden Century's Grand was won at $24,122.63 (Wc7QU1C2jWo), so its ceiling is at least that. The Major's lowest filmed value is $512.94; a US render shows $500.00."
+
+[[claim]]
+id = "jackpots.grand-restart"
+statement = "On Australian Golden Century machines the Grand restarts at $10,000 once won."
+value = "$10,000"
+confidence = "strong_evidence"
+source = "gameplay_recording"
+citation = "Public recordings, YouTube ids and times: OL6Pu1AI-cQ 86.0 s ('GRAND JACKPOT: $10,000.20' under WINNER after a $13,566.04 Grand won at 0.5-3.2 s), 89.0 s ($10,000.21 on the top screen), 96, 161 and 163.5 s ($10,000.23 to $10,000.43); Wc7QU1C2jWo 3.6 s (a line shaped like $?0,000.?0 after a $24,122.63 Grand, too blurred to read) (docs/reverse-engineering/FOOTAGE.md)"
+accessed = "2026-10-19"
+scope = "cabinet-au"
+note = "Verified on one machine (OL6Pu1AI-cQ, a casino build, read at several moments); strong for Australian Golden Century with Wc7QU1C2jWo (partial), demonstration stills of Australian machines at $10,009.77 and a US render at $10,000.04, and nine filmed Australian Golden Century Grands all at $10,343 or more. Venues set their own start-ups on some links (docs/reverse-engineering/AUSTRALIAN_CONFIGURATION.md), so this is the filmed configuration's value, not every floor's. The synthetic model restarts its Grand here; its opening range and ceiling stay synthetic."
+
+[[claim]]
+id = "jackpots.meter-rate"
+statement = "Golden Century's Grand and Major meters climb by one or two cents at a time, at about 0.1 to 0.8 cents a second (Grand) and 0.25 to 0.8 cents a second (Major), also during features; a changed figure rolls up inside its box in about 0.35-0.40 s."
+value = "Grand about 0.1-0.8 c/s, Major about 0.25-0.8 c/s, 1-2 c steps; roll 0.35-0.40 s"
+confidence = "strong_evidence"
+source = "gameplay_recording"
+citation = "Public recordings, YouTube ids and times: p6OesyvM5vA (Grand $10,482.50 to $10,485.38 in 353 s); OL6Pu1AI-cQ 89-163.5 s; f5sMl9a5jds (.97 to .02 in 13.3 s, during a tally); 1bAevGz0K2k (2 c in about 19 s, during a tally); y8c8lEdPW8Y 860-3183 s (Major $602.35 to $619.20) and 1105-1122 s at 30 fps (the roll) (docs/reverse-engineering/FOOTAGE.md)"
+accessed = "2026-10-19"
+scope = "cabinet-au"
+note = "Five machines; video time may include cuts, so real rates are if anything lower. The rate follows link traffic, so the intervals and any larger jumps are not a property of the game; the app's are synthetic, scaled to this order of magnitude. The roll is verified on one machine (two rolls at 30 fps); what a carry does was not seen."
 
 [[claim]]
 id = "gamble"
