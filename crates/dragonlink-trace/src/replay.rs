@@ -811,6 +811,8 @@ pub fn reconstruct(model: &MathModel, observation: &Trace) -> Result<Reconstruct
             | Event::MysteryRevealed { .. }
             | Event::FreeGamesRetriggered { .. }
             | Event::FreeGamesResumed { .. }
+            | Event::WildExpanded { .. }
+            | Event::BigSymbol { .. }
             | Event::FreeGameCompleted { .. }
             | Event::FreeGamesCompleted { .. } => {}
         }

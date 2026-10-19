@@ -123,6 +123,17 @@ pub enum Event {
         symbol: String,
         count: u8,
     },
+    /// A wild filled its reel in a free game.
+    WildExpanded {
+        reel: u8,
+    },
+    /// The free games' BIG reel stopped on `symbol`, covering `width` reels
+    /// from `first`.
+    BigSymbol {
+        symbol: String,
+        first: u8,
+        width: u8,
+    },
     /// The free games carry on after a Hold & Spin that one of them started.
     FreeGamesResumed {
         /// Free games left to play.
@@ -187,6 +198,8 @@ impl Event {
             Event::FreeGameStarted { .. } => "free_game_started",
             Event::MysteryRevealed { .. } => "mystery_revealed",
             Event::FreeGamesResumed { .. } => "free_games_resumed",
+            Event::WildExpanded { .. } => "wild_expanded",
+            Event::BigSymbol { .. } => "big_symbol",
             Event::FreeGamesRetriggered { .. } => "free_games_retriggered",
             Event::FreeGameCompleted { .. } => "free_game_completed",
             Event::FreeGamesCompleted { .. } => "free_games_completed",

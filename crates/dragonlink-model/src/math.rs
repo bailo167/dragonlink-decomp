@@ -231,6 +231,36 @@ pub struct FreeGamesModel {
     /// What the mystery reveals to, weighted. Required when `mystery` is set.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub reveal_values: Vec<WeightedSymbol>,
+    /// The free games' own pay table, when they have one; empty for the base
+    /// game's.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub line_pays: Vec<LinePay>,
+    /// Every wild in a winning run multiplies its win by this, each one again
+    /// (two make x4), in the free games only.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub wild_multiplier: Option<u32>,
+    /// A wild landing in a free game fills its whole reel before the pays.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub expanding_wilds: bool,
+    /// Reels that spin together in the free games as one BIG reel, each stop
+    /// a single symbol covering them all.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub big_reel: Option<BigReel>,
+}
+
+/// Free-game reels joined into one BIG reel (see [`FreeGamesModel::big_reel`]).
+/// Each covered position counts as one of its symbol, except a BIG scatter,
+/// which counts once, pays `scatter_pay` times the total bet and adds
+/// `scatter_games` free games; a BIG coin fills its positions with coins.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct BigReel {
+    /// The first reel it covers (0-based) and how many reels.
+    pub first: u8,
+    pub width: u8,
+    /// Its strip: one symbol a stop.
+    pub strip: Vec<SymbolId>,
+    pub scatter_pay: u32,
+    pub scatter_games: u8,
 }
 
 /// A complete, runnable game configuration.

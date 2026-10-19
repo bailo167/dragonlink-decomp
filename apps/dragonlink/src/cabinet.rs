@@ -578,10 +578,16 @@ pub fn game_rules(
         && !gamble.active
         && !menu.showing();
     let open_key = keys.just_pressed(KeyCode::KeyI) || keys.just_pressed(KeyCode::F1);
+    // Testing (`DRAGONLINK_SHOW=rules`, an unattended run only): the rules
+    // open two seconds in and turn a page three seconds later.
+    let shown = smoke.frames_left.is_some()
+        && matches!(smoke.frame, 120 | 300)
+        && std::env::var("DRAGONLINK_SHOW").as_deref() == Ok("rules");
+    let open_key = open_key || shown;
     let pill = std::mem::take(&mut rules.pressed) || open_key;
     let button = rules.button.take();
     if !rules.open {
-        if pill && at_rest && !pages.is_empty() {
+        if pill && (at_rest || shown) && !pages.is_empty() {
             rules.open = true;
             rules.page = 0;
             rules.idle = 0.0;

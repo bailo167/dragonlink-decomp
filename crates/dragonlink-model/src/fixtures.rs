@@ -741,6 +741,10 @@ pub fn golden_century_synthetic() -> MathModel {
             free_reel_strips,
             mystery: Some(SymbolId(DOORS)),
             reveal_values,
+            line_pays: Vec::new(),
+            wild_multiplier: None,
+            expanding_wilds: false,
+            big_reel: None,
         }),
     }
 }
