@@ -1096,6 +1096,7 @@ fn setup(
         }
         cabinet::spawn(&mut commands, model, &art, &cab_fonts, *profile);
         cabinet::spawn_machine_menu(&mut commands, &cab_fonts, &machines);
+        cabinet::spawn_rules(&mut commands, &art);
         return;
     }
     let art = &*art;
@@ -1421,7 +1422,7 @@ fn input(
     mut menu: ResMut<cabinet::GamesMenu>,
     sounds: Res<cabinet::Sounds>,
     mut commands: Commands,
-    profile: Res<cabinet::Profile>,
+    (profile, mut rules): (Res<cabinet::Profile>, ResMut<cabinet::GameRules>),
 ) {
     let profile = *profile;
     // Idle means the reels have come to rest on screen too: the last one runs
@@ -1507,6 +1508,10 @@ fn input(
         })
         .filter(|n| *n != sim.game.lines() && sim.game.model().line_counts().contains(n));
     // In a browser, leaving the event loop would only freeze the page.
+    // While the rules show, or as a press closes them, the press is theirs.
+    if rules.open || std::mem::take(&mut rules.swallow) {
+        return;
+    }
     if cfg!(not(target_arch = "wasm32")) && keys.just_pressed(KeyCode::Escape) {
         exit.write(AppExit::Success);
         return;
@@ -2674,6 +2679,7 @@ fn main() -> AppExit {
     .insert_resource(cabinet::GambleShow::with_history(cli.seed))
     .insert_resource(cabinet::GamesMenu::default())
     .insert_resource(cabinet::AttractIdle::default())
+    .insert_resource(cabinet::GameRules::default())
     .insert_resource(cabinet::DeckState::default())
     .insert_resource(cabinet::Profile::from_env())
     .insert_resource(cabinet::WildStacks::default())
@@ -2732,6 +2738,7 @@ fn main() -> AppExit {
                 cabinet::payout_effects,
                 cabinet::gamble_control,
                 cabinet::attract_timer,
+                cabinet::game_rules,
                 input,
                 cabinet::clear_buttons,
                 drive_features,

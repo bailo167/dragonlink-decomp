@@ -421,6 +421,240 @@ pub fn machine_menu(
     }
 }
 
+/// The game's rules pages: the title's own help pages from its local pack
+/// (`ui/help_NN`, in the help scene's order), over its background, with the
+/// mobile layout's BACK / EXIT / NEXT buttons. On the cabinet GAME RULES
+/// opens them and each further press turns the page; any other press closes
+/// them; they close themselves after 120 s (the shared framework, VERIFIED
+/// as code). No club recording shows the pages, so their order and layout
+/// follow the mobile build (HYPOTHESIS for the cabinet). Keyboard (this
+/// app's own): I or F1 opens, the arrows or Page Up/Down turn, Esc closes.
+#[derive(Resource, Default)]
+pub struct GameRules {
+    pub open: bool,
+    pub page: usize,
+    idle: f32,
+    /// The GAME RULES pill was touched.
+    pub pressed: bool,
+    /// A press closed the rules and must do nothing else.
+    pub swallow: bool,
+    /// A page button was touched: -1 back, 0 exit, 1 next.
+    pub button: Option<i8>,
+}
+
+const RULES_IDLE_SECONDS: f32 = 120.0;
+
+/// The rules overlay and its page.
+#[derive(Component)]
+pub struct RulesRoot;
+#[derive(Component)]
+pub struct RulesPage;
+
+/// The title's help pages, in order.
+pub fn help_pages(art: &ArtPack) -> Vec<String> {
+    let mut pages: Vec<String> = art
+        .ui
+        .keys()
+        .filter(|k| {
+            k.strip_prefix("help_")
+                .is_some_and(|n| !n.is_empty() && n.chars().all(|c| c.is_ascii_digit()))
+        })
+        .cloned()
+        .collect();
+    pages.sort();
+    pages
+}
+
+/// The next page after `page` of `count`, `step` pages on, wrapping both ways.
+pub fn turn_page(page: usize, count: usize, step: i64) -> usize {
+    if count == 0 {
+        return 0;
+    }
+    (page as i64 + step).rem_euclid(count as i64) as usize
+}
+
+/// Build the rules overlay, hidden.
+pub fn spawn_rules(commands: &mut Commands, art: &ArtPack) {
+    let ui = |k: &str| art.ui.get(k).cloned().unwrap_or_default();
+    commands
+        .spawn((
+            CanvasRoot,
+            RulesRoot,
+            Node {
+                position_type: PositionType::Absolute,
+                width: Val::Px(CANVAS_W),
+                height: Val::Px(SCREEN_BOTTOM),
+                overflow: Overflow::clip(),
+                ..default()
+            },
+            GlobalZIndex(50),
+            Visibility::Hidden,
+        ))
+        .with_children(|c| {
+            c.spawn((
+                Node {
+                    position_type: PositionType::Absolute,
+                    width: Val::Percent(100.0),
+                    height: Val::Percent(100.0),
+                    ..default()
+                },
+                ImageNode {
+                    image: ui("background"),
+                    image_mode: NodeImageMode::Stretch,
+                    ..default()
+                },
+            ));
+            c.spawn((
+                RulesPage,
+                Node {
+                    position_type: PositionType::Absolute,
+                    left: Val::Px(960.0 - 870.0),
+                    top: Val::Px(120.0),
+                    width: Val::Px(1740.0),
+                    height: Val::Px(777.0),
+                    ..default()
+                },
+                ImageNode {
+                    image_mode: NodeImageMode::Stretch,
+                    ..default()
+                },
+            ));
+            for (step, x, key) in [
+                (-1i8, 713.0, "help_back"),
+                (0, 960.0, "help_exit"),
+                (1, 1207.0, "help_next"),
+            ] {
+                c.spawn((
+                    Node {
+                        position_type: PositionType::Absolute,
+                        left: Val::Px(x - 80.0),
+                        top: Val::Px(1000.0 - 63.0),
+                        width: Val::Px(160.0),
+                        height: Val::Px(126.0),
+                        ..default()
+                    },
+                    ImageNode {
+                        image: ui(key),
+                        image_mode: NodeImageMode::Stretch,
+                        ..default()
+                    },
+                ))
+                .observe(
+                    move |_press: On<PointerPress>, mut rules: ResMut<GameRules>| {
+                        rules.button = Some(step);
+                    },
+                );
+            }
+        });
+}
+
+/// Open, turn and close the rules pages.
+#[allow(clippy::too_many_arguments, clippy::type_complexity)]
+pub fn game_rules(
+    fidelity: Res<Fidelity>,
+    time: Res<Time>,
+    smoke: Res<Smoke>,
+    keys: Res<ButtonInput<KeyCode>>,
+    input: Res<CabinetInput>,
+    art: Res<ArtPack>,
+    sim: Res<Sim>,
+    presentation: Res<Presentation>,
+    show: Res<FeatureShow>,
+    gamble: Res<GambleShow>,
+    menu: Res<GamesMenu>,
+    sounds: Res<Sounds>,
+    mut commands: Commands,
+    mut rules: ResMut<GameRules>,
+    mut roots: Query<&mut Visibility, With<RulesRoot>>,
+    mut page: Query<&mut ImageNode, With<RulesPage>>,
+) {
+    if !fidelity.0 {
+        return;
+    }
+    let pages = help_pages(&art);
+    let at_rest = sim.game.is_idle()
+        && presentation.queue.is_empty()
+        && !show.in_feature()
+        && !gamble.active
+        && !menu.showing();
+    let open_key = keys.just_pressed(KeyCode::KeyI) || keys.just_pressed(KeyCode::F1);
+    let pill = std::mem::take(&mut rules.pressed) || open_key;
+    let button = rules.button.take();
+    if !rules.open {
+        if pill && at_rest && !pages.is_empty() {
+            rules.open = true;
+            rules.page = 0;
+            rules.idle = 0.0;
+            sounds.play(&mut commands, "ButtonClick_reduced");
+        }
+    } else {
+        let mut step = None;
+        if pill {
+            step = Some(1);
+        }
+        if keys.just_pressed(KeyCode::ArrowRight) || keys.just_pressed(KeyCode::PageDown) {
+            step = Some(1);
+        }
+        if keys.just_pressed(KeyCode::ArrowLeft) || keys.just_pressed(KeyCode::PageUp) {
+            step = Some(-1);
+        }
+        let mut close = keys.just_pressed(KeyCode::Escape) || keys.just_pressed(KeyCode::Backspace);
+        match button {
+            Some(0) => close = true,
+            Some(b) => step = Some(i64::from(b)),
+            None => {}
+        }
+        // Any other press closes the rules and does nothing else.
+        let other = input.spin
+            || input.menu
+            || input.gamble
+            || input.take_win
+            || input.bet.is_some()
+            || input.credits.is_some()
+            || input.lines.is_some()
+            || keys.just_pressed(KeyCode::Space)
+            || keys.just_pressed(KeyCode::Enter);
+        if other {
+            close = true;
+            rules.swallow = true;
+        }
+        if keys.just_pressed(KeyCode::Escape) {
+            rules.swallow = true;
+        }
+        if let Some(step) = step {
+            rules.page = turn_page(rules.page, pages.len(), step);
+            rules.idle = 0.0;
+            sounds.play(&mut commands, "GenericButton");
+        }
+        rules.idle += smoke.dt(&time);
+        if close || rules.idle >= RULES_IDLE_SECONDS || pages.is_empty() {
+            if button == Some(0) {
+                sounds.play(&mut commands, "GenericButton");
+            }
+            rules.open = false;
+        }
+    }
+    let want = if rules.open {
+        Visibility::Visible
+    } else {
+        Visibility::Hidden
+    };
+    for mut v in &mut roots {
+        if *v != want {
+            *v = want;
+        }
+    }
+    if rules.open
+        && let Some(h) = pages.get(rules.page).and_then(|k| art.ui.get(k))
+    {
+        for mut image in &mut page {
+            if image.image != *h {
+                image.image = h.clone();
+            }
+        }
+    }
+}
+
 /// A PNG's pixel size, read from its header.
 pub fn png_size(path: &Path) -> Option<(f32, f32)> {
     let mut f = std::fs::File::open(path).ok()?;
@@ -1598,6 +1832,14 @@ fn spawn_meter_band(
             19.0,
             TabLook::Club,
         );
+        c.spawn((
+            rect(81.0, 988.0, 110.0, 42.0),
+            BackgroundColor(Color::NONE),
+            GlobalZIndex(1),
+        ))
+        .observe(|_press: On<PointerPress>, mut rules: ResMut<GameRules>| {
+            rules.pressed = true;
+        });
         pill(
             c,
             fonts,
@@ -1621,6 +1863,14 @@ fn spawn_meter_band(
             20.0,
             TabLook::CasinoSilver,
         );
+        c.spawn((
+            rect(77.0, 999.0, 158.0, 44.0),
+            BackgroundColor(Color::NONE),
+            GlobalZIndex(1),
+        ))
+        .observe(|_press: On<PointerPress>, mut rules: ResMut<GameRules>| {
+            rules.pressed = true;
+        });
         pill(
             c,
             fonts,
@@ -8998,6 +9248,14 @@ mod tests {
                 (125_000, 25_000)
             ]
         );
+    }
+
+    #[test]
+    fn the_rules_pages_turn_both_ways_round() {
+        assert_eq!(turn_page(0, 8, 1), 1);
+        assert_eq!(turn_page(7, 8, 1), 0);
+        assert_eq!(turn_page(0, 8, -1), 7);
+        assert_eq!(turn_page(3, 0, 1), 0);
     }
 
     #[test]
