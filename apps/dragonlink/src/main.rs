@@ -39,8 +39,9 @@ use bevy::render::view::screenshot::{Screenshot, save_to_disk};
 use dragonlink_core::{Command, CreditReason, DevRng, Event, Game, OutcomeRng};
 use dragonlink_model::MathModel;
 use dragonlink_model::fixtures::{
-    autumn_moon_synthetic, golden_century_synthetic, happy_prosperous_synthetic,
-    panda_magic_synthetic, synthetic_dev_fixture,
+    autumn_moon_synthetic, genghis_khan_synthetic, golden_century_synthetic, golden_gong_synthetic,
+    happy_prosperous_synthetic, panda_magic_synthetic, peace_long_life_synthetic,
+    spring_festival_synthetic, synthetic_dev_fixture,
 };
 use dragonlink_model::{JackpotTier, OrbValue, SymbolKind};
 
@@ -269,15 +270,16 @@ fn dress_scenario(mut model: MathModel, seed: u64, coins: bool) -> MathModel {
 /// The model with extra orbs and scatters spread through its base reels (see
 /// [`FEATURE_TEST_ORB`]).
 fn feature_test(mut model: MathModel, orb_every: usize, scatter_every: usize) -> MathModel {
-    let id = |key: &str| {
+    let of_kind = |kind: SymbolKind| {
         model
             .symbols
             .iter()
-            .position(|s| s.key == key)
+            .position(|s| s.kind == kind)
             .and_then(|i| u16::try_from(i).ok())
             .map(dragonlink_model::SymbolId)
     };
-    let (Some(orb), Some(scatter)) = (id("orb"), id("pennant")) else {
+    let (Some(orb), Some(scatter)) = (of_kind(SymbolKind::Orb), of_kind(SymbolKind::Scatter))
+    else {
         return model;
     };
     // Testing (`DRAGONLINK_GRAND_TEST`): coins land on most respins, so the
@@ -299,6 +301,19 @@ fn feature_test(mut model: MathModel, orb_every: usize, scatter_every: usize) ->
             }
         }
         *strip = spaced(padded, scatter);
+    }
+    // A BIG reel (Spring Festival) stops on a BIG coin or ingot often.
+    if let Some(big) = model
+        .free_games
+        .as_mut()
+        .and_then(|fg| fg.big_reel.as_mut())
+    {
+        // `DRAGONLINK_FEATURE_TEST=big`: nothing else.
+        if std::env::var("DRAGONLINK_FEATURE_TEST").is_ok_and(|v| v == "big") {
+            big.strip = vec![orb, orb, scatter];
+        } else {
+            big.strip.extend([orb, scatter, orb, orb]);
+        }
     }
     model
 }
@@ -370,24 +385,38 @@ enum GameChoice {
     AutumnMoon,
     HappyProsperous,
     PandaMagic,
+    GenghisKhan,
+    GoldenGong,
+    PeaceLongLife,
+    SpringFestival,
     Synthetic,
 }
 
 impl GameChoice {
     fn model(self) -> MathModel {
+        let model = self.own_model();
+        if std::env::var_os("DRAGONLINK_FEATURE_TEST").is_some() && self != GameChoice::Synthetic {
+            let flags = std::env::var("DRAGONLINK_FEATURE_TEST").is_ok_and(|v| v == "flags");
+            return feature_test(
+                model,
+                if flags { 0 } else { FEATURE_TEST_ORB },
+                FEATURE_TEST_SCATTER,
+            );
+        }
+        model
+    }
+
+    /// The title's synthetic model as it is.
+    fn own_model(self) -> MathModel {
         match self {
-            GameChoice::GoldenCentury if std::env::var_os("DRAGONLINK_FEATURE_TEST").is_some() => {
-                let flags = std::env::var("DRAGONLINK_FEATURE_TEST").is_ok_and(|v| v == "flags");
-                feature_test(
-                    golden_century_synthetic(),
-                    if flags { 0 } else { FEATURE_TEST_ORB },
-                    FEATURE_TEST_SCATTER,
-                )
-            }
             GameChoice::GoldenCentury => golden_century_synthetic(),
             GameChoice::AutumnMoon => autumn_moon_synthetic(),
             GameChoice::HappyProsperous => happy_prosperous_synthetic(),
             GameChoice::PandaMagic => panda_magic_synthetic(),
+            GameChoice::GenghisKhan => genghis_khan_synthetic(),
+            GameChoice::GoldenGong => golden_gong_synthetic(),
+            GameChoice::PeaceLongLife => peace_long_life_synthetic(),
+            GameChoice::SpringFestival => spring_festival_synthetic(),
             GameChoice::Synthetic => synthetic_dev_fixture(),
         }
     }
@@ -399,6 +428,10 @@ impl GameChoice {
             GameChoice::AutumnMoon => "autumn-moon",
             GameChoice::HappyProsperous => "happy-prosperous",
             GameChoice::PandaMagic => "panda-magic",
+            GameChoice::GenghisKhan => "genghis-khan",
+            GameChoice::GoldenGong => "golden-gong",
+            GameChoice::PeaceLongLife => "peace-long-life",
+            GameChoice::SpringFestival => "spring-festival",
             GameChoice::Synthetic => "synthetic",
         }
     }
@@ -410,6 +443,10 @@ impl GameChoice {
             GameChoice::HappyProsperous => "HAPPY & PROSPEROUS",
             GameChoice::PandaMagic => "PANDA MAGIC",
             GameChoice::AutumnMoon => "AUTUMN MOON",
+            GameChoice::GenghisKhan => "GENGHIS KHAN",
+            GameChoice::GoldenGong => "GOLDEN GONG",
+            GameChoice::PeaceLongLife => "PEACE & LONG LIFE",
+            GameChoice::SpringFestival => "SPRING FESTIVAL",
             GameChoice::Synthetic => "DRAGONLINK (synthetic fixture)",
         }
     }
@@ -498,17 +535,21 @@ struct PackDir(Option<String>);
 
 /// The four titles in scope, in the order the launcher menu lists them. The
 /// synthetic development fixture is not a title and is offered only by flag.
-const MENU_GAMES: [GameChoice; 4] = [
+const MENU_GAMES: [GameChoice; 8] = [
     GameChoice::GoldenCentury,
     GameChoice::HappyProsperous,
     GameChoice::PandaMagic,
     GameChoice::AutumnMoon,
+    GameChoice::GenghisKhan,
+    GameChoice::GoldenGong,
+    GameChoice::PeaceLongLife,
+    GameChoice::SpringFestival,
 ];
 
 /// Which screen the application is on: the title launcher, or a game.
 #[derive(States, Default, Debug, Clone, PartialEq, Eq, Hash)]
 enum Screen {
-    /// The four-title launcher. Shown when the application starts with no
+    /// The title launcher. Shown when the application starts with no
     /// `--game` and no smoke run; the player picks a title to play.
     #[default]
     Menu,
@@ -643,9 +684,15 @@ fn parse_args(args: &[String]) -> Result<Cli, String> {
                     Some("autumn-moon") => GameChoice::AutumnMoon,
                     Some("happy-prosperous") => GameChoice::HappyProsperous,
                     Some("panda-magic") => GameChoice::PandaMagic,
+                    Some("genghis-khan") => GameChoice::GenghisKhan,
+                    Some("golden-gong") => GameChoice::GoldenGong,
+                    Some("peace-long-life") => GameChoice::PeaceLongLife,
+                    Some("spring-festival") => GameChoice::SpringFestival,
                     Some("synthetic") => GameChoice::Synthetic,
                     _ => {
-                        return Err("--game is golden-century, autumn-moon, \nhappy-prosperous, panda-magic or synthetic"
+                        return Err("--game is golden-century, autumn-moon, happy-prosperous, \
+                                    panda-magic, genghis-khan, golden-gong, peace-long-life, \
+                                    spring-festival or synthetic"
                             .to_string());
                     }
                 };
@@ -900,6 +947,31 @@ struct ReelAnim {
     spinning: Vec<bool>,
     timer: f32,
     phase: usize,
+    /// The spin under way is a free game (its reels scroll the free strips).
+    free: bool,
+    /// Each reel's window this spin will land on, known when it starts.
+    coming: Vec<Vec<String>>,
+}
+
+/// The windows a spin starting now lands on, by reel: its `ReelStopped`
+/// events, up to the next spin.
+fn coming_windows(
+    queue: &std::collections::VecDeque<(f32, Event)>,
+    reels: usize,
+) -> Vec<Vec<String>> {
+    let mut coming = vec![Vec::new(); reels];
+    for (_, e) in queue {
+        match e {
+            Event::SpinStarted { .. } | Event::FreeGameStarted { .. } => break,
+            Event::ReelStopped { reel, symbols, .. } => {
+                if let Some(c) = coming.get_mut(*reel as usize) {
+                    c.clone_from(symbols);
+                }
+            }
+            _ => {}
+        }
+    }
+    coming
 }
 
 #[derive(Resource)]
@@ -1015,10 +1087,27 @@ impl Default for Timing {
 
 fn schedule_with(events: Vec<Event>, timing: &Timing) -> Vec<(f32, Event)> {
     let mut first_reel = true;
+    // The reels under a free game's BIG symbol are one reel: they stop
+    // together, with the first of them.
+    let mut together = vec![false; events.len()];
+    let mut big: Option<(u8, u8)> = None;
+    for (i, e) in events.iter().enumerate().rev() {
+        match e {
+            Event::BigSymbol { first, width, .. } => big = Some((*first, *width)),
+            Event::FreeGameStarted { .. } | Event::SpinStarted { .. } => big = None,
+            Event::ReelStopped { reel, .. } => {
+                together[i] =
+                    big.is_some_and(|(first, width)| *reel > first && *reel < first + width);
+            }
+            _ => {}
+        }
+    }
     events
         .into_iter()
-        .map(|event| {
+        .enumerate()
+        .map(|(i, event)| {
             let delay = match &event {
+                Event::ReelStopped { .. } if together[i] => 0.0,
                 Event::BetPlaced { .. } | Event::SpinStarted { .. } | Event::BetChanged { .. } => {
                     0.0
                 }
@@ -1125,6 +1214,14 @@ fn setup(
         "HAPPY & PROSPEROUS"
     } else if model.id.starts_with("panda-magic") {
         "PANDA MAGIC"
+    } else if model.id.starts_with("genghis-khan") {
+        "GENGHIS KHAN"
+    } else if model.id.starts_with("golden-gong") {
+        "GOLDEN GONG"
+    } else if model.id.starts_with("peace-long-life") {
+        "PEACE & LONG LIFE"
+    } else if model.id.starts_with("spring-festival") {
+        "SPRING FESTIVAL"
     } else {
         "DRAGONLINK (synthetic fixture)"
     };
@@ -1766,7 +1863,7 @@ fn present(
     mut reels_spin: ResMut<ReelAnim>,
     reels_motion: Res<cabinet::Reels>,
     rollup: Res<cabinet::Rollup>,
-    stacks: Res<cabinet::WildStacks>,
+    mut stacks: ResMut<cabinet::WildStacks>,
     art: Res<ArtPack>,
     mut cells: Query<(&Cell, &mut BackgroundColor)>,
     mut labels: Query<(&CellLabel, &mut Text)>,
@@ -1834,20 +1931,35 @@ fn present(
                 .collect();
             let paylines = &sim.game.model().paylines;
             let stack = stacks.on_lines(paylines, wins.iter().copied()).is_some();
-            // A single emperor on a winning line sounds too.
-            let emperor = wins.iter().any(|&(line, count)| {
-                paylines.get(line as usize).is_some_and(|rows| {
-                    (0..count).any(|reel| {
-                        rows.0.get(reel as usize).is_some_and(|&row| {
-                            labels
-                                .iter()
-                                .any(|(l, t)| l.reel == reel && l.row == row && t.0 == wild)
+            // A single emperor on a winning line sounds too; so does a free
+            // game's own wild (an x2 wild).
+            let model = sim.game.model();
+            let wild_on_wins = |base: bool| {
+                wins.iter().any(|&(line, count)| {
+                    paylines.get(line as usize).is_some_and(|rows| {
+                        (0..count).any(|reel| {
+                            rows.0.get(reel as usize).is_some_and(|&row| {
+                                labels.iter().any(|(l, t)| {
+                                    l.reel == reel
+                                        && l.row == row
+                                        && if base {
+                                            t.0 == wild
+                                        } else {
+                                            t.0 != wild
+                                                && model.symbols.iter().any(|s| {
+                                                    s.key == t.0 && s.kind == SymbolKind::Wild
+                                                })
+                                        }
+                                })
+                            })
                         })
                     })
                 })
-            });
-            if stack || emperor {
-                feature.begin_wild(stack);
+            };
+            let emperor = wild_on_wins(true);
+            let x2 = wild_on_wins(false);
+            if stack || emperor || x2 {
+                feature.begin_wild(stack, x2 && !emperor);
             }
         }
         // A respin spinning or the coins being counted hold what follows.
@@ -1861,7 +1973,9 @@ fn present(
         // and settles after that.
         // The doors open sooner than a result shows (real game).
         let after_rest = match presentation.queue.front() {
-            Some((_, Event::MysteryRevealed { .. })) => cabinet::REVEAL_AFTER_REST,
+            Some((_, Event::MysteryRevealed { .. } | Event::WildExpanded { .. })) => {
+                cabinet::REVEAL_AFTER_REST
+            }
             _ => cabinet::RESULT_AFTER_REST,
         };
         if fidelity.0
@@ -1905,6 +2019,8 @@ fn present(
                 for s in reels_spin.spinning.iter_mut() {
                     *s = true;
                 }
+                reels_spin.free = false;
+                reels_spin.coming = coming_windows(&presentation.queue, reels);
                 // A new base spin clears any lingering feature banner.
                 presentation.banner.clear();
                 presentation.banner_timer = 0.0;
@@ -2010,11 +2126,70 @@ fn present(
                 presentation.status = format!("FREE GAMES  -  {games} games won");
             }
             Event::FreeGameStarted { number, remaining } => {
-                // Each free game spins the reels like a paid game.
+                // Each free game spins the reels like a paid game, on the
+                // free reels' strips.
                 for s in reels_spin.spinning.iter_mut() {
                     *s = true;
                 }
+                reels_spin.free = true;
+                reels_spin.coming = coming_windows(&presentation.queue, reels);
+                // A BIG symbol is drawn as its reels land.
+                feature.big = presentation
+                    .queue
+                    .iter()
+                    .map_while(|(_, e)| match e {
+                        Event::FreeGameStarted { .. } | Event::SpinStarted { .. } => None,
+                        e => Some(e),
+                    })
+                    .find_map(|e| match e {
+                        Event::BigSymbol {
+                            symbol,
+                            first,
+                            width,
+                        } => Some((symbol.clone(), *first, *width)),
+                        _ => None,
+                    });
                 presentation.status = format!("FREE GAME {number}  ({remaining} to come)");
+            }
+            Event::WildExpanded { reel } => {
+                // The wild fills its reel: every position shows it, and the
+                // stacks are found again (a winning full reel stands tall).
+                let wild_key = labels
+                    .iter()
+                    .filter(|(l, _)| l.reel == *reel)
+                    .map(|(_, t)| t.0.clone())
+                    .find(|k| {
+                        model
+                            .symbols
+                            .iter()
+                            .any(|s| &s.key == k && s.kind == SymbolKind::Wild)
+                    });
+                if let Some(key) = wild_key {
+                    for (l, mut t) in &mut labels {
+                        if l.reel == *reel {
+                            t.0.clone_from(&key);
+                        }
+                    }
+                    for (c, mut background) in &mut cells {
+                        if c.reel == *reel {
+                            background.0 = cell_color(Some(SymbolKind::Wild), &key);
+                        }
+                    }
+                }
+                stacks.refind();
+                // In a win when a line's run reaches past this reel.
+                let win = presentation
+                    .queue
+                    .iter()
+                    .map_while(|(_, e)| match e {
+                        Event::FreeGameStarted { .. } | Event::SpinStarted { .. } => None,
+                        e => Some(e),
+                    })
+                    .any(|e| matches!(e, Event::LineWin { count, .. } if count > reel));
+                if fidelity.0 {
+                    feature.expand_sound(win);
+                }
+                presentation.status = format!("Wild fills reel {}", reel + 1);
             }
             Event::MysteryRevealed { symbol, count } => {
                 // The coins the doors open onto, each with its prize (the
@@ -2391,6 +2566,7 @@ fn render_symbols(
     art: Res<ArtPack>,
     fidelity: Res<cabinet::Fidelity>,
     reels: Res<cabinet::Reels>,
+    show: Res<cabinet::FeatureShow>,
     labels: Query<(&CellLabel, &Text)>,
     mut images: Query<(&CellImage, &mut ImageNode, &mut Visibility, &mut Node)>,
 ) {
@@ -2399,7 +2575,7 @@ fn render_symbols(
     }
     let (cw, ch) = cabinet::cell_size();
     for (cell, mut image, mut visibility, mut node) in &mut images {
-        if fidelity.0 && reels.moving(cell.reel) {
+        if fidelity.0 && (reels.moving(cell.reel) || show.big_covers(cell.reel)) {
             *visibility = Visibility::Hidden;
             continue;
         }
@@ -2730,10 +2906,10 @@ fn main() -> AppExit {
     .insert_resource(cabinet::Profile::from_env())
     .insert_resource(cabinet::WildStacks::default())
     .insert_resource(cabinet::Music::default())
-    .insert_resource(if fidelity {
-        cabinet::reel_strips(&cli.game.model())
-    } else {
-        cabinet::Reels::default()
+    .insert_resource(match direct_sim.as_ref() {
+        // The strips of the model the game plays, any scenario included.
+        Some((_, sim)) if fidelity => cabinet::reel_strips(sim.game.model()),
+        _ => cabinet::Reels::default(),
     })
     .insert_resource(Presentation {
         shown_credits: cli.credits,
@@ -2811,6 +2987,7 @@ fn main() -> AppExit {
                 cabinet::win_lines,
                 cabinet::wild_stacks,
                 cabinet::wild_talls,
+                cabinet::big_art,
                 cabinet::feature_music,
                 cabinet::feature_cues,
                 cabinet::coin_shower,
@@ -3230,6 +3407,10 @@ mod tests {
             ("autumn-moon", GameChoice::AutumnMoon),
             ("happy-prosperous", GameChoice::HappyProsperous),
             ("panda-magic", GameChoice::PandaMagic),
+            ("genghis-khan", GameChoice::GenghisKhan),
+            ("golden-gong", GameChoice::GoldenGong),
+            ("peace-long-life", GameChoice::PeaceLongLife),
+            ("spring-festival", GameChoice::SpringFestival),
             ("synthetic", GameChoice::Synthetic),
         ] {
             assert_eq!(
@@ -3392,9 +3573,34 @@ mod tests {
     }
 
     #[test]
+    fn a_spin_knows_the_windows_it_lands_on() {
+        let stop = |reel: u8, top: &str| Event::ReelStopped {
+            reel,
+            stop: Some(0),
+            symbols: vec![top.to_string(), "K".to_string(), "Q".to_string()],
+        };
+        let queue: std::collections::VecDeque<(f32, Event)> = [
+            stop(0, "pennant"),
+            stop(1, "J"),
+            Event::FreeGameStarted {
+                number: 1,
+                remaining: 5,
+            },
+            stop(0, "orb"),
+        ]
+        .into_iter()
+        .map(|e| (0.0, e))
+        .collect();
+        let coming = coming_windows(&queue, 3);
+        assert_eq!(coming[0][0], "pennant");
+        assert_eq!(coming[1][0], "J");
+        assert!(coming[2].is_empty());
+    }
+
+    #[test]
     fn every_launcher_game_builds_and_has_a_distinct_title() {
         use std::collections::HashSet;
-        assert_eq!(MENU_GAMES.len(), 4, "the launcher offers the four titles");
+        assert_eq!(MENU_GAMES.len(), 8, "the launcher offers the eight titles");
         let mut titles = HashSet::new();
         for game in MENU_GAMES {
             assert!(

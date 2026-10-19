@@ -120,7 +120,9 @@ pub fn gamble_cue(cue: GambleCue) -> Option<(&'static str, f32)> {
 const GAMBLE_SOUND_AFTER_FACE: f32 = 0.2;
 
 /// UI images the cabinet screen needs from the pack (`ui/<name>.png`).
-pub const REQUIRED_UI: [&str; 23] = [
+/// (A title whose lines tabs are part of its reel art, Golden Gong, has no
+/// `payline_tab`; it is not needed.)
+pub const REQUIRED_UI: [&str; 22] = [
     "deck_panel",
     "key_blue",
     "key_red",
@@ -131,7 +133,6 @@ pub const REQUIRED_UI: [&str; 23] = [
     "spin_dim",
     "background",
     "reel_background",
-    "payline_tab",
     "jackpot_bar",
     "btn_spin_normal",
     "orb_mini",
@@ -578,10 +579,16 @@ pub fn game_rules(
         && !gamble.active
         && !menu.showing();
     let open_key = keys.just_pressed(KeyCode::KeyI) || keys.just_pressed(KeyCode::F1);
+    // Testing (`DRAGONLINK_SHOW=rules`, an unattended run only): the rules
+    // open two seconds in and turn a page three seconds later.
+    let shown = smoke.frames_left.is_some()
+        && matches!(smoke.frame, 120 | 300)
+        && std::env::var("DRAGONLINK_SHOW").as_deref() == Ok("rules");
+    let open_key = open_key || shown;
     let pill = std::mem::take(&mut rules.pressed) || open_key;
     let button = rules.button.take();
     if !rules.open {
-        if pill && at_rest && !pages.is_empty() {
+        if pill && (at_rest || shown) && !pages.is_empty() {
             rules.open = true;
             rules.page = 0;
             rules.idle = 0.0;
@@ -1385,6 +1392,7 @@ pub fn spawn(
             // The moving reels, drawn over the landed cells while they spin.
             spawn_strips(c, model.grid.reels);
             spawn_wild_talls(c, model.grid.reels);
+            spawn_big_art(c, &fonts.meter);
             spawn_feature_layer(c, art, &fonts.meter);
             spawn_hs_overlays(c, &fonts.meter);
             spawn_win_lines(c, &fonts.sans);
@@ -2984,14 +2992,24 @@ struct ReelState {
     landing_at: i64,
     /// Set for one frame when the reel hits its stop (for the stop sound).
     stopped_now: bool,
+    /// This spin scrolls the free reels' strip.
+    free: bool,
+    /// The window leaving or the one coming holds a scatter, so no other
+    /// passes on this reel this spin: the machine never shows two on a reel.
+    quiet: bool,
 }
 
 /// All reels' motion.
 #[derive(Resource, Default)]
 pub struct Reels {
     states: Vec<ReelState>,
-    /// The symbol keys the reels scroll through while spinning.
-    strips: Vec<Vec<String>>,
+    /// The symbol keys the reels scroll through while spinning: the base
+    /// game's strips and the free games' (the engine's own, NS 4.8: reels
+    /// are shown as their strips are arranged).
+    base: Vec<Vec<String>>,
+    free: Vec<Vec<String>>,
+    /// The title's scatter.
+    scatter: String,
     /// Seconds since every reel came to rest.
     rested: f32,
 }
@@ -3056,11 +3074,21 @@ impl Reels {
         if (0..s.landing.len() as i64).contains(&k) {
             return &s.landing[k as usize];
         }
-        let strip = &self.strips[reel];
-        if strip.is_empty() {
+        let strips = if s.free { &self.free } else { &self.base };
+        let Some(strip) = strips.get(reel).filter(|s| !s.is_empty()) else {
             return "";
+        };
+        let len = strip.len();
+        let mut i = n.rem_euclid(len as i64) as usize;
+        if s.quiet {
+            for _ in 0..len {
+                if strip[i] != self.scatter {
+                    break;
+                }
+                i = (i + 1) % len;
+            }
         }
-        &strip[n.rem_euclid(strip.len() as i64) as usize]
+        &strip[i]
     }
 }
 
@@ -3102,29 +3130,62 @@ fn column_width() -> f32 {
     PITCH.0
 }
 
-/// The strips the reels scroll through, as symbol keys.
+/// The strips the reels scroll through, as symbol keys: the model's base
+/// strips and its free games' (the base ones again when it has none).
 pub fn reel_strips(model: &MathModel) -> Reels {
-    let strips = model
-        .reel_strips
-        .iter()
-        .map(|strip| {
-            strip
-                .iter()
-                .map(|id| model.symbols[id.0 as usize].key.clone())
-                .collect()
-        })
-        .collect::<Vec<Vec<String>>>();
-    let states = (0..strips.len())
+    let keys = |strips: &[Vec<dragonlink_model::SymbolId>]| {
+        strips
+            .iter()
+            .map(|strip| {
+                strip
+                    .iter()
+                    .map(|id| {
+                        model
+                            .symbols
+                            .get(id.0 as usize)
+                            .map(|s| s.key.clone())
+                            .unwrap_or_default()
+                    })
+                    .collect()
+            })
+            .collect::<Vec<Vec<String>>>()
+    };
+    let base = keys(&model.reel_strips);
+    let free = model
+        .free_games
+        .as_ref()
+        .map(|fg| keys(&fg.free_reel_strips))
+        .filter(|f| f.len() == base.len())
+        .unwrap_or_else(|| base.clone());
+    let states = (0..base.len())
         .map(|reel| ReelState {
-            pos: ((reel * 7 + 2) % strips[reel].len().max(1)) as f32,
+            pos: ((reel * 7 + 2) % base[reel].len().max(1)) as f32,
             ..default()
         })
         .collect();
     Reels {
         states,
-        strips,
+        base,
+        free,
+        scatter: Roles::from_model(model).scatter,
         rested: SPIN_AFTER_REST,
     }
+}
+
+/// The labels of `reel`'s window, top row first, any dimming taken off.
+fn window_labels(labels: &Query<(&CellLabel, &Text)>, reel: usize) -> Vec<String> {
+    let mut window = vec![String::new(); 3];
+    for (label, text) in labels {
+        if label.reel as usize == reel && (label.row as usize) < 3 {
+            window[label.row as usize] = label_symbol_owned(&text.0);
+        }
+    }
+    window
+}
+
+/// A cell label with any dimming taken off.
+fn label_symbol_owned(label: &str) -> String {
+    label.strip_prefix(DIM).unwrap_or(label).to_string()
 }
 
 /// The reel strips: a clipped column per reel over the panel, shown only
@@ -3270,13 +3331,29 @@ pub fn spin_reels(
     let dt = smoke.dt(&time).min(0.05);
     for reel in 0..reels.states.len() {
         let spinning = anim.spinning.get(reel).copied().unwrap_or(false);
+        // A spin starting: the window on screen scrolls away; when it or the
+        // window coming holds a scatter, no other passes on this reel.
+        let starting = (reels.states[reel].motion == Motion::Idle && spinning).then(|| {
+            let leaving = window_labels(&labels, reel);
+            let quiet = leaving
+                .iter()
+                .chain(anim.coming.get(reel).into_iter().flatten())
+                .any(|l| symbol_of(l) == reels.scatter);
+            (leaving, quiet)
+        });
         let state = &mut reels.states[reel];
         state.stopped_now = false;
         match state.motion {
             Motion::Idle if spinning => {
-                // Start from the last result: the landed symbols stay on the
-                // strip and scroll away.
+                // Start from what is on screen: the window stays on the strip
+                // and scrolls away.
                 state.pos = state.pos.round();
+                if let Some((leaving, quiet)) = starting {
+                    state.landing_at = state.pos as i64;
+                    state.landing = leaving;
+                    state.quiet = quiet;
+                }
+                state.free = anim.free;
                 state.motion = Motion::Spinning { t: 0.0 };
             }
             Motion::Idle => {}
@@ -3560,9 +3637,25 @@ impl Sounds {
         Sounds { clips, ..default() }
     }
 
+    /// The clip for `name`, or the title's own stand-in for it: a title with
+    /// one wild sound (Happy & Prosperous, Panda Magic, Golden Gong:
+    /// `SND_Wild`) plays it where Golden Century plays one of its five.
+    fn clip(&self, name: &str) -> Option<&(Handle<AudioSource>, f32)> {
+        self.clips.get(name).or_else(|| {
+            // Peace & Long Life's x2 wild has no sound of its own: the wild's.
+            name.starts_with("SND_Wild")
+                .then(|| {
+                    self.clips
+                        .get("SND_Wild")
+                        .or_else(|| self.clips.get("SND_Wild_1"))
+                })
+                .flatten()
+        })
+    }
+
     /// Play a clip once; returns the playing entity.
     pub fn play(&self, commands: &mut Commands, name: &str) -> Option<Entity> {
-        let (clip, _) = self.clips.get(name)?;
+        let (clip, _) = self.clip(name)?;
         Some(
             commands
                 .spawn((AudioPlayer::new(clip.clone()), PlaybackSettings::DESPAWN))
@@ -3573,7 +3666,7 @@ impl Sounds {
     /// Play a clip once at `volume` (scaled by the global volume, which a
     /// muted run sets to 0).
     pub fn play_at(&self, commands: &mut Commands, name: &str, volume: f32) -> Option<Entity> {
-        let (clip, _) = self.clips.get(name)?;
+        let (clip, _) = self.clip(name)?;
         Some(
             commands
                 .spawn((
@@ -3593,7 +3686,7 @@ impl Sounds {
 
     /// A clip's length in seconds.
     pub fn seconds(&self, name: &str) -> Option<f32> {
-        self.clips.get(name).map(|(_, s)| *s)
+        self.clip(name).map(|(_, s)| *s)
     }
 
     /// Play a clip on a loop at `volume`; returns the playing entity.
@@ -4028,6 +4121,7 @@ pub fn spawn_orb_overlay(cell: &mut ChildSpawnerCommands, reel: u8, row: u8) {
 #[allow(clippy::type_complexity, clippy::too_many_arguments)]
 pub fn orb_overlay(
     fidelity: Res<Fidelity>,
+    show: Res<FeatureShow>,
     sim: Res<Sim>,
     denom: Res<Denom>,
     art: Res<ArtPack>,
@@ -4048,7 +4142,7 @@ pub fn orb_overlay(
     // drawn prize; it carries the same cosmetic face it shows on the moving
     // strip, so every coin on screen is lettered, as on the machine.
     let face = |reel: u8, row: u8| -> Option<String> {
-        if reels.moving(reel) {
+        if reels.moving(reel) || show.big_covers(reel) {
             return None;
         }
         let state = reels.states.get(reel as usize)?;
@@ -4098,6 +4192,7 @@ pub fn orb_overlay(
     }
     for (t, mut vis) in &mut tiles {
         let coin = !reels.moving(t.reel)
+            && !show.big_covers(t.reel)
             && labels
                 .iter()
                 .any(|(l, text)| l.reel == t.reel && l.row == t.row && symbol_of(&text.0) == "orb");
@@ -4168,10 +4263,12 @@ fn tier_image(face: &str) -> Option<&'static str> {
     }
 }
 
-/// The face's prize in credits, for a bet-multiple face ("x5").
+/// The face's prize in credits, for a bet-multiple face ("x5"). A
+/// position under a BIG coin has no prize of its own ("x0") and shows none.
 fn face_credits(face: &str, total_bet: u64) -> Option<u64> {
     face.strip_prefix('x')
         .and_then(|m| m.parse::<u64>().ok())
+        .filter(|m| *m > 0)
         .map(|m| m.saturating_mul(total_bet))
 }
 
@@ -4414,6 +4511,9 @@ pub struct FeatureShow {
     drum: Option<Entity>,
     /// When the Grand's bell rings (`clock`), once the grid is full.
     grand_bell_at: Option<f32>,
+    /// This free game's BIG symbol and the reels it covers (key, first,
+    /// width), from the game's start: Spring Festival's BIG reel.
+    pub big: Option<(String, u8, u8)>,
     /// The bolt in flight (its coin, its start on `clock`), and the last
     /// splash on the WINNER box.
     bolt: Option<(u8, u8, f32)>,
@@ -4452,6 +4552,7 @@ impl FeatureShow {
     pub fn on_event(&mut self, event: &Event) {
         match event {
             Event::SpinStarted { .. } => {
+                self.big = None;
                 self.pic_sounded = false;
                 self.grand_bell_at = None;
                 self.flares_at = None;
@@ -4633,6 +4734,13 @@ impl FeatureShow {
             || matches!(self.stage, Stage::FreeGames { .. } | Stage::HoldSpin { .. })
             || self.collect_start
             || self.collect.is_some()
+    }
+
+    /// Whether this free game's BIG symbol covers `reel`.
+    pub fn big_covers(&self, reel: u8) -> bool {
+        self.big
+            .as_ref()
+            .is_some_and(|(_, first, width)| (*first..first + width).contains(&reel))
     }
 
     /// A picture's own sound for a win of four or five of it, with no wild on
@@ -6549,6 +6657,7 @@ pub fn hold_and_spin_draw(
     let hs = show.hold_and_spin() && (show.grid || show.since_burst(0.2));
     for (r, mut image, mut vis) in &mut rings {
         let held = hs
+            && !show.big_covers(r.reel)
             && !show.fire_taken(r.reel, r.row)
             && !open(label(r.reel, r.row))
             && spinning(r.reel, r.row).is_none()
@@ -8408,6 +8517,11 @@ pub struct WildStacks {
 pub const WILD_HOLD: f32 = 2.5;
 
 impl WildStacks {
+    /// Look for the stacks again (a wild has filled its reel).
+    pub fn refind(&mut self) {
+        *self = WildStacks::default();
+    }
+
     /// This spin's stacks have been found.
     pub fn found(&self) -> bool {
         self.found
@@ -8462,6 +8576,115 @@ pub fn spawn_wild_talls(c: &mut ChildSpawnerCommands, reels: u8) {
             GlobalZIndex(2),
             Visibility::Hidden,
         ));
+    }
+}
+
+/// A free game's BIG symbol, drawn once over the reels it covers.
+#[derive(Component)]
+pub struct BigArt;
+/// A BIG coin's prize.
+#[derive(Component)]
+pub struct BigValue;
+
+/// The BIG symbol (hidden until one lands).
+pub fn spawn_big_art(c: &mut ChildSpawnerCommands, font: &Handle<Font>) {
+    c.spawn((
+        BigArt,
+        Node {
+            position_type: PositionType::Absolute,
+            justify_content: JustifyContent::Center,
+            align_items: AlignItems::Center,
+            ..default()
+        },
+        ImageNode {
+            image_mode: NodeImageMode::Stretch,
+            ..default()
+        },
+        GlobalZIndex(3),
+        Visibility::Hidden,
+    ))
+    .with_children(|b| {
+        b.spawn((
+            BigValue,
+            Text::new(""),
+            TextFont {
+                font: bevy::text::FontSource::Handle(font.clone()),
+                font_size: FontSize::Px(110.0),
+                ..default()
+            },
+            TextColor(Color::srgb(0.55, 0.05, 0.02)),
+            TextLayout::justify(Justify::Center),
+        ));
+    });
+}
+
+/// Show the free game's BIG symbol once the reels it covers are still: one
+/// 3x3 picture (the title's own Mega art, `big_<key>`), a BIG coin with its
+/// prize on it, through any Hold & Spin it starts.
+#[allow(clippy::type_complexity, clippy::too_many_arguments)]
+pub fn big_art(
+    fidelity: Res<Fidelity>,
+    show: Res<FeatureShow>,
+    reels: Res<Reels>,
+    art: Res<ArtPack>,
+    sim: Res<Sim>,
+    denom: Res<Denom>,
+    labels: Query<(&CellLabel, &Text), Without<BigValue>>,
+    mut big: Query<(&mut Node, &mut ImageNode, &mut Visibility), With<BigArt>>,
+    mut value: Query<&mut Text, With<BigValue>>,
+) {
+    if !fidelity.0 {
+        return;
+    }
+    let shown = show
+        .big
+        .as_ref()
+        .filter(|(_, first, width)| !(*first..first + width).any(|reel| reels.moving(reel)));
+    let image = shown.and_then(|(key, _, _)| art.symbols.get(&format!("big_{key}")));
+    for (mut node, mut img, mut vis) in &mut big {
+        let (Some((key, first, width)), Some(handle)) = (shown, image) else {
+            if *vis != Visibility::Hidden {
+                *vis = Visibility::Hidden;
+            }
+            continue;
+        };
+        if img.image != *handle {
+            img.image = handle.clone();
+        }
+        let (left, _) = cell_center(*first, 0);
+        let (right, _) = cell_center(first + width - 1, 0);
+        let (_, top) = cell_center(*first, 0);
+        let w = right - left + PITCH.0;
+        // The BIG coin stands a little over the block, as in the scene
+        // (718 against 660).
+        let h = 3.0 * PITCH.1 * if key == "orb" { 718.0 / 660.0 } else { 1.0 };
+        node.left = Val::Px(left - PITCH.0 / 2.0);
+        node.top = Val::Px(top - PITCH.1 / 2.0 - (h - 3.0 * PITCH.1) / 2.0);
+        node.width = Val::Px(w);
+        node.height = Val::Px(h);
+        if *vis != Visibility::Inherited {
+            *vis = Visibility::Inherited;
+        }
+    }
+    // A BIG coin's prize: its centre position's label.
+    let prize = shown
+        .filter(|(key, _, _)| key == "orb")
+        .and_then(|(_, first, width)| {
+            let centre = first + width / 2;
+            labels
+                .iter()
+                .find(|(l, _)| l.reel == centre && l.row == 1)
+                .and_then(|(_, t)| t.0.strip_prefix("ORB\n").map(str::to_string))
+        })
+        .map(|face| match face_credits(&face, sim.game.total_bet()) {
+            Some(credits) => coin_text(credits, denom.cents()),
+            None => face.to_uppercase(),
+        })
+        .unwrap_or_default();
+    for mut text in &mut value {
+        if text.0 != prize {
+            text.0.clone_from(&prize);
+        }
     }
 }
 
@@ -8934,11 +9157,20 @@ impl FeatureShow {
     /// On recordings the variant changes from win to win, the same stack
     /// sounding different ones; it is not the stack's height. Here the five
     /// take turns in a scrambled order.
-    pub fn begin_wild(&mut self, stack: bool) {
+    /// A free game's x2 wild (Genghis Khan, Peace & Long Life) sounds its own
+    /// clip, SND_WildFG, where the title has one (names only; HYPOTHESIS).
+    pub fn begin_wild(&mut self, stack: bool, x2: bool) {
         if self.wild_sounded {
             return;
         }
         self.wild_sounded = true;
+        if x2 {
+            self.cues.push("SND_WildFG");
+            if stack {
+                self.wild = Some(0.0);
+            }
+            return;
+        }
         const WILD_SOUNDS: [&str; 5] = [
             "SND_Wild_1",
             "SND_Wild_2",
@@ -8952,6 +9184,17 @@ impl FeatureShow {
         if stack {
             self.wild = Some(0.0);
         }
+    }
+
+    /// A wild filling its reel: Golden Gong's expansion sound, the win
+    /// version when the reel is in a win (names only; the pairing is
+    /// HYPOTHESIS).
+    pub fn expand_sound(&mut self, win: bool) {
+        self.cues.push(if win {
+            "SND_ExpandWin"
+        } else {
+            "SND_ExpandNoWin"
+        });
     }
 
     /// Whether a wild sound has played this game (the presenter asks once).
@@ -9316,6 +9559,98 @@ mod tests {
                 (125_000, 25_000)
             ]
         );
+    }
+
+    /// Golden Century with a flag every fourth stop of every strip, base and
+    /// free, so flags pass a moving reel all the time.
+    fn flag_heavy_reels() -> Reels {
+        let mut model = dragonlink_model::fixtures::golden_century_synthetic();
+        let flag = model
+            .symbols
+            .iter()
+            .position(|s| s.kind == dragonlink_model::SymbolKind::Scatter)
+            .map(|i| dragonlink_model::SymbolId(i as u16))
+            .unwrap();
+        let fg = model.free_games.as_mut().unwrap();
+        for strip in model
+            .reel_strips
+            .iter_mut()
+            .chain(fg.free_reel_strips.iter_mut())
+        {
+            for (i, s) in strip.iter_mut().enumerate() {
+                if i % 4 == 0 {
+                    *s = flag;
+                }
+            }
+        }
+        reel_strips(&model)
+    }
+
+    /// The flags a reel shows with its top at `pos`: every strip index in
+    /// view (partly or wholly).
+    fn flags_in_view(reels: &Reels, reel: usize, pos: f32) -> usize {
+        let first = pos.floor() as i64;
+        let last = (pos + 3.0).ceil() as i64 - 1;
+        (first..=last)
+            .filter(|n| symbol_of(reels.key_at(reel, *n)) == reels.scatter)
+            .count()
+    }
+
+    #[test]
+    fn a_moving_reel_never_shows_two_flags() {
+        let mut reels = flag_heavy_reels();
+        let flag = reels.scatter.clone();
+        for free in [false, true] {
+            for reel in 0..5 {
+                for row in 0..3 {
+                    let mut window = vec!["K".to_string(); 3];
+                    window[row] = flag.clone();
+                    // A spin starting from a window with a flag: it scrolls
+                    // away (spin_reels marks the reel quiet).
+                    let at = 40i64;
+                    {
+                        let s = &mut reels.states[reel];
+                        s.free = free;
+                        s.quiet = true;
+                        s.landing = window.clone();
+                        s.landing_at = at;
+                    }
+                    let mut pos = at as f32;
+                    while pos >= at as f32 - 5.0 {
+                        assert!(
+                            flags_in_view(&reels, reel, pos) <= 1,
+                            "start, reel {reel} row {row} pos {pos}"
+                        );
+                        pos -= 0.02;
+                    }
+                    // Landing on a window with a flag: it runs on past its
+                    // stop and back.
+                    let target = 20i64;
+                    reels.states[reel].landing_at = target;
+                    let mut pos = target as f32 + 4.0;
+                    while pos >= target as f32 - DEEP {
+                        assert!(
+                            flags_in_view(&reels, reel, pos) <= 1,
+                            "landing, reel {reel} row {row} pos {pos}"
+                        );
+                        pos -= 0.02;
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn a_reel_without_a_flag_still_passes_flags() {
+        let mut reels = flag_heavy_reels();
+        let s = &mut reels.states[0];
+        s.quiet = false;
+        s.landing = vec!["K".to_string(); 3];
+        s.landing_at = 1000;
+        let flags = (0..40)
+            .filter(|n| reels.key_at(0, *n) == reels.scatter)
+            .count();
+        assert!(flags >= 8, "{flags}");
     }
 
     #[test]

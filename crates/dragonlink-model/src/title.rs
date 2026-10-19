@@ -10,15 +10,23 @@ pub enum TitleId {
     HappyAndProsperous,
     PandaMagic,
     AutumnMoon,
+    GenghisKhan,
+    GoldenGong,
+    PeaceAndLongLife,
+    SpringFestival,
 }
 
 impl TitleId {
     /// All titles, in the order they are worked on (Golden Century first).
-    pub const ALL: [TitleId; 4] = [
+    pub const ALL: [TitleId; 8] = [
         TitleId::GoldenCentury,
         TitleId::HappyAndProsperous,
         TitleId::PandaMagic,
         TitleId::AutumnMoon,
+        TitleId::GenghisKhan,
+        TitleId::GoldenGong,
+        TitleId::PeaceAndLongLife,
+        TitleId::SpringFestival,
     ];
 
     /// Stable lowercase identifier used in file names, asset ids and the command line.
@@ -28,6 +36,10 @@ impl TitleId {
             TitleId::HappyAndProsperous => "happy-and-prosperous",
             TitleId::PandaMagic => "panda-magic",
             TitleId::AutumnMoon => "autumn-moon",
+            TitleId::GenghisKhan => "genghis-khan",
+            TitleId::GoldenGong => "golden-gong",
+            TitleId::PeaceAndLongLife => "peace-and-long-life",
+            TitleId::SpringFestival => "spring-festival",
         }
     }
 
@@ -38,6 +50,10 @@ impl TitleId {
             TitleId::HappyAndProsperous => "Happy & Prosperous",
             TitleId::PandaMagic => "Panda Magic",
             TitleId::AutumnMoon => "Autumn Moon",
+            TitleId::GenghisKhan => "Genghis Khan",
+            TitleId::GoldenGong => "Golden Gong",
+            TitleId::PeaceAndLongLife => "Peace & Long Life",
+            TitleId::SpringFestival => "Spring Festival",
         }
     }
 

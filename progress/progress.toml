@@ -70,9 +70,9 @@ note = "Parallel lane. Analysis tooling exists and is tested on the synthetic fi
 
 [[milestone]]
 id = "M7"
-name = "Happy & Prosperous, Panda Magic, Autumn Moon"
+name = "The other seven titles"
 status = "partial"
-note = "FROZEN until Golden Century reaches the cabinet-experience standard (owner reset 2026-10-14). Autumn Moon, Happy & Prosperous and Panda Magic exist as FUNCTIONAL PROTOTYPES on the shared engine (synthetic maths, US family pay table, placeholder visuals) but are not worked on; the proven systems propagate only after Golden Century is genuinely reconstructed."
+note = "Scope widened to eight titles (D-018). Autumn Moon, Happy & Prosperous, Panda Magic, Genghis Khan, Golden Gong, Peace & Long Life and Spring Festival play in the cabinet from their own local packs, chosen from the machine menu, each with its own help-page pay table, symbols and free-games feature on Golden Century's engine and presentation. Maths synthetic; none compared side by side with its own footage yet."
 
 # --------------------------------------------------------------------------
 # Foundation
@@ -703,30 +703,32 @@ status = "not_started"
 [[category.item]]
 id = "hold-and-spin"
 name = "Hold & Spin rules and presentation"
-status = "investigating"
-note = "US rules text transcribed from footage (six to fourteen prize symbols, individual reels, three spins resetting, the set of prize multiples). Australian screens show the same trigger and counters. Not implemented to these rules."
+status = "partial"
+note = "Played to Golden Century's rules and presentation, which the mobile build shares with this title; values and weights synthetic."
 
 [[category.item]]
 id = "jackpots"
 name = "Jackpot levels and presentation"
-status = "investigating"
-note = "Four levels; strong evidence that in Australia the Grand is linked, the Major a stand-alone progressive, and the Minor and Mini fixed. Venue start-up values for the Grand recorded. Major parameters and increment rates not public. Not implemented."
+status = "partial"
+note = "As Golden Century's: Mini and Minor fixed by denomination, Major and Grand progressive meters climbing in the app; chances follow the stake; start values, rates and odds synthetic."
 
 [[category.item]]
 id = "free-games"
 name = "Free games feature"
 status = "partial"
-note = "Six free games, three extra on a retrigger, royals removed: read from Australian footage and matching the manufacturer's page and US rules text. The synthetic Happy & Prosperous config implements this (six games, three-game retrigger, royal-free feature reels, no mystery reveal) with synthetic strips and weights; the exact strips, weights and retrigger behaviour are synthetic."
+note = "Six free games on royal-free reels (rebuilt, synthetic), three more on a retrigger (mobile and club footage), no mystery symbol; coins start Hold & Spin inside the free games."
 
 [[category.item]]
 id = "art-ui"
 name = "Title artwork, UI layout and typography"
-status = "not_started"
+status = "partial"
+note = "Plays in the cabinet from its own local pack through the shared presentation (single-cell wild, no tall stack); not compared side by side with its footage."
 
 [[category.item]]
 id = "audio"
 name = "Sound and music"
-status = "not_started"
+status = "partial"
+note = "The pack's own clips play where Golden Century's do; not checked title by title against recordings."
 
 [[category.item]]
 id = "animation-timing"
@@ -741,7 +743,8 @@ status = "not_started"
 [[category.item]]
 id = "imported-assets"
 name = "Locally imported original assets"
-status = "not_started"
+status = "partial"
+note = "Art, animation and sound exported by the private exporter into a local pack; never in Git."
 
 [[category.item]]
 id = "parity"
@@ -795,30 +798,32 @@ status = "not_started"
 [[category.item]]
 id = "hold-and-spin"
 name = "Hold & Spin rules and presentation"
-status = "investigating"
-note = "US rules text transcribed from footage (six to fourteen prize symbols, individual reels, three spins resetting, the set of prize multiples). Australian screens show the same trigger and counters. Not implemented to these rules."
+status = "partial"
+note = "Played to Golden Century's rules and presentation, which the mobile build shares with this title; values and weights synthetic."
 
 [[category.item]]
 id = "jackpots"
 name = "Jackpot levels and presentation"
-status = "investigating"
-note = "Four levels; strong evidence that in Australia the Grand is linked, the Major a stand-alone progressive, and the Minor and Mini fixed. Venue start-up values for the Grand recorded. Major parameters and increment rates not public. Not implemented."
+status = "partial"
+note = "As Golden Century's: Mini and Minor fixed by denomination, Major and Grand progressive meters climbing in the app; chances follow the stake; start values, rates and odds synthetic."
 
 [[category.item]]
 id = "free-games"
 name = "Free games feature"
 status = "partial"
-note = "Six free games, three extra on a retrigger, royals removed, and Hold & Spin can start inside free games: read from Australian footage and matching the manufacturer's page. The synthetic Panda Magic config implements the six games, the three-game retrigger and the royal-free feature reels; Hold & Spin starting inside the free games is a known fidelity gap, not yet modelled. Strips and weights are synthetic."
+note = "Six free games on royal-free reels (rebuilt, synthetic), three more on a retrigger (mobile and club footage), no mystery symbol; coins start Hold & Spin inside the free games."
 
 [[category.item]]
 id = "art-ui"
 name = "Title artwork, UI layout and typography"
-status = "not_started"
+status = "partial"
+note = "Plays in the cabinet from its own local pack through the shared presentation (single-cell wild, no tall stack); not compared side by side with its footage."
 
 [[category.item]]
 id = "audio"
 name = "Sound and music"
-status = "not_started"
+status = "partial"
+note = "The pack's own clips play where Golden Century's do; not checked title by title against recordings."
 
 [[category.item]]
 id = "animation-timing"
@@ -833,7 +838,8 @@ status = "not_started"
 [[category.item]]
 id = "imported-assets"
 name = "Locally imported original assets"
-status = "not_started"
+status = "partial"
+note = "Art, animation and sound exported by the private exporter into a local pack; never in Git."
 
 [[category.item]]
 id = "parity"
@@ -929,6 +935,370 @@ id = "imported-assets"
 name = "Locally imported original assets"
 status = "partial"
 note = "Art, animation and sound exported by the private exporter into a local pack; never in Git."
+
+[[category.item]]
+id = "parity"
+name = "Evidence-backed parity"
+status = "not_started"
+
+[[category]]
+id = "gk"
+name = "Genghis Khan"
+
+[[category.item]]
+id = "identity"
+name = "Title identity, versions and regulatory identifiers"
+status = "partial"
+note = "ACT and US listings recorded in the private notes; Australian approvals not public."
+
+[[category.item]]
+id = "layout"
+name = "Reel layout and lines"
+status = "partial"
+note = "Five by three, fifty fixed-pattern lines read from the help page (VERIFIED, mobile); club decks sell lines per denomination (footage). That the cabinet uses the same fifty is HYPOTHESIS."
+
+[[category.item]]
+id = "symbols"
+name = "Symbol set"
+status = "partial"
+note = "Woman, fortress, pot, shield, royals, the archer scatter, Khan the wild on reels 2-5, the coin (help pages, VERIFIED)."
+
+[[category.item]]
+id = "paytable"
+name = "Paytable"
+status = "partial"
+note = "The help page's table (woman 150/50/10/2, fortress 100/30/5, pot and shield 100/25/5, K 75/20/5, Q-9 50/10/5; archer 100/15/2 x bet; the wild pays nothing); three cabinet line wins agree (STRONG)."
+
+[[category.item]]
+id = "bets"
+name = "Denominations and bet options"
+status = "partial"
+note = "Club decks (Queensland footage): 1c 2c 5c 10c $1 with a lines ladder per denomination; the model offers Golden Century's ladders. The full ladders are not read."
+
+[[category.item]]
+id = "reel-strips"
+name = "Reel strips and weighting"
+status = "not_started"
+
+[[category.item]]
+id = "hold-and-spin"
+name = "Hold & Spin rules and presentation"
+status = "partial"
+note = "Six to fourteen coins in a bought game, three respins reset by a new coin, fifteen the Grand; orb prizes as Golden Century's (help pages, VERIFIED). Coins in its free games start none (help: bought games only, STRONG). Values and weights synthetic."
+
+[[category.item]]
+id = "jackpots"
+name = "Jackpot levels and presentation"
+status = "partial"
+note = "Grand and Major linked progressives, Minor and Mini fixed by denomination as Golden Century's (club footage); chances follow the stake; start values, rates and odds synthetic."
+
+[[category.item]]
+id = "free-games"
+name = "Free games feature"
+status = "partial"
+note = "Six free games; Khan wears an x2 badge and every one in a win doubles it (two make x4, seen twice); royals stay; three more on a retrigger (third-party lead, count UNKNOWN). Strips synthetic."
+
+[[category.item]]
+id = "art-ui"
+name = "Title artwork, UI layout and typography"
+status = "partial"
+note = "Plays in the cabinet from its own local pack (exported privately from the mobile build), through Golden Century's presentation; not compared side by side with its own footage."
+
+[[category.item]]
+id = "audio"
+name = "Sound and music"
+status = "partial"
+note = "The pack's own clips play where Golden Century's do, the x2 wild's own clip on its wins; placements not checked against its footage."
+
+[[category.item]]
+id = "animation-timing"
+name = "Animation and sequence timing"
+status = "not_started"
+
+[[category.item]]
+id = "attract"
+name = "Attract and idle presentation"
+status = "partial"
+note = "Golden Century's attract runs over the title's own art; the title's own attract is not studied."
+
+[[category.item]]
+id = "imported-assets"
+name = "Locally imported original assets"
+status = "partial"
+note = "Art, animation, help pages and sound exported by the private exporter into a local pack; never in Git."
+
+[[category.item]]
+id = "parity"
+name = "Evidence-backed parity"
+status = "not_started"
+
+[[category]]
+id = "gg"
+name = "Golden Gong"
+
+[[category.item]]
+id = "identity"
+name = "Title identity, versions and regulatory identifiers"
+status = "partial"
+note = "ACT listing (1.HDG32) and Aristocrat ANZ pages recorded in the private notes."
+
+[[category.item]]
+id = "layout"
+name = "Reel layout and lines"
+status = "partial"
+note = "Five by three, fifty lines read from the help page, identical to Genghis Khan's (VERIFIED, mobile); club decks: up to 50/50/25/25/5 lines at 1c/2c/5c/10c/$1 (footage)."
+
+[[category.item]]
+id = "symbols"
+name = "Symbol set"
+status = "partial"
+note = "Four disciples, rooster, scroll, bamboo, royals, the gong scatter, the monk wild on reels 2-5, the coin (help pages, VERIFIED)."
+
+[[category.item]]
+id = "paytable"
+name = "Paytable"
+status = "partial"
+note = "The help page's base table and the free games' own table, pictures up and royals down (VERIFIED, mobile); the wild pays nothing."
+
+[[category.item]]
+id = "bets"
+name = "Denominations and bet options"
+status = "partial"
+note = "Club decks (Queensland footage): 1c 2c 5c 10c $1 with a lines ladder per denomination; the model offers Golden Century's ladders. The full ladders are not read."
+
+[[category.item]]
+id = "reel-strips"
+name = "Reel strips and weighting"
+status = "not_started"
+
+[[category.item]]
+id = "hold-and-spin"
+name = "Hold & Spin rules and presentation"
+status = "partial"
+note = "Six to fourteen coins in a bought game, three respins reset by a new coin, fifteen the Grand; orb prizes as Golden Century's (help pages, VERIFIED). Coins in its free games start none (help: bought games only, STRONG). Values and weights synthetic."
+
+[[category.item]]
+id = "jackpots"
+name = "Jackpot levels and presentation"
+status = "partial"
+note = "Grand and Major linked progressives, Minor and Mini fixed by denomination as Golden Century's (club footage); chances follow the stake; start values, rates and odds synthetic."
+
+[[category.item]]
+id = "free-games"
+name = "Free games feature"
+status = "partial"
+note = "Six free games with the monk filling its reel when it lands and their own pay table (help, VERIFIED; footage, STRONG); three more on a retrigger (HYPOTHESIS, never filmed). Strips synthetic."
+
+[[category.item]]
+id = "art-ui"
+name = "Title artwork, UI layout and typography"
+status = "partial"
+note = "Plays in the cabinet from its own local pack (exported privately from the mobile build), through Golden Century's presentation; not compared side by side with its own footage."
+
+[[category.item]]
+id = "audio"
+name = "Sound and music"
+status = "partial"
+note = "The pack's own clips; the single wild clip stands in for Golden Century's five, the expansion clips play by whether the reel wins (pairing HYPOTHESIS)."
+
+[[category.item]]
+id = "animation-timing"
+name = "Animation and sequence timing"
+status = "not_started"
+
+[[category.item]]
+id = "attract"
+name = "Attract and idle presentation"
+status = "partial"
+note = "Golden Century's attract runs over the title's own art; the title's own attract is not studied."
+
+[[category.item]]
+id = "imported-assets"
+name = "Locally imported original assets"
+status = "partial"
+note = "Art, animation, help pages and sound exported by the private exporter into a local pack; never in Git."
+
+[[category.item]]
+id = "parity"
+name = "Evidence-backed parity"
+status = "not_started"
+
+[[category]]
+id = "pll"
+name = "Peace & Long Life"
+
+[[category.item]]
+id = "identity"
+name = "Title identity, versions and regulatory identifiers"
+status = "partial"
+note = "ACT 1.HDG18 and Missouri listings recorded in the private notes."
+
+[[category.item]]
+id = "layout"
+name = "Reel layout and lines"
+status = "partial"
+note = "Five by three; 25 fixed lines on mobile (VERIFIED), up to 50 player-selected on club machines (footage, STRONG). Lines 26-50 taken as the family's fifty (HYPOTHESIS)."
+
+[[category.item]]
+id = "symbols"
+name = "Symbol set"
+status = "partial"
+note = "Tortoise, deer, birdcage, bamboo, royals, the peach scatter, the sage wild on reels 2-5, the coin (help pages, VERIFIED)."
+
+[[category.item]]
+id = "paytable"
+name = "Paytable"
+status = "partial"
+note = "The help page's table, the same values as Genghis Khan's (VERIFIED, mobile); club pay table not seen."
+
+[[category.item]]
+id = "bets"
+name = "Denominations and bet options"
+status = "partial"
+note = "Club decks (Queensland footage): 1c 2c 5c 10c $1 with a lines ladder per denomination; the model offers Golden Century's ladders. The full ladders are not read."
+
+[[category.item]]
+id = "reel-strips"
+name = "Reel strips and weighting"
+status = "not_started"
+
+[[category.item]]
+id = "hold-and-spin"
+name = "Hold & Spin rules and presentation"
+status = "partial"
+note = "Six to fourteen coins in a bought game, three respins reset by a new coin, fifteen the Grand; orb prizes as Golden Century's (help pages, VERIFIED). Coins in its free games start none (help: bought games only, STRONG). Values and weights synthetic."
+
+[[category.item]]
+id = "jackpots"
+name = "Jackpot levels and presentation"
+status = "partial"
+note = "Grand and Major linked progressives, Minor and Mini fixed by denomination as Golden Century's (club footage); chances follow the stake; start values, rates and odds synthetic."
+
+[[category.item]]
+id = "free-games"
+name = "Free games feature"
+status = "partial"
+note = "Six free games with the sage's x2 wild (help, VERIFIED); whether royals stay is UNKNOWN (they do here); three more on a retrigger (HYPOTHESIS). Strips synthetic."
+
+[[category.item]]
+id = "art-ui"
+name = "Title artwork, UI layout and typography"
+status = "partial"
+note = "Plays in the cabinet from its own local pack (exported privately from the mobile build), through Golden Century's presentation; not compared side by side with its own footage."
+
+[[category.item]]
+id = "audio"
+name = "Sound and music"
+status = "partial"
+note = "The pack's own clips play where Golden Century's do; placements not checked against its footage."
+
+[[category.item]]
+id = "animation-timing"
+name = "Animation and sequence timing"
+status = "not_started"
+
+[[category.item]]
+id = "attract"
+name = "Attract and idle presentation"
+status = "partial"
+note = "Golden Century's attract runs over the title's own art; the title's own attract is not studied."
+
+[[category.item]]
+id = "imported-assets"
+name = "Locally imported original assets"
+status = "partial"
+note = "Art, animation, help pages and sound exported by the private exporter into a local pack; never in Git."
+
+[[category.item]]
+id = "parity"
+name = "Evidence-backed parity"
+status = "not_started"
+
+[[category]]
+id = "sf"
+name = "Spring Festival"
+
+[[category.item]]
+id = "identity"
+name = "Title identity, versions and regulatory identifiers"
+status = "partial"
+note = "ACT 1.HDG15 and 1.HD102 listings recorded in the private notes."
+
+[[category.item]]
+id = "layout"
+name = "Reel layout and lines"
+status = "partial"
+note = "Five by three; 25 fixed lines on mobile (VERIFIED), up to 50 on club machines (footage, STRONG). Lines 26-50 taken as the family's fifty (HYPOTHESIS)."
+
+[[category.item]]
+id = "symbols"
+name = "Symbol set"
+status = "partial"
+note = "Drum, lantern, envelopes, firecrackers, royals, the gold ingot scatter, the God of Wealth wild, the coin, each with a BIG 3x3 twin (help pages and scene, VERIFIED)."
+
+[[category.item]]
+id = "paytable"
+name = "Paytable"
+status = "partial"
+note = "The help page's base table and the free games' own table, four and five of a kind only (VERIFIED, mobile); three ingots paid twice the bet on a club machine (STRONG)."
+
+[[category.item]]
+id = "bets"
+name = "Denominations and bet options"
+status = "partial"
+note = "Club decks (Queensland footage): 1c 2c 5c 10c $1 with a lines ladder per denomination; the model offers Golden Century's ladders. The full ladders are not read."
+
+[[category.item]]
+id = "reel-strips"
+name = "Reel strips and weighting"
+status = "not_started"
+
+[[category.item]]
+id = "hold-and-spin"
+name = "Hold & Spin rules and presentation"
+status = "partial"
+note = "Six to fourteen coins in a bought game; in the free games a BIG coin starts it with its nine positions held, one prize from its own list (help pages, VERIFIED; footage, STRONG). Values and weights synthetic."
+
+[[category.item]]
+id = "jackpots"
+name = "Jackpot levels and presentation"
+status = "partial"
+note = "Grand and Major linked progressives, Minor and Mini fixed by denomination as Golden Century's (club footage); chances follow the stake; start values, rates and odds synthetic."
+
+[[category.item]]
+id = "free-games"
+name = "Free games feature"
+status = "partial"
+note = "Six free games on a BIG 3x3 reel over reels 2-4; a BIG ingot pays the bet and adds three games; the ingot and coin come only BIG (help pages, VERIFIED; footage 1 of 6 to 3 of 9, STRONG). The BIG reel's strip synthetic; the big reel spins as three columns, not one."
+
+[[category.item]]
+id = "art-ui"
+name = "Title artwork, UI layout and typography"
+status = "partial"
+note = "Plays in the cabinet from its own local pack (exported privately from the mobile build), through Golden Century's presentation; not compared side by side with its own footage."
+
+[[category.item]]
+id = "audio"
+name = "Sound and music"
+status = "partial"
+note = "The pack's own clips play where Golden Century's do; the BIG symbols' own sounds and placements not checked."
+
+[[category.item]]
+id = "animation-timing"
+name = "Animation and sequence timing"
+status = "not_started"
+
+[[category.item]]
+id = "attract"
+name = "Attract and idle presentation"
+status = "partial"
+note = "Golden Century's attract runs over the title's own art; the title's own attract is not studied."
+
+[[category.item]]
+id = "imported-assets"
+name = "Locally imported original assets"
+status = "partial"
+note = "Art, animation, help pages and sound exported by the private exporter into a local pack; never in Git."
 
 [[category.item]]
 id = "parity"

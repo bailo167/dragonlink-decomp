@@ -973,20 +973,53 @@ impl Game {
             remaining: state.games_left,
         });
 
-        // The free reels.
+        // The free reels; a BIG reel stops once for all the reels it covers.
+        let big = fg
+            .big_reel
+            .as_ref()
+            .filter(|b| !b.strip.is_empty() && b.width > 0);
+        let mut big_symbol: Option<SymbolId> = None;
         let mut cells = Vec::with_capacity(self.model.grid.cells());
         for (reel, strip) in fg.free_reel_strips.iter().enumerate() {
-            let len = u32::try_from(strip.len()).map_err(|_| GameError::Overflow)?;
-            let stop = rng.below(len)?;
-            let visible: Vec<SymbolId> = (0..rows)
-                .map(|row| strip[(stop as usize + row) % strip.len()])
-                .collect();
+            let in_big = big.is_some_and(|b| {
+                (usize::from(b.first)..usize::from(b.first) + usize::from(b.width)).contains(&reel)
+            });
+            let (stop, visible) = match (in_big, big) {
+                (true, Some(b)) => {
+                    if big_symbol.is_none() {
+                        let len = u32::try_from(b.strip.len()).map_err(|_| GameError::Overflow)?;
+                        let stop = rng.below(len)?;
+                        big_symbol = Some(b.strip[stop as usize]);
+                        (stop, vec![b.strip[stop as usize]; rows])
+                    } else {
+                        let symbol = big_symbol.unwrap_or(b.strip[0]);
+                        (0, vec![symbol; rows])
+                    }
+                }
+                _ => {
+                    let len = u32::try_from(strip.len()).map_err(|_| GameError::Overflow)?;
+                    let stop = rng.below(len)?;
+                    (
+                        stop,
+                        (0..rows)
+                            .map(|row| strip[(stop as usize + row) % strip.len()])
+                            .collect(),
+                    )
+                }
+            };
             events.push(Event::ReelStopped {
                 reel: reel as u8,
                 stop: Some(stop),
                 symbols: visible.iter().map(|s| self.key(*s)).collect(),
             });
             cells.extend(visible);
+        }
+        if let (Some(b), Some(symbol)) = (big, big_symbol) {
+            events.push(Event::BigSymbol {
+                symbol: self.key(symbol),
+                first: b.first,
+                width: b.width,
+            });
         }
         let mut grid = Grid::new(self.model.grid, cells).ok_or(GameError::Invariant(
             "free window size does not match the model",
@@ -1010,33 +1043,131 @@ impl Game {
             }
         }
 
+        // Expanding wilds: a wild fills its reel.
+        if fg.expanding_wilds {
+            let reels = usize::from(self.model.grid.reels);
+            let mut new_cells: Vec<SymbolId> = grid.iter().map(|(_, _, s)| s).collect();
+            for reel in 0..reels {
+                let column = reel * rows..(reel + 1) * rows;
+                let wild = new_cells[column.clone()]
+                    .iter()
+                    .copied()
+                    .find(|s| self.model.kind(*s) == Some(SymbolKind::Wild));
+                if let Some(wild) = wild
+                    && new_cells[column.clone()].iter().any(|s| *s != wild)
+                {
+                    for cell in &mut new_cells[column] {
+                        *cell = wild;
+                    }
+                    events.push(Event::WildExpanded { reel: reel as u8 });
+                }
+            }
+            grid = Grid::new(self.model.grid, new_cells)
+                .ok_or(GameError::Invariant("expanded window size"))?;
+        }
+
         // Coins: each one in the window carries its own prize (revealed
         // coins draw one each, as the mobile build does). Enough of them
         // start Hold & Spin once this game's pays are made.
+        // A BIG coin is one prize, lettered on its centre position; the
+        // other positions it covers hold no prize of their own.
         let mut orbs: Vec<Option<OrbValue>> = vec![None; self.model.grid.cells()];
+        let mut big_coin = false;
         if let Some(hs) = &self.model.hold_and_spin {
             let stake = Stake {
                 credits: state.total_bet,
                 unit: next.unit,
             };
+            let big_coin_reel = big
+                .zip(big_symbol)
+                .filter(|(_, s)| *s == hs.orb)
+                .map(|(b, _)| b);
+            let big_table =
+                big_coin_reel
+                    .filter(|b| !b.orb_values.is_empty())
+                    .map(|b| HoldAndSpinModel {
+                        orb_values: b.orb_values.clone(),
+                        ..hs.clone()
+                    });
             for (index, (reel, row, symbol)) in grid.iter().enumerate() {
-                if self.model.kind(symbol) == Some(SymbolKind::Orb) {
-                    let value = draw_orb_value(hs, stake, major_shown(&orbs), rng)?;
-                    orbs[index] = Some(value);
-                    events.push(Event::OrbValueShown { reel, row, value });
+                if self.model.kind(symbol) != Some(SymbolKind::Orb) {
+                    continue;
                 }
+                let covering =
+                    big_coin_reel.filter(|b| (b.first..b.first + b.width).contains(&reel));
+                let value = match covering {
+                    Some(b) => {
+                        big_coin = true;
+                        if reel == b.first + b.width / 2 && usize::from(row) == rows / 2 {
+                            let table = big_table.as_ref().unwrap_or(hs);
+                            draw_orb_value(table, stake, major_shown(&orbs), rng)?
+                        } else {
+                            OrbValue::BetMultiple(0)
+                        }
+                    }
+                    None => draw_orb_value(hs, stake, major_shown(&orbs), rng)?,
+                };
+                orbs[index] = Some(value);
+                events.push(Event::OrbValueShown { reel, row, value });
             }
         }
 
-        // Pays. A free game takes no bet.
-        let wins = evaluate_lines(
-            &self.model,
+        // Pays. A free game takes no bet; it may have its own pay table.
+        let pays_model;
+        let model = if fg.line_pays.is_empty() {
+            &self.model
+        } else {
+            let mut m = self.model.clone();
+            m.line_pays = fg.line_pays.clone();
+            pays_model = m;
+            &pays_model
+        };
+        let mut wins = evaluate_lines(
+            model,
             &grid,
             state.credits_per_line,
             state.total_bet,
             usize::from(state.lines),
         )
         .ok_or(GameError::Overflow)?;
+        // Each wild in a winning run multiplies its win.
+        if let Some(m) = fg.wild_multiplier.filter(|m| *m > 1) {
+            for win in &mut wins {
+                if let Win::Line {
+                    line, count, award, ..
+                } = win
+                {
+                    let Some(payline) = self.model.paylines.get(usize::from(*line)) else {
+                        continue;
+                    };
+                    let wilds = (0..*count)
+                        .filter(|reel| {
+                            payline.0.get(usize::from(*reel)).is_some_and(|row| {
+                                grid.get(*reel, *row)
+                                    .is_some_and(|s| self.model.kind(s) == Some(SymbolKind::Wild))
+                            })
+                        })
+                        .count();
+                    for _ in 0..wilds {
+                        *award = award.checked_mul(u64::from(m)).ok_or(GameError::Overflow)?;
+                    }
+                }
+            }
+        }
+        // A BIG scatter counts once: its own pay and more games.
+        let big_scatter = big
+            .zip(big_symbol)
+            .filter(|(_, s)| self.model.kind(*s) == Some(SymbolKind::Scatter));
+        if let Some((b, symbol)) = big_scatter {
+            wins.retain(|w| !matches!(w, Win::Scatter { .. }));
+            wins.push(Win::Scatter {
+                symbol,
+                count: 1,
+                award: u64::from(b.scatter_pay)
+                    .checked_mul(state.total_bet)
+                    .ok_or(GameError::Overflow)?,
+            });
+        }
         let mut award = 0u64;
         for win in &wins {
             award = add(award, win.award())?;
@@ -1074,8 +1205,19 @@ impl Game {
         }
         state.total_award = add(state.total_award, award)?;
 
-        // Retrigger.
-        if fg.retrigger_count > 0 {
+        // Retrigger: a BIG scatter adds its games.
+        if let Some((b, _)) = big_scatter
+            && b.scatter_games > 0
+        {
+            state.games_left = state
+                .games_left
+                .checked_add(u32::from(b.scatter_games))
+                .ok_or(GameError::Overflow)?;
+            events.push(Event::FreeGamesRetriggered {
+                added: b.scatter_games,
+                remaining: state.games_left,
+            });
+        } else if fg.retrigger_count > 0 {
             let scatters = self
                 .model
                 .scatter_symbol()
@@ -1096,12 +1238,9 @@ impl Game {
 
         // Hold & Spin from the free game's coins; the free games wait for it.
         let orb_count = orbs.iter().flatten().count();
-        if let Some(hs) = self
-            .model
-            .hold_and_spin
-            .as_ref()
-            .filter(|hs| orb_count >= hs.trigger_count as usize)
-        {
+        if let Some(hs) = self.model.hold_and_spin.as_ref().filter(|hs| {
+            big_coin || (!fg.no_hold_and_spin && orb_count >= hs.trigger_count as usize)
+        }) {
             events.push(Event::FeatureTriggered {
                 feature: Feature::HoldAndSpin,
                 count: orb_count as u8,
@@ -1323,8 +1462,8 @@ mod tests {
     use crate::rng::{DevRng, Draw, RecordingRng, ScriptedRng};
     use dragonlink_model::fixtures::synthetic_dev_fixture;
     use dragonlink_model::{
-        BetModel, FixedPrize, GridShape, JackpotDef, MathProvenance, Payline, Ratio, SymbolDef,
-        WeightedOrbValue,
+        BetModel, BigReel, FixedPrize, GridShape, JackpotDef, LinePay, MathProvenance, Payline,
+        Ratio, SymbolDef, WeightedOrbValue,
     };
 
     /// A tiny hand-made model for forcing feature outcomes: 2 reels × 2 rows,
@@ -2220,6 +2359,266 @@ mod tests {
             }
         }
         panic!("no Hold & Spin started inside the free games");
+    }
+
+    /// A hand-made free-games model, 3 reels × 2 rows: A pays 10 for three
+    /// on the top line, W is wild, X pays nothing, S is the scatter. Every
+    /// free reel is A, X, W, X: stop 0 shows A over X, stop 1 X over W, stop 2
+    /// W over X, stop 3 X over A.
+    fn tiny_free() -> MathModel {
+        let (a, w, s, x) = (SymbolId(0), SymbolId(1), SymbolId(2), SymbolId(3));
+        let symbol = |id: SymbolId, key: &str, kind: SymbolKind| SymbolDef {
+            id,
+            key: key.into(),
+            kind,
+        };
+        MathModel {
+            id: "test-tiny-free".into(),
+            provenance: MathProvenance::SyntheticDevFixture,
+            description: "test".into(),
+            grid: GridShape { reels: 3, rows: 2 },
+            symbols: vec![
+                symbol(a, "A", SymbolKind::Regular),
+                symbol(w, "W", SymbolKind::Wild),
+                symbol(s, "S", SymbolKind::Scatter),
+                symbol(x, "X", SymbolKind::Regular),
+            ],
+            reel_strips: vec![vec![s, x, a, x]; 3],
+            paylines: vec![Payline(vec![0, 0, 0])],
+            line_pays: vec![LinePay {
+                symbol: a,
+                count: 3,
+                pay: 10,
+            }],
+            scatter_pays: vec![],
+            bet: BetModel {
+                credits_per_line_options: vec![2],
+                line_options: Vec::new(),
+            },
+            hold_and_spin: None,
+            free_games: Some(FreeGamesModel {
+                trigger_count: 3,
+                initial_games: 5,
+                retrigger_count: 0,
+                retrigger_games: 0,
+                free_reel_strips: vec![vec![a, x, w, x]; 3],
+                mystery: None,
+                reveal_values: Vec::new(),
+                line_pays: Vec::new(),
+                wild_multiplier: None,
+                expanding_wilds: false,
+                big_reel: None,
+                no_hold_and_spin: false,
+            }),
+        }
+    }
+
+    /// One free game of `model` on the scripted stops; its events.
+    fn one_free_game(model: MathModel, draws: Vec<Draw>) -> Vec<Event> {
+        let state = GameState {
+            credits: 0,
+            bet_index: 0,
+            lines: None,
+            phase: Phase::FreeGames(FreeGamesState {
+                games_left: 5,
+                games_played: 0,
+                total_award: 0,
+                base_award: 0,
+                total_bet: 2,
+                credits_per_line: 2,
+                lines: 1,
+            }),
+            spins: 1,
+            last_grid: None,
+            gamble_stake: 0,
+            gambles: 0,
+            residue: 0,
+            unit: 1,
+            meters: BTreeMap::new(),
+        };
+        let mut game = Game::resume(model, state).unwrap();
+        game.apply(Command::Advance, &mut ScriptedRng::new(draws))
+            .unwrap()
+    }
+
+    fn line_awards(events: &[Event]) -> Vec<(u8, u64)> {
+        events
+            .iter()
+            .filter_map(|e| match e {
+                Event::LineWin { count, award, .. } => Some((*count, *award)),
+                _ => None,
+            })
+            .collect()
+    }
+
+    #[test]
+    fn a_free_game_wild_fills_its_reel_when_wilds_expand() {
+        let mut model = tiny_free();
+        // A over X, then X over W twice: only the top line's A pays nothing
+        // until both wilds fill their reels.
+        let draws = vec![d(4, 0), d(4, 1), d(4, 1)];
+        assert!(line_awards(&one_free_game(model.clone(), draws.clone())).is_empty());
+        model.free_games.as_mut().unwrap().expanding_wilds = true;
+        let events = one_free_game(model, draws);
+        let expanded: Vec<u8> = events
+            .iter()
+            .filter_map(|e| match e {
+                Event::WildExpanded { reel } => Some(*reel),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(expanded, vec![1, 2]);
+        assert_eq!(line_awards(&events), vec![(3, 20)]);
+    }
+
+    #[test]
+    fn each_wild_in_a_free_game_win_multiplies_it() {
+        let mut model = tiny_free();
+        // The top line: A, W, W.
+        let draws = vec![d(4, 0), d(4, 2), d(4, 2)];
+        assert_eq!(
+            line_awards(&one_free_game(model.clone(), draws.clone())),
+            vec![(3, 20)]
+        );
+        model.free_games.as_mut().unwrap().wild_multiplier = Some(2);
+        assert_eq!(line_awards(&one_free_game(model, draws)), vec![(3, 80)]);
+    }
+
+    #[test]
+    fn the_free_games_pay_their_own_table_when_they_have_one() {
+        let mut model = tiny_free();
+        model.free_games.as_mut().unwrap().line_pays = vec![LinePay {
+            symbol: SymbolId(0),
+            count: 3,
+            pay: 50,
+        }];
+        let draws = vec![d(4, 0), d(4, 2), d(4, 2)];
+        assert_eq!(line_awards(&one_free_game(model, draws)), vec![(3, 100)]);
+    }
+
+    #[test]
+    fn a_big_reel_stops_once_and_its_scatter_counts_once() {
+        let mut model = tiny_free();
+        model.free_games.as_mut().unwrap().big_reel = Some(BigReel {
+            first: 1,
+            width: 2,
+            strip: vec![SymbolId(2), SymbolId(1)],
+            scatter_pay: 1,
+            scatter_games: 3,
+            orb_values: Vec::new(),
+        });
+        // Reel 1 draws once for reels 2 and 3 together: the BIG scatter pays
+        // once, the total bet, and adds three games.
+        let events = one_free_game(model.clone(), vec![d(4, 0), d(2, 0)]);
+        assert!(events.contains(&Event::BigSymbol {
+            symbol: "S".into(),
+            first: 1,
+            width: 2,
+        }));
+        assert!(events.contains(&Event::ScatterWin {
+            symbol: "S".into(),
+            count: 1,
+            award: 2,
+        }));
+        assert!(events.contains(&Event::FreeGamesRetriggered {
+            added: 3,
+            remaining: 7,
+        }));
+        // A BIG wild covers both reels: A, W, W on the top line.
+        let events = one_free_game(model, vec![d(4, 0), d(2, 1)]);
+        assert_eq!(line_awards(&events), vec![(3, 20)]);
+    }
+
+    /// [`tiny_free`] with coins (O): two start Hold & Spin, each worth the
+    /// total bet.
+    fn tiny_free_with_coins() -> MathModel {
+        let mut model = tiny_free();
+        let coin = SymbolId(4);
+        model.symbols.push(SymbolDef {
+            id: coin,
+            key: "O".into(),
+            kind: SymbolKind::Orb,
+        });
+        model.hold_and_spin = Some(HoldAndSpinModel {
+            orb: coin,
+            trigger_count: 2,
+            initial_respins: 3,
+            reset_respins_on_new_orb: true,
+            orb_land_chance: Ratio { num: 1, den: 4 },
+            orb_values: vec![WeightedOrbValue {
+                weight: 1,
+                value: OrbValue::BetMultiple(1),
+            }],
+            full_grid_award: None,
+            jackpots: vec![],
+        });
+        model
+    }
+
+    #[test]
+    fn coins_in_the_free_games_start_no_hold_and_spin_when_the_model_says_so() {
+        let mut model = tiny_free_with_coins();
+        let coin = SymbolId(4);
+        model.free_games.as_mut().unwrap().free_reel_strips[0] =
+            vec![coin, coin, SymbolId(3), SymbolId(3)];
+        // Two coins on reel 1, each drawing its prize.
+        let draws = vec![d(4, 0), d(4, 1), d(4, 1), d(1, 0), d(1, 0)];
+        let started = |events: &[Event]| {
+            events
+                .iter()
+                .any(|e| matches!(e, Event::HoldAndSpinStarted { .. }))
+        };
+        assert!(started(&one_free_game(model.clone(), draws.clone())));
+        model.free_games.as_mut().unwrap().no_hold_and_spin = true;
+        let events = one_free_game(model, draws);
+        assert!(!started(&events));
+        assert_eq!(
+            events
+                .iter()
+                .filter(|e| matches!(e, Event::OrbValueShown { .. }))
+                .count(),
+            2
+        );
+    }
+
+    #[test]
+    fn a_big_coin_is_one_prize_and_starts_hold_and_spin() {
+        let mut model = tiny_free_with_coins();
+        {
+            let fg = model.free_games.as_mut().unwrap();
+            fg.no_hold_and_spin = true;
+            fg.big_reel = Some(BigReel {
+                first: 1,
+                width: 2,
+                strip: vec![SymbolId(2), SymbolId(1), SymbolId(4)],
+                scatter_pay: 1,
+                scatter_games: 3,
+                orb_values: vec![WeightedOrbValue {
+                    weight: 1,
+                    value: OrbValue::BetMultiple(7),
+                }],
+            });
+        }
+        // Reel 1 shows A over X; the BIG reel stops on the coin, whose one
+        // prize is drawn from its own table for its centre position.
+        let events = one_free_game(model, vec![d(4, 0), d(3, 2), d(1, 0)]);
+        let shown: Vec<(u8, u8, OrbValue)> = events
+            .iter()
+            .filter_map(|e| match e {
+                Event::OrbValueShown { reel, row, value } => Some((*reel, *row, *value)),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(shown.len(), 4);
+        for (reel, row, value) in shown {
+            let want = if (reel, row) == (2, 1) { 7 } else { 0 };
+            assert_eq!(value, OrbValue::BetMultiple(want));
+        }
+        assert!(
+            events
+                .iter()
+                .any(|e| matches!(e, Event::HoldAndSpinStarted { .. }))
+        );
     }
 
     #[test]

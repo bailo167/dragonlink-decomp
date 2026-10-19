@@ -108,6 +108,22 @@ const FILES: &[(&str, &str)] = &[
         "claims/autumn-moon.toml",
         include_str!("../claims/autumn-moon.toml"),
     ),
+    (
+        "claims/genghis-khan.toml",
+        include_str!("../claims/genghis-khan.toml"),
+    ),
+    (
+        "claims/golden-gong.toml",
+        include_str!("../claims/golden-gong.toml"),
+    ),
+    (
+        "claims/peace-and-long-life.toml",
+        include_str!("../claims/peace-and-long-life.toml"),
+    ),
+    (
+        "claims/spring-festival.toml",
+        include_str!("../claims/spring-festival.toml"),
+    ),
 ];
 
 /// Parse and check one claim file.
