@@ -3637,9 +3637,25 @@ impl Sounds {
         Sounds { clips, ..default() }
     }
 
+    /// The clip for `name`, or the title's own stand-in for it: a title with
+    /// one wild sound (Happy & Prosperous, Panda Magic, Golden Gong:
+    /// `SND_Wild`) plays it where Golden Century plays one of its five.
+    fn clip(&self, name: &str) -> Option<&(Handle<AudioSource>, f32)> {
+        self.clips.get(name).or_else(|| {
+            // Peace & Long Life's x2 wild has no sound of its own: the wild's.
+            name.starts_with("SND_Wild")
+                .then(|| {
+                    self.clips
+                        .get("SND_Wild")
+                        .or_else(|| self.clips.get("SND_Wild_1"))
+                })
+                .flatten()
+        })
+    }
+
     /// Play a clip once; returns the playing entity.
     pub fn play(&self, commands: &mut Commands, name: &str) -> Option<Entity> {
-        let (clip, _) = self.clips.get(name)?;
+        let (clip, _) = self.clip(name)?;
         Some(
             commands
                 .spawn((AudioPlayer::new(clip.clone()), PlaybackSettings::DESPAWN))
@@ -3650,7 +3666,7 @@ impl Sounds {
     /// Play a clip once at `volume` (scaled by the global volume, which a
     /// muted run sets to 0).
     pub fn play_at(&self, commands: &mut Commands, name: &str, volume: f32) -> Option<Entity> {
-        let (clip, _) = self.clips.get(name)?;
+        let (clip, _) = self.clip(name)?;
         Some(
             commands
                 .spawn((
@@ -3670,7 +3686,7 @@ impl Sounds {
 
     /// A clip's length in seconds.
     pub fn seconds(&self, name: &str) -> Option<f32> {
-        self.clips.get(name).map(|(_, s)| *s)
+        self.clip(name).map(|(_, s)| *s)
     }
 
     /// Play a clip on a loop at `volume`; returns the playing entity.
@@ -9141,11 +9157,20 @@ impl FeatureShow {
     /// On recordings the variant changes from win to win, the same stack
     /// sounding different ones; it is not the stack's height. Here the five
     /// take turns in a scrambled order.
-    pub fn begin_wild(&mut self, stack: bool) {
+    /// A free game's x2 wild (Genghis Khan, Peace & Long Life) sounds its own
+    /// clip, SND_WildFG, where the title has one (names only; HYPOTHESIS).
+    pub fn begin_wild(&mut self, stack: bool, x2: bool) {
         if self.wild_sounded {
             return;
         }
         self.wild_sounded = true;
+        if x2 {
+            self.cues.push("SND_WildFG");
+            if stack {
+                self.wild = Some(0.0);
+            }
+            return;
+        }
         const WILD_SOUNDS: [&str; 5] = [
             "SND_Wild_1",
             "SND_Wild_2",
@@ -9159,6 +9184,17 @@ impl FeatureShow {
         if stack {
             self.wild = Some(0.0);
         }
+    }
+
+    /// A wild filling its reel: Golden Gong's expansion sound, the win
+    /// version when the reel is in a win (names only; the pairing is
+    /// HYPOTHESIS).
+    pub fn expand_sound(&mut self, win: bool) {
+        self.cues.push(if win {
+            "SND_ExpandWin"
+        } else {
+            "SND_ExpandNoWin"
+        });
     }
 
     /// Whether a wild sound has played this game (the presenter asks once).

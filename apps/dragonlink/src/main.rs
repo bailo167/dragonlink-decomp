@@ -1931,20 +1931,35 @@ fn present(
                 .collect();
             let paylines = &sim.game.model().paylines;
             let stack = stacks.on_lines(paylines, wins.iter().copied()).is_some();
-            // A single emperor on a winning line sounds too.
-            let emperor = wins.iter().any(|&(line, count)| {
-                paylines.get(line as usize).is_some_and(|rows| {
-                    (0..count).any(|reel| {
-                        rows.0.get(reel as usize).is_some_and(|&row| {
-                            labels
-                                .iter()
-                                .any(|(l, t)| l.reel == reel && l.row == row && t.0 == wild)
+            // A single emperor on a winning line sounds too; so does a free
+            // game's own wild (an x2 wild).
+            let model = sim.game.model();
+            let wild_on_wins = |base: bool| {
+                wins.iter().any(|&(line, count)| {
+                    paylines.get(line as usize).is_some_and(|rows| {
+                        (0..count).any(|reel| {
+                            rows.0.get(reel as usize).is_some_and(|&row| {
+                                labels.iter().any(|(l, t)| {
+                                    l.reel == reel
+                                        && l.row == row
+                                        && if base {
+                                            t.0 == wild
+                                        } else {
+                                            t.0 != wild
+                                                && model.symbols.iter().any(|s| {
+                                                    s.key == t.0 && s.kind == SymbolKind::Wild
+                                                })
+                                        }
+                                })
+                            })
                         })
                     })
                 })
-            });
-            if stack || emperor {
-                feature.begin_wild(stack);
+            };
+            let emperor = wild_on_wins(true);
+            let x2 = wild_on_wins(false);
+            if stack || emperor || x2 {
+                feature.begin_wild(stack, x2 && !emperor);
             }
         }
         // A respin spinning or the coins being counted hold what follows.
@@ -2162,6 +2177,18 @@ fn present(
                     }
                 }
                 stacks.refind();
+                // In a win when a line's run reaches past this reel.
+                let win = presentation
+                    .queue
+                    .iter()
+                    .map_while(|(_, e)| match e {
+                        Event::FreeGameStarted { .. } | Event::SpinStarted { .. } => None,
+                        e => Some(e),
+                    })
+                    .any(|e| matches!(e, Event::LineWin { count, .. } if count > reel));
+                if fidelity.0 {
+                    feature.expand_sound(win);
+                }
                 presentation.status = format!("Wild fills reel {}", reel + 1);
             }
             Event::MysteryRevealed { symbol, count } => {
