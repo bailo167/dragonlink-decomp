@@ -111,7 +111,7 @@ impl Scenario {
     /// full chance at every stake, so the run is the same whatever the bet.
     fn model(self, model: MathModel, seed: u64) -> MathModel {
         let mut model = dress_scenario(model, seed, self != Scenario::Doors);
-        let orb = model.symbols.iter().position(|s| s.key == "orb");
+        let orb = model.symbols.iter().position(|s| s.kind == SymbolKind::Orb);
         // The runs that promise their jackpots keep coins out of their free
         // games (off the doors and off the reels, a nine in each coin's
         // place), so those start no Hold & Spin of their own.
@@ -170,12 +170,13 @@ impl Scenario {
 /// [`Scenario`]; Golden Century only).
 fn scenario(game: GameChoice, model: MathModel, seed: u64) -> (MathModel, u64) {
     match Scenario::from_env() {
-        Some(run) if game == GameChoice::GoldenCentury => {
+        // Golden Century, and Autumn Moon, which shares its strips and draws.
+        Some(run) if matches!(game, GameChoice::GoldenCentury | GameChoice::AutumnMoon) => {
             let seed = run.seed(seed);
             (run.model(model, seed), seed)
         }
         Some(_) => {
-            eprintln!("DRAGONLINK_SCENARIO is for Golden Century only; ignored");
+            eprintln!("DRAGONLINK_SCENARIO is for Golden Century and Autumn Moon only; ignored");
             (model, seed)
         }
         None => (model, seed),
@@ -194,7 +195,21 @@ fn dress_scenario(mut model: MathModel, seed: u64, coins: bool) -> MathModel {
             .and_then(|i| u16::try_from(i).ok())
             .map(dragonlink_model::SymbolId)
     };
-    let (Some(orb), Some(flag), Some(doors)) = (id("orb"), id("pennant"), id("doors")) else {
+    // The title's coin, scatter and mystery symbols, by their parts.
+    let of_kind = |kind: SymbolKind| {
+        model
+            .symbols
+            .iter()
+            .position(|s| s.kind == kind)
+            .and_then(|i| u16::try_from(i).ok())
+            .map(dragonlink_model::SymbolId)
+    };
+    let doors = model.free_games.as_ref().and_then(|fg| fg.mystery);
+    let (Some(orb), Some(flag), Some(doors)) = (
+        of_kind(SymbolKind::Orb),
+        of_kind(SymbolKind::Scatter),
+        doors,
+    ) else {
         return model;
     };
     let nine = id("9");

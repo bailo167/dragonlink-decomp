@@ -26,6 +26,13 @@ owner; docs/DECISIONS.md). Every run muted. Progress, newest last:
 - **Attract.** At zero credit the GAMES MENU opens after 30 s idle (the framework's default,
   HYPOTHESIS); the jackpot bar's PLAY plaque steps through the denominations with their Minor and
   Mini as club footage shows, with fire round the boxes.
+- **Rules pages and sounds.** GAME RULES opens the title's own help pages from its pack (mobile
+  layout; the club pages were never filmed); the Grand's bell, the fourteen-coin drum roll and the
+  pictures' own win sounds placed from the sound hunt.
+- **Autumn Moon.** In the mobile build it is Golden Century in other art, so its model is Golden
+  Century's in its symbols, with its own pay table (club wins fit the mobile table, STRONG) and a
+  six-game retrigger (three club recordings); it plays every feature in the cabinet with its own
+  art, the prepared runs included (checked on a muted capture).
 
 ## Project interpretation (owner reset, 2026-10-14)
 

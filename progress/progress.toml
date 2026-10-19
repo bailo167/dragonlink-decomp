@@ -871,7 +871,7 @@ note = "Symbol set and roles read from US rules screens and Australian play in p
 id = "paytable"
 name = "Paytable"
 status = "partial"
-note = "The US pay table is transcribed from the machine's own rules screens in public footage, and is the one quoted in the manufacturer's complaint (docs/reverse-engineering/FOOTAGE.md). Two Australian observations agree with it; the Australian pay-table screen itself has not been found."
+note = "Australian club wins fit the mobile build's pay table and not the US one (claims/autumn-moon.toml paytable.au-club, STRONG); the model pays that table. The club pay-table screen itself has not been found."
 
 [[category.item]]
 id = "bets"
@@ -887,30 +887,32 @@ status = "not_started"
 [[category.item]]
 id = "hold-and-spin"
 name = "Hold & Spin rules and presentation"
-status = "investigating"
-note = "US rules text transcribed from footage (six to fourteen prize symbols, individual reels, three spins resetting, the set of prize multiples). Australian screens show the same trigger and counters. Not implemented to these rules."
+status = "partial"
+note = "Played to Golden Century's rules and presentation, which the mobile build gives Autumn Moon byte for byte; values and weights synthetic."
 
 [[category.item]]
 id = "jackpots"
 name = "Jackpot levels and presentation"
-status = "investigating"
-note = "Four levels; strong evidence that in Australia the Grand is linked, the Major a stand-alone progressive, and the Minor and Mini fixed. Venue start-up values for the Grand recorded. Major parameters and increment rates not public. Not implemented."
+status = "partial"
+note = "As Golden Century's: Mini and Minor fixed by denomination (family club footage), Major and Grand progressive meters climbing in the app; chances follow the stake; start values, rates and odds synthetic."
 
 [[category.item]]
 id = "free-games"
 name = "Free games feature"
 status = "partial"
-note = "Six free games; a mystery symbol that reveals as one symbol and a separate set of reel strips, by the US rules text; the mystery symbol seen in Australian footage. Retrigger size from one sample only. Not implemented."
+note = "Six free games; the medallions open onto one symbol, the woman and the coin among them, coins starting Hold & Spin inside the free games; a retrigger adds six (three club recordings). Strips and weights synthetic."
 
 [[category.item]]
 id = "art-ui"
 name = "Title artwork, UI layout and typography"
-status = "not_started"
+status = "partial"
+note = "Plays in the cabinet from its own local pack (exported privately from the mobile build), through the same presentation as Golden Century; not compared side by side with Autumn Moon footage."
 
 [[category.item]]
 id = "audio"
 name = "Sound and music"
-status = "not_started"
+status = "partial"
+note = "The pack's own clips play where Golden Century's do; the club cabinet's free-games music matches the mobile one on one recording. Placements not checked title by title."
 
 [[category.item]]
 id = "animation-timing"
@@ -925,7 +927,8 @@ status = "not_started"
 [[category.item]]
 id = "imported-assets"
 name = "Locally imported original assets"
-status = "not_started"
+status = "partial"
+note = "Art, animation and sound exported by the private exporter into a local pack; never in Git."
 
 [[category.item]]
 id = "parity"

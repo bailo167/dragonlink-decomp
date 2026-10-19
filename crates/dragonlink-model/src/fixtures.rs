@@ -746,399 +746,88 @@ pub fn golden_century_synthetic() -> MathModel {
 }
 
 /// Identifier of [`autumn_moon_synthetic`], written into trace headers.
-pub const AUTUMN_MOON_SYNTHETIC_ID: &str = "autumn-moon-synthetic-1";
+pub const AUTUMN_MOON_SYNTHETIC_ID: &str = "autumn-moon-synthetic-2";
 
-/// A **synthetic** Autumn Moon configuration: the game's *evidenced structure*
-/// with *invented* numbers. Autumn Moon runs on the same engine family as
-/// Golden Century, so it shares this project's Dragon Link simulation; only
-/// the symbols, the pay table and the free-games reveal differ
-/// (`docs/reverse-engineering/FOOTAGE.md`).
-///
-/// Official visible values used here: the US family pay table (top picture
-/// 150/50/10 and 2 for two; others 3 to 5), the scatter 100/15/2 times the
-/// total bet, six free games, and the twelve orb prize multiples. Invented and
-/// never to be quoted as Dragon Link's: every reel strip, weight, the reveal
-/// table, the land chance and the jackpot amounts. Autumn Moon's free-games
-/// wild line pay is not yet modelled (the wild substitutes only); noted as a
-/// fidelity gap.
+/// A **synthetic** Autumn Moon configuration. In the official mobile build
+/// Autumn Moon is Golden Century with its own art: the same five lines, the
+/// same free-games and Hold & Spin rules and byte-identical feature scenes,
+/// the medallion in the doors' place, the moon in the flag's and the woman
+/// in the emperor's (research notes, 2026-10-19). So this is
+/// [`golden_century_synthetic`] in Autumn Moon's symbols, with Autumn Moon's
+/// own pay table (the mobile help screens; four Australian club wins fit it
+/// and none fits the US table: STRONG) and a six-game retrigger (Australian
+/// club footage, three recordings: VERIFIED). Every strip, weight, chance and
+/// jackpot amount is Golden Century's synthetic one and never to be quoted as
+/// Dragon Link's.
 pub fn autumn_moon_synthetic() -> MathModel {
-    const NINE: u16 = 0;
-    const TEN: u16 = 1;
-    const JACK: u16 = 2;
-    const QUEEN: u16 = 3;
-    const KING: u16 = 4;
-    const LUTE: u16 = 5; // fourth picture
-    const FAN: u16 = 6; // third picture
-    const MOONCAKE: u16 = 7; // second picture
-    const RABBIT: u16 = 8; // top picture
-    const WOMAN: u16 = 9; // wild, reels 2 to 4 only
-    const MOON: u16 = 10; // scatter
-    const ORB: u16 = 11; // Hold & Spin prize symbol
-    const MEDALLION: u16 = 12; // free-games mystery symbol
-
-    let symbols = [
-        ("9", SymbolKind::Regular),
-        ("10", SymbolKind::Regular),
-        ("J", SymbolKind::Regular),
-        ("Q", SymbolKind::Regular),
-        ("K", SymbolKind::Regular),
-        ("lute", SymbolKind::Regular),
-        ("fan", SymbolKind::Regular),
-        ("mooncake", SymbolKind::Regular),
-        ("rabbit", SymbolKind::Regular),
-        ("woman", SymbolKind::Wild),
-        ("moon", SymbolKind::Scatter),
-        ("orb", SymbolKind::Orb),
-        ("medallion", SymbolKind::Regular),
-    ]
-    .into_iter()
-    .enumerate()
-    .map(|(i, (key, kind))| SymbolDef {
-        id: SymbolId(i as u16),
-        key: key.to_string(),
-        kind,
-    })
-    .collect::<Vec<_>>();
-
-    let reel = |parts: &[(u16, usize)]| -> Vec<SymbolId> {
-        parts
-            .iter()
-            .flat_map(|(sym, n)| std::iter::repeat_n(*sym, *n))
-            .map(SymbolId)
-            .collect()
-    };
-
-    // The base reels: royals common, pictures rarer, the top picture (rabbit)
-    // rarest; an orb block of three per reel, a wild block on reels 2 to 4, one
-    // scatter. Synthetic.
-    let reel_strips = vec![
-        reel(&[
-            (NINE, 6),
-            (ORB, 3),
-            (TEN, 5),
-            (LUTE, 2),
-            (JACK, 5),
-            (MOONCAKE, 1),
-            (QUEEN, 4),
-            (MOON, 1),
-            (KING, 4),
-            (FAN, 2),
-            (NINE, 5),
-            (RABBIT, 1),
-            (TEN, 5),
-            (JACK, 5),
-        ]),
-        reel(&[
-            (TEN, 5),
-            (WOMAN, 2),
-            (NINE, 6),
-            (ORB, 3),
-            (JACK, 5),
-            (FAN, 2),
-            (QUEEN, 4),
-            (MOON, 1),
-            (KING, 4),
-            (MOONCAKE, 1),
-            (LUTE, 2),
-            (TEN, 6),
-            (RABBIT, 1),
-            (NINE, 5),
-            (JACK, 5),
-        ]),
-        reel(&[
-            (JACK, 6),
-            (ORB, 3),
-            (NINE, 6),
-            (WOMAN, 2),
-            (TEN, 5),
-            (LUTE, 2),
-            (QUEEN, 4),
-            (MOON, 1),
-            (FAN, 2),
-            (KING, 4),
-            (MOONCAKE, 1),
-            (NINE, 5),
-            (RABBIT, 1),
-            (TEN, 5),
-            (JACK, 5),
-        ]),
-        reel(&[
-            (NINE, 6),
-            (ORB, 3),
-            (TEN, 5),
-            (WOMAN, 2),
-            (JACK, 5),
-            (MOONCAKE, 1),
-            (QUEEN, 4),
-            (FAN, 2),
-            (MOON, 1),
-            (KING, 4),
-            (LUTE, 2),
-            (NINE, 5),
-            (RABBIT, 1),
-            (TEN, 6),
-            (JACK, 5),
-        ]),
-        reel(&[
-            (TEN, 6),
-            (ORB, 3),
-            (NINE, 6),
-            (LUTE, 2),
-            (JACK, 5),
-            (FAN, 2),
-            (QUEEN, 4),
-            (MOON, 1),
-            (KING, 4),
-            (MOONCAKE, 1),
-            (TEN, 5),
-            (RABBIT, 1),
-            (NINE, 5),
-            (JACK, 5),
-        ]),
-    ];
-
-    // Paylines 1 to 5 are the evidenced shapes; 6 to 50 synthetic.
-    let known = [
-        [1, 1, 1, 1, 1],
-        [0, 0, 0, 0, 0],
-        [2, 2, 2, 2, 2],
-        [0, 1, 2, 1, 0],
-        [2, 1, 0, 1, 2],
-    ];
-    let mut paylines: Vec<Payline> = known.iter().map(|rows| Payline(rows.to_vec())).collect();
-    let mut pattern = 0u32;
-    while paylines.len() < 50 {
-        let rows: Vec<u8> = (0..5)
-            .map(|r| ((pattern / 3u32.pow(r)) % 3) as u8)
-            .collect();
-        let all_same = rows.iter().all(|r| *r == rows[0]);
-        if !all_same && !known.iter().any(|k| k[..] == rows[..]) {
-            paylines.push(Payline(rows));
-        }
-        pattern += 1;
+    let mut model = golden_century_synthetic();
+    for s in &mut model.symbols {
+        let key = match s.key.as_str() {
+            "warriors" => "rabbit",
+            "women" => "mooncake",
+            "vase" => "fan",
+            "chest" => "lute",
+            "emperor" => "woman",
+            "pennant" => "moon",
+            "doors" => "medallion",
+            other => other,
+        };
+        s.key = key.to_string();
     }
-
-    // Line pays, per credit on the line. The US family pay table (official
-    // visible values); only the top picture pays for two of a kind.
+    let id = |key: &str| {
+        model
+            .symbols
+            .iter()
+            .position(|s| s.key == key)
+            .and_then(|i| u16::try_from(i).ok())
+            .map(SymbolId)
+    };
+    // Autumn Moon's pays for 2, 3, 4 and 5 of a kind (mobile help screens).
+    // The woman pays only in the free games there; she lands on reel 1 only
+    // when the medallions reveal her, so her line here pays only then.
+    let pays = [
+        ("rabbit", [3, 10, 50, 250]),
+        ("mooncake", [2, 5, 30, 150]),
+        ("fan", [2, 5, 25, 100]),
+        ("lute", [2, 5, 25, 100]),
+        ("K", [0, 5, 20, 75]),
+        ("Q", [0, 5, 10, 50]),
+        ("J", [0, 5, 10, 50]),
+        ("10", [0, 5, 10, 50]),
+        ("9", [0, 5, 10, 50]),
+        ("woman", [5, 25, 100, 500]),
+    ];
     let mut line_pays = Vec::new();
-    for (symbol, pays) in [
-        //                2   3   4    5
-        (RABBIT, [2, 10, 50, 150]),
-        (MOONCAKE, [0, 5, 30, 100]),
-        (FAN, [0, 5, 25, 100]),
-        (LUTE, [0, 5, 25, 100]),
-        (KING, [0, 5, 20, 75]),
-        (QUEEN, [0, 5, 10, 50]),
-        (JACK, [0, 5, 10, 50]),
-        (TEN, [0, 5, 10, 50]),
-        (NINE, [0, 5, 10, 50]),
-    ] {
-        for (count, pay) in (2u8..=5).zip(pays) {
+    for (key, row) in pays {
+        let Some(symbol) = id(key) else { continue };
+        for (count, pay) in (2u8..=5).zip(row) {
             if pay > 0 {
-                line_pays.push(LinePay {
-                    symbol: SymbolId(symbol),
-                    count,
-                    pay,
-                });
+                line_pays.push(LinePay { symbol, count, pay });
             }
         }
     }
-
-    // Scatter: the family's 100/15/2 times the total bet (official visible).
-    let scatter_pays = vec![
-        ScatterPay {
-            symbol: SymbolId(MOON),
-            count: 3,
-            total_bet_multiple: 2,
-        },
-        ScatterPay {
-            symbol: SymbolId(MOON),
-            count: 4,
-            total_bet_multiple: 15,
-        },
-        ScatterPay {
-            symbol: SymbolId(MOON),
-            count: 5,
-            total_bet_multiple: 100,
-        },
-    ];
-
-    // Orb values: the twelve official multiples and the four levels; synthetic
-    // weights (as Golden Century).
-    let orb_values = [
-        (260, OrbValue::BetMultiple(1)),
-        (220, OrbValue::BetMultiple(2)),
-        (160, OrbValue::BetMultiple(3)),
-        (120, OrbValue::BetMultiple(4)),
-        (90, OrbValue::BetMultiple(5)),
-        (70, OrbValue::BetMultiple(10)),
-        (46, OrbValue::BetMultiple(15)),
-        (28, OrbValue::BetMultiple(20)),
-        (12, OrbValue::BetMultiple(50)),
-        (6, OrbValue::BetMultiple(100)),
-        (3, OrbValue::BetMultiple(200)),
-        (2, OrbValue::BetMultiple(250)),
-        (45, OrbValue::Jackpot(JackpotTier::Mini)),
-        (14, OrbValue::Jackpot(JackpotTier::Minor)),
-        (3, OrbValue::Jackpot(JackpotTier::Major)),
-    ]
-    .into_iter()
-    .map(|(weight, value)| WeightedOrbValue { weight, value })
-    .collect();
-
-    let jackpots = [
-        (JackpotTier::Mini, 15),
-        (JackpotTier::Minor, 60),
-        (JackpotTier::Major, 300),
-        (JackpotTier::Grand, 1000),
-    ]
-    .into_iter()
-    .map(|(tier, total_bet_multiple)| JackpotDef::multiple(tier, total_bet_multiple))
-    .collect();
-
-    // Free-game reels: orb-free, with the medallion mystery and the scatter.
-    let free_reel_strips = vec![
-        reel(&[
-            (NINE, 6),
-            (MEDALLION, 2),
-            (TEN, 5),
-            (LUTE, 2),
-            (JACK, 5),
-            (MOONCAKE, 1),
-            (QUEEN, 4),
-            (MOON, 1),
-            (KING, 4),
-            (FAN, 2),
-            (NINE, 5),
-            (RABBIT, 1),
-            (TEN, 5),
-            (JACK, 5),
-        ]),
-        reel(&[
-            (TEN, 5),
-            (WOMAN, 2),
-            (NINE, 6),
-            (MEDALLION, 2),
-            (JACK, 5),
-            (FAN, 2),
-            (QUEEN, 4),
-            (MOON, 1),
-            (KING, 4),
-            (MOONCAKE, 1),
-            (LUTE, 2),
-            (TEN, 6),
-            (RABBIT, 1),
-            (NINE, 5),
-            (JACK, 5),
-        ]),
-        reel(&[
-            (JACK, 6),
-            (MEDALLION, 2),
-            (NINE, 6),
-            (WOMAN, 2),
-            (TEN, 5),
-            (LUTE, 2),
-            (QUEEN, 4),
-            (MOON, 1),
-            (FAN, 2),
-            (KING, 4),
-            (MOONCAKE, 1),
-            (NINE, 5),
-            (RABBIT, 1),
-            (TEN, 5),
-            (JACK, 5),
-        ]),
-        reel(&[
-            (NINE, 6),
-            (MEDALLION, 2),
-            (TEN, 5),
-            (WOMAN, 2),
-            (JACK, 5),
-            (MOONCAKE, 1),
-            (QUEEN, 4),
-            (FAN, 2),
-            (MOON, 1),
-            (KING, 4),
-            (LUTE, 2),
-            (NINE, 5),
-            (RABBIT, 1),
-            (TEN, 6),
-            (JACK, 5),
-        ]),
-        reel(&[
-            (TEN, 6),
-            (MEDALLION, 2),
-            (NINE, 6),
-            (LUTE, 2),
-            (JACK, 5),
-            (FAN, 2),
-            (QUEEN, 4),
-            (MOON, 1),
-            (KING, 4),
-            (MOONCAKE, 1),
-            (TEN, 5),
-            (RABBIT, 1),
-            (NINE, 5),
-            (JACK, 5),
-        ]),
-    ];
-    let reveal_values = [
-        (28, NINE),
-        (24, TEN),
-        (20, JACK),
-        (14, QUEEN),
-        (10, KING),
-        (7, LUTE),
-        (5, FAN),
-        (4, MOONCAKE),
-        (2, RABBIT),
-    ]
-    .into_iter()
-    .map(|(weight, symbol)| WeightedSymbol {
-        weight,
-        symbol: SymbolId(symbol),
-    })
-    .collect();
-
-    MathModel {
-        id: AUTUMN_MOON_SYNTHETIC_ID.to_string(),
-        provenance: MathProvenance::SyntheticDevFixture,
-        description: "SYNTHETIC Autumn Moon: the game's evidenced structure (the Golden Century \
-                      engine family, with its own symbols and the US family pay table) with \
-                      INVENTED strips, weights and jackpot amounts. Not recovered from any \
-                      machine; never quote its numbers as Dragon Link's \
-                      (docs/reverse-engineering/FOOTAGE.md, docs/DECISIONS.md D-017)."
-            .to_string(),
-        grid: GridShape { reels: 5, rows: 3 },
-        symbols,
-        reel_strips,
-        paylines,
-        line_pays,
-        scatter_pays,
-        bet: BetModel {
-            credits_per_line_options: vec![1, 2, 3, 4, 5, 10],
-            line_options: vec![5, 25, 50],
-        },
-        hold_and_spin: Some(HoldAndSpinModel {
-            orb: SymbolId(ORB),
-            trigger_count: 6,
-            initial_respins: 3,
-            reset_respins_on_new_orb: true,
-            orb_land_chance: Ratio { num: 1, den: 14 },
-            orb_values,
-            full_grid_award: Some(JackpotTier::Grand),
-            jackpots,
-        }),
-        free_games: Some(FreeGamesModel {
-            trigger_count: 3,
-            initial_games: 6,
-            retrigger_count: 3,
-            retrigger_games: 6,
-            free_reel_strips,
-            mystery: Some(SymbolId(MEDALLION)),
-            reveal_values,
-        }),
+    // The moon pays 2, 10 and 100 times the total bet for 3, 4 and 5 (mobile).
+    let scatter_pays = id("moon")
+        .map(|symbol| {
+            [(3u8, 2u32), (4, 10), (5, 100)]
+                .into_iter()
+                .map(|(count, total_bet_multiple)| ScatterPay {
+                    symbol,
+                    count,
+                    total_bet_multiple,
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+    model.line_pays = line_pays;
+    model.scatter_pays = scatter_pays;
+    if let Some(fg) = model.free_games.as_mut() {
+        fg.retrigger_games = 6;
     }
+    model.id = AUTUMN_MOON_SYNTHETIC_ID.to_string();
+    model.description = "SYNTHETIC Autumn Moon: Golden Century's synthetic model in Autumn Moon's                          symbols (the mobile build gives both the same rules and scenes), with                          Autumn Moon's own pay table and a six-game retrigger. Strips, weights and                          jackpots INVENTED; never quote its numbers as Dragon Link's."
+        .to_string();
+    model
 }
 
 /// Identifier of [`happy_prosperous_synthetic`], written into trace headers.

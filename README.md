@@ -92,11 +92,11 @@ evidence about the original. Compiling, passing our own tests or looking right n
 | Golden Century | 15 | 4 | 0 | 9 | 26% | 0% |
 | Happy & Prosperous | 15 | 1 | 0 | 7 | 6% | 0% |
 | Panda Magic | 15 | 1 | 0 | 7 | 6% | 0% |
-| Autumn Moon | 15 | 1 | 0 | 7 | 6% | 0% |
+| Autumn Moon | 15 | 1 | 0 | 10 | 6% | 0% |
 | Parity | 10 | 5 | 0 | 4 | 50% | 0% |
 | Platforms | 4 | 0 | 0 | 4 | 0% | 0% |
 | Packaging | 5 | 1 | 0 | 3 | 20% | 0% |
-| **Overall** | **151** | **45** | **0** | **73** | **29%** | **0%** |
+| **Overall** | **151** | **45** | **0** | **76** | **29%** | **0%** |
 
 <!-- progress-table:end -->
 

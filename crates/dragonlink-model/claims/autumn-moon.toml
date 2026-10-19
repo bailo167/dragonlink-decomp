@@ -138,6 +138,17 @@ scope = "cabinet-us"
 note = "Read from footage in one pass by one reader; not yet re-read independently. Read in two recordings, of 2018 and 2023. Happy & Prosperous, Panda Magic and Autumn Moon show the same pay table under different artwork, and it is the one quoted without a title in the complaint. The pay table as displayed on an Australian machine has not been found. One Australian observation agrees: three scatters paid twice the total bet (nYM0NGR3px0 3:48)."
 
 [[claim]]
+id = "paytable.au-club"
+statement = "Australian club machines pay Autumn Moon's line wins by the mobile build's pay table, not the US one."
+value = "rabbit 250 / 50 / 10 / 3 for 5 / 4 / 3 / 2; mooncake 150 / 30 / 5 / 2; fan and lute 100 / 25 / 5 / 2; king 75 / 20 / 5; queen, jack, ten, nine 50 / 10 / 5; the moon 100 / 10 / 2 times the total bet"
+confidence = "strong_evidence"
+source = "gameplay_recording"
+citation = "Mobile help screens (official mobile, Autumn Moon help.mercury); Australian club wins: y6fTKsqfa_4 1:09 (two fans pay 2), 1:18.8 (two rabbits pay 3); cXHGn3T7eyg 19:08.2 (two lutes pay 2), five rabbits paying 250 (from the commentary) (research notes, 2026-10-19)"
+accessed = "2026-10-19"
+scope = "cabinet-au, Queensland and Victorian clubs"
+note = "Four club wins fit the mobile table and none fits the US table (claim paytable: two rabbits pay 2 there, two fans and two lutes nothing). Read by one reader; the club pay table itself was never filmed. The mobile build otherwise gives Autumn Moon Golden Century's rules and feature scenes byte for byte."
+
+[[claim]]
 id = "denominations"
 statement = "The Australian release offers 1c, 2c, 5c, 10c and $1, with $2 in New South Wales and the ACT only."
 value = "NSW and ACT: 1c, 2c, 5c, 10c, $1, $2. Queensland, Victoria, Northern Territory: 1c, 2c, 5c, 10c, $1"
@@ -186,13 +197,13 @@ note = "Read from footage in one pass by one reader; not yet re-read independent
 [[claim]]
 id = "free-games.retrigger"
 statement = "A free-games round was extended from six games to twelve."
-value = "6 extended to 12 in the one sample seen"
-confidence = "partial"
+value = "a retrigger adds six: 6 extended to 12"
+confidence = "strong_evidence"
 source = "gameplay_recording"
-citation = "Public recordings, YouTube ids and times: nYM0NGR3px0 5:00 (docs/reverse-engineering/FOOTAGE.md)"
-accessed = "2026-10-13"
+citation = "Public recordings, YouTube ids and times: nYM0NGR3px0 5:00; TsTj-sxJ6Yc 11:05.6-11:15.5; 4dOujfQkCbY 4:54-5:04 (docs/reverse-engineering/FOOTAGE.md; research notes 2026-10-19)"
+accessed = "2026-10-19"
 scope = "cabinet-au, Queensland club"
-note = "Read from footage in one pass by one reader; not yet re-read independently. One sample. It differs from the three extra games of Happy & Prosperous and Panda Magic, and the manufacturer's page states no retrigger for this title."
+note = "Three recordings each show six free games becoming twelve (updated 2026-10-19 from one sample; was PARTIAL). Going past twelve or a cap was not seen. It differs from the three extra games of Happy & Prosperous and Panda Magic, and the manufacturer's page states no retrigger for this title."
 
 [[claim]]
 id = "scatter.top-pay"

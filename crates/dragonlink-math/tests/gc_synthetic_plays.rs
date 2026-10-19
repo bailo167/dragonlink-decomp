@@ -74,11 +74,16 @@ const STAKES: [(&str, u32, usize, u16); 8] = [
 /// The played return of each configuration over `spins`, the meters held at
 /// `meters` (Major, Grand), as a list of (label, return).
 #[cfg(test)]
-fn returns_at(spins: u64, meters: (u64, u64), seed: u64) -> Vec<(&'static str, f64)> {
+fn returns_at(
+    model: fn() -> dragonlink_model::MathModel,
+    spins: u64,
+    meters: (u64, u64),
+    seed: u64,
+) -> Vec<(&'static str, f64)> {
     STAKES
         .iter()
         .map(|&(label, unit, index, lines)| {
-            let mut game = Game::new(golden_century_synthetic(), u64::MAX / 4).unwrap();
+            let mut game = Game::new(model(), u64::MAX / 4).unwrap();
             let mut rng = DevRng::new(0);
             if unit != 1 {
                 game.apply(Command::ChangeDenomination { from: 1, to: unit }, &mut rng)
@@ -109,8 +114,14 @@ fn returns_at(spins: u64, meters: (u64, u64), seed: u64) -> Vec<(&'static str, f
 /// (synthetic, not Dragon Link's) and they agree within the run's noise.
 #[test]
 fn the_return_is_flat_across_stakes_and_denominations() {
-    for meters in [(50_000, 500_000), (120_000, 1_200_000)] {
-        let r = returns_at(150_000, meters, 7);
+    use dragonlink_model::fixtures::autumn_moon_synthetic;
+    let titles: [fn() -> dragonlink_model::MathModel; 2] =
+        [golden_century_synthetic, autumn_moon_synthetic];
+    for (title, meters) in titles
+        .iter()
+        .flat_map(|t| [(50_000, 500_000), (120_000, 1_200_000)].map(|m| (*t, m)))
+    {
+        let r = returns_at(title, 150_000, meters, 7);
         for (label, x) in &r {
             assert!((0.80..1.0).contains(x), "{label}: RTP {x:.3}");
         }
@@ -133,7 +144,7 @@ fn measure_the_return_across_stakes() {
             .ok()
             .and_then(|n| n.parse().ok())
             .unwrap_or(2_000_000);
-        let r = returns_at(spins, meters, 11);
+        let r = returns_at(golden_century_synthetic, spins, meters, 11);
         let (lo, hi) = r.iter().fold((f64::MAX, f64::MIN), |(lo, hi), (_, x)| {
             (lo.min(*x), hi.max(*x))
         });
