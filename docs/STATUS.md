@@ -11,6 +11,25 @@ The owner approved one plan for the night: Golden Century to our best-effort 100
 switcher, then each of the eight Dragon Link titles in the mobile build (scope widened by the
 owner; docs/DECISIONS.md). Every run muted. Progress, newest last:
 
+**Morning summary (read this first).** All on `main` (gate passed, pushed):
+
+- All eight titles play in the cabinet from their own private packs, chosen from the machine
+  menu on the yellow pill: Golden Century, Autumn Moon, Happy & Prosperous, Panda Magic, Genghis
+  Khan, Golden Gong, Peace & Long Life, Spring Festival. Each has its own help-page pay table,
+  symbols and free-games feature; the maths of every title is synthetic (85 to 90% at every bet).
+- The owner's "two flags in one column" was the moving reel strips, not the game: fixed.
+- A side-by-side audit of Golden Century against club footage found 85 differences; two rounds of
+  adversarial verification confirmed 69, and all 69 are implemented and checked on muted captures
+  (two regressions caught and fixed on the way). Six could not be reached by an unattended run
+  ($1 play, a chosen denomination, the gamble's rarer phases) and rest on unit tests.
+- Correction: recording y8c8lEdPW8Y is a public Queensland club recording, not the owner's own
+  session; an earlier note called it the owner's, and the docs say so now.
+- Open, not blockers (ordinary work): the later titles' sound placements are not checked against
+  recordings with sound; Spring Festival's BIG reel spins as three columns and lands as one;
+  Golden Gong's expansion animation is not played; retrigger counts for three later titles are
+  unknown (three used, labelled); the club help pages of every title were never filmed, so GAME
+  RULES shows the mobile pages. No new external blocker (docs/BLOCKERS.md unchanged).
+
 - **Golden Century rules.** At most one flag per reel (every strip of every title checked by a
   test; the prepared runs' dressing had added a second flag); the emperor on reel 5 too (help
   screen; the y8c8lEdPW8Y transcription); one MAJOR coin at a time (help screen).
