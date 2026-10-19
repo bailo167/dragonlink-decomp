@@ -1280,25 +1280,7 @@ fn setup(
         return;
     }
     let art = &*art;
-    let title = if model.id.starts_with("golden-century") {
-        "GOLDEN CENTURY"
-    } else if model.id.starts_with("autumn-moon") {
-        "AUTUMN MOON"
-    } else if model.id.starts_with("happy-prosperous") {
-        "HAPPY & PROSPEROUS"
-    } else if model.id.starts_with("panda-magic") {
-        "PANDA MAGIC"
-    } else if model.id.starts_with("genghis-khan") {
-        "GENGHIS KHAN"
-    } else if model.id.starts_with("golden-gong") {
-        "GOLDEN GONG"
-    } else if model.id.starts_with("peace-long-life") {
-        "PEACE & LONG LIFE"
-    } else if model.id.starts_with("spring-festival") {
-        "SPRING FESTIVAL"
-    } else {
-        "DRAGONLINK (synthetic fixture)"
-    };
+    let title = cabinet::title_name(&model.id);
     let gold = Color::srgb(1.0, 0.80, 0.28);
     let muted = Color::srgb(0.62, 0.66, 0.72);
     let tiers = [
@@ -1610,7 +1592,11 @@ fn input(
     mut menu: ResMut<cabinet::GamesMenu>,
     sounds: Res<cabinet::Sounds>,
     mut commands: Commands,
-    (profile, mut rules): (Res<cabinet::Profile>, ResMut<cabinet::GameRules>),
+    (profile, mut rules, mut menu_shown): (
+        Res<cabinet::Profile>,
+        ResMut<cabinet::GameRules>,
+        Local<bool>,
+    ),
 ) {
     let profile = *profile;
     // Idle means the reels have come to rest on screen too: the last one runs
@@ -1621,13 +1607,29 @@ fn input(
         && !gamble.active
         && reels.rested_for() >= cabinet::SPIN_AFTER_REST;
     // The cabinet's GAMES MENU opens on a touch at rest.
-    // Testing (`DRAGONLINK_SHOW=menu`, an unattended run only): the GAMES
-    // MENU opens by itself two seconds in, so it can be captured.
-    let show_menu = smoke.frames_left.is_some()
-        && smoke.frame == 120
-        && std::env::var("DRAGONLINK_SHOW").as_deref() == Ok("menu");
-    if fidelity.0 && (cabinet_input.menu || show_menu) && at_rest && !menu.showing() {
+    // Testing (an unattended run only): `DRAGONLINK_SHOW=menu` opens the
+    // GAMES MENU by itself once, at the first rest from two seconds in (the
+    // unattended spins wait for it), so it can be captured;
+    // `DRAGONLINK_SHOW=confirm` also touches its second denomination, so the
+    // club's ARE YOU SURE? shows.
+    let show = smoke
+        .frames_left
+        .is_some()
+        .then(|| std::env::var("DRAGONLINK_SHOW").ok())
+        .flatten();
+    let confirm = show.as_deref() == Some("confirm");
+    let menu_pending = fidelity.0
+        && !*menu_shown
+        && smoke.frame >= 120
+        && (confirm || show.as_deref() == Some("menu"));
+    if fidelity.0 && (cabinet_input.menu || menu_pending) && at_rest && !menu.showing() {
         menu.open_now();
+        if menu_pending {
+            *menu_shown = true;
+            if confirm && profile.confirms() {
+                menu.pending = profile.denoms().get(1).copied();
+            }
+        }
     }
     // A denomination: touched on the GAMES MENU, or the next one with D.
     let offered = if fidelity.0 {
@@ -1716,6 +1718,8 @@ fn input(
     // sets the stake.
     let auto =
         auto && !gamble.holds_autospin(cabinet::gamble_open(&sim.game, denom.cents(), &feature));
+    // A GAMES MENU still to open for a capture: the reels come to rest.
+    let auto = auto && !menu_pending;
     let options = sim.game.model().bet.credits_per_line_options.clone();
     let bet_index_of = |credits: u32| options.iter().position(|o| *o == credits);
     // Casino: a bet key sets its multiplier and plays in one press. Club: a

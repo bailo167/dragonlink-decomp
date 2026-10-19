@@ -185,6 +185,25 @@ owner; docs/DECISIONS.md). Every run muted. Progress, newest last:
   and the lattice key are our own new drawings in the local packs (nothing in Git). Unit tests
   cover each rule; checked on muted captures (base, the minors run, the autogambler, Golden Gong,
   Spring Festival, the casino profile).
+- **Audit fixes, second pass: the gamble and the GAMES MENU.** Checked on club recordings
+  ([GOLDEN_CENTURY_CABINET_DECK.md](reverse-engineering/GOLDEN_CENTURY_CABINET_DECK.md)): nothing of
+  the base screen stands over the gamble any more (FEATURE COMPLETED's plate and a tall wild's head
+  showed above its top), and it comes back after a loss (VERIFIED, two machines); the club's COLLECT
+  and GAMES MENU stay over the gamble screen (VERIFIED, three machines); the gamble prompt is the bet
+  line's yellow, widely spaced (VERIFIED on two club machines; an NSW video-deck machine and the
+  owner's Happy & Prosperous show it pale, a conflict recorded); the picked button fills with the
+  card's face, not at the press (STRONG); the teardrop shows a card-back lattice through the gamble
+  (VERIFIED, one machine; our own drawing, `spin_lattice`, in the local packs, the dark teardrop
+  where a pack lacks it). The chooser is laid out as two recordings measure it by homography
+  (STRONG): an opaque panel about 995 x 195 centred near y 755, bevelled red-orange and amber keys
+  162 x 80 with white figures in a navy outline and a smaller cent sign, a larger cream header, ARE
+  YOU SURE? wholly above the panel with yellow and cream lines and bevelled YES / NO (sizes
+  PARTIAL), and the drawn title where the logo stands, about 1565 px wide, now each title's own
+  name (a longer one set smaller); the club chooser keeps a COLLECT pill moved to the bottom right
+  corner (STRONG, one machine). `DRAGONLINK_SHOW=menu` now waits for the first rest instead of
+  testing one frame, and `DRAGONLINK_SHOW=confirm` also opens ARE YOU SURE?, for captures. Unit
+  tests cover each (three spawn the cabinet into a world); checked on muted captures (the chooser
+  with its confirmation, a base run's gamble).
 
 ## Project interpretation (owner reset, 2026-10-14)
 

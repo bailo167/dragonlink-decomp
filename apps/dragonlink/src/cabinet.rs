@@ -1558,6 +1558,25 @@ fn label(
     )
 }
 
+/// The name a title's model shows on screen (its chooser's drawn title, the
+/// window's title), from the model's id.
+pub fn title_name(model_id: &str) -> &'static str {
+    const NAMES: [(&str, &str); 8] = [
+        ("golden-century", "GOLDEN CENTURY"),
+        ("autumn-moon", "AUTUMN MOON"),
+        ("happy-prosperous", "HAPPY & PROSPEROUS"),
+        ("panda-magic", "PANDA MAGIC"),
+        ("genghis-khan", "GENGHIS KHAN"),
+        ("golden-gong", "GOLDEN GONG"),
+        ("peace-long-life", "PEACE & LONG LIFE"),
+        ("spring-festival", "SPRING FESTIVAL"),
+    ];
+    NAMES
+        .iter()
+        .find(|(slug, _)| model_id.starts_with(slug))
+        .map_or("DRAGONLINK (synthetic fixture)", |(_, name)| name)
+}
+
 /// Build the cabinet: the game screen, the meter strip and the button deck.
 pub fn spawn(
     commands: &mut Commands,
@@ -1769,7 +1788,7 @@ pub fn spawn(
 
             spawn_deck(c, art, &fonts.sans, &fonts.symbols);
             spawn_gamble_screen(c, art, fonts, profile);
-            spawn_games_menu(c, art, fonts, profile);
+            spawn_games_menu(c, art, fonts, profile, title_name(&model.id));
 
             // The shared presentation systems still expect these; unused here.
             c.spawn((
@@ -1801,8 +1820,24 @@ enum TabLook {
     CasinoSilver,
 }
 
+/// The club band's tabs that stay on screen through the gamble, above its
+/// screen (club cabinets: _XHUzg4qDXI 0:07.60 and 1:13.00, LwC3hVqFRMg
+/// 18:30-18:33, the owner's Happy & Prosperous 00:13.53; VERIFIED), and give
+/// way on the chooser (whose own COLLECT moves to the corner).
+#[derive(Component, Clone, Copy, PartialEq, Eq, Debug)]
+pub enum BandTab {
+    Collect,
+    GamesMenu,
+}
+
+/// The club tabs' layer: over the gamble screen and the chooser's splash
+/// (12), as CREDIT and the tall pill are; the GAMES MENU's touch area one
+/// above it.
+const BAND_TAB_LAYER: i32 = 14;
+
 /// A rounded on-screen tab (COLLECT, GAMES MENU, GAME RULES): a capsule with
-/// a gloss across its upper half kept inside the rounded rim.
+/// a gloss across its upper half kept inside the rounded rim. Returns the
+/// tab.
 #[allow(clippy::too_many_arguments)]
 fn pill(
     c: &mut ChildSpawnerCommands,
@@ -1814,7 +1849,7 @@ fn pill(
     h: f32,
     size: f32,
     look: TabLook,
-) {
+) -> Entity {
     let stop = |r: u8, g: u8, b: u8, at: f32| {
         bevy::ui::ColorStop::new(Color::srgb_u8(r, g, b), Val::Percent(at))
     };
@@ -1891,7 +1926,8 @@ fn pill(
             TextLayout::no_wrap(),
             TextColor(ink),
         ));
-    });
+    })
+    .id()
 }
 
 /// The status line's centre, and its height (the centre of its capitals) on
@@ -2711,10 +2747,12 @@ fn spawn_meter_band(
             menu.open = !menu.open;
         });
     // The tabs. Club: GAMES MENU above the band at the far left, GAME RULES
-    // on it; COLLECT over the denomination box. Casino: GAME RULES on the
-    // band at the left, GAMES MENU over the denomination box.
+    // on it; COLLECT over the denomination box; GAMES MENU and COLLECT stay
+    // over the gamble screen (`BandTab`). Casino: GAME RULES on the band at
+    // the left, GAMES MENU over the denomination box (no casino gamble is
+    // filmed).
     if club {
-        pill(
+        let menu_tab = pill(
             c,
             fonts,
             "GAMES MENU",
@@ -2725,10 +2763,15 @@ fn spawn_meter_band(
             20.0,
             TabLook::Club,
         );
+        c.commands()
+            .entity(menu_tab)
+            .insert((BandTab::GamesMenu, GlobalZIndex(BAND_TAB_LAYER)));
+        // Its touch area over the raised tab (inert in the gamble and on the
+        // chooser: `input` opens the menu only at rest).
         c.spawn((
             rect(3.0, 880.0, 112.0, 40.0),
             BackgroundColor(Color::NONE),
-            GlobalZIndex(1),
+            GlobalZIndex(BAND_TAB_LAYER + 1),
         ))
         .observe(
             |_press: On<PointerPress>, mut input: ResMut<CabinetInput>| {
@@ -2754,7 +2797,7 @@ fn spawn_meter_band(
         .observe(|_press: On<PointerPress>, mut rules: ResMut<GameRules>| {
             rules.pressed = true;
         });
-        pill(
+        let collect = pill(
             c,
             fonts,
             "COLLECT",
@@ -2765,6 +2808,9 @@ fn spawn_meter_band(
             32.0,
             TabLook::Club,
         );
+        c.commands()
+            .entity(collect)
+            .insert((BandTab::Collect, GlobalZIndex(BAND_TAB_LAYER)));
     } else {
         pill(
             c,
@@ -3881,7 +3927,7 @@ const LEGEND_TURN: f32 = 0.3;
 /// Faces a pack may lack, drawn as another of its images under a tint:
 /// (face, stand-in, tint). Tints multiply, so the coloured stand-ins tint
 /// the white key.
-const STAND_IN_FACES: [(&str, &str, Color); 6] = [
+const STAND_IN_FACES: [(&str, &str, Color); 7] = [
     // The selected lines key, the chosen gamble key and the plain flash.
     ("key_lightblue", "key_white", Color::srgb(0.62, 0.80, 1.0)),
     // The red gamble choices' plain flash.
@@ -3894,6 +3940,8 @@ const STAND_IN_FACES: [(&str, &str, Color); 6] = [
     ("key_purple", "key_blue", Color::WHITE),
     // The gamble's unused keys: the card back if the pack has no lattice key.
     ("key_lattice", "card_back", Color::WHITE),
+    // The teardrop's gamble lattice: the dark teardrop if the pack has none.
+    ("spin_lattice", "spin_dim", Color::WHITE),
 ];
 
 /// The pack image and tint that draw a face: its own image if the pack has
@@ -3994,7 +4042,11 @@ impl DeckLook {
             // casino's (US deck B).
             let blink_off = d.profile == Profile::Casino && ((d.wait_t * 2.0) as u32) % 2 == 1;
             return match r {
-                Role::Off | Role::Lattice => "spin_dim",
+                // The gamble: a card-back lattice filling the face, with no
+                // legend (club footage, _XHUzg4qDXI 0:06.80-0:08.57 and
+                // 1:12.00-1:14.50; VERIFIED on one machine).
+                Role::Lattice => "spin_lattice",
+                Role::Off => "spin_dim",
                 _ if self.start_wait && !blink_off => "spin_lit",
                 _ => "spin_dim",
             };
@@ -7336,6 +7388,7 @@ pub fn feature_screen(
         ),
     >,
     sim: Res<Sim>,
+    gamble: Res<GambleShow>,
 ) {
     if !fidelity.0 {
         return;
@@ -7365,8 +7418,12 @@ pub fn feature_screen(
         .as_deref()
         .filter(|_| !prompt)
         .and_then(|k| art.ui.get(k));
+    // Nothing of the base screen shows over the gamble: its banner (FEATURE
+    // COMPLETED) stands above the gamble screen's top and comes back by
+    // itself after a loss (club cabinets: LwC3hVqFRMg 18:30.4-18:33.7,
+    // _XHUzg4qDXI 1:13.00; VERIFIED).
     for mut vis in &mut banner {
-        let want = if handle.is_some() || prompt {
+        let want = if !gamble.active && (handle.is_some() || prompt) {
             Visibility::Inherited
         } else {
             Visibility::Hidden
@@ -10034,17 +10091,213 @@ pub fn denom_text(cents: u64) -> String {
     }
 }
 
-/// Build the GAMES MENU (hidden until touched).
+/// The chooser's layout on the canvas, by homography from the reel frame on
+/// two club recordings of one Queensland venue (1bAevGz0K2k 0:13.0,
+/// y8c8lEdPW8Y 0:09.0; agreeing within about 30 px; STRONG): the panel about
+/// 980-1010 x 190-200 with its centre near y 755 (the width for five keys;
+/// six widen it by their own share), opaque black-brown in a thin gold frame
+/// with small corners.
+const CHOOSER_PANEL: (f32, f32, f32) = (995.0, 195.0, 657.0);
+/// The header's capitals: their centre line (cabinet about 700-707) and the
+/// type size that gives them a cap of about 34 px (the cabinet's about 36:
+/// "CHOOSE YOUR DENOMINATION" about 751 px wide, "TOUCH SCREEN TO MAKE
+/// SELECTION" about 913) in our bold sans, a substitute for its decorative
+/// cream serif.
+const CHOOSER_HEADER: (f32, f32) = (703.0, 48.0);
+const CHOOSER_HEADER_COLOUR: Color = Color::srgb(0.90, 0.80, 0.64);
+/// The denomination keys: width, height, gap and top (cabinet about 157-162
+/// x 80-81, 25-29 apart, y 738-820).
+const CHOOSER_KEY: (f32, f32, f32, f32) = (162.0, 80.0, 26.0, 739.0);
+/// The panel's margin either side of its row of keys (995 against a row of
+/// five, 914).
+const CHOOSER_MARGIN: f32 = (CHOOSER_PANEL.0 - (5.0 * CHOOSER_KEY.0 + 4.0 * CHOOSER_KEY.2)) / 2.0;
+/// ARE YOU SURE?: width, height and the gap left above the panel (cabinet:
+/// wholly above it, about 10 px clear; 1bAevGz0K2k 0:14.4, y8c8lEdPW8Y
+/// 0:11.30; about 325 x 180 from one weak homography, PARTIAL).
+const CHOOSER_CONFIRM: (f32, f32, f32) = (325.0, 180.0, 10.0);
+/// Its YES and NO keys: width, height, gap (about 128 x 49, 23 apart;
+/// PARTIAL).
+const CHOOSER_ANSWER: (f32, f32, f32) = (128.0, 48.0, 24.0);
+/// Club: the chooser keeps COLLECT, moved to the screen's bottom right
+/// corner, the denomination box's place (y8c8lEdPW8Y 0:08-0:11; STRONG for
+/// this layout, one machine; a 2018 layout, etaH-vbYBKY, keeps it at the
+/// left).
+const CHOOSER_COLLECT: (f32, f32) = (1830.0, 1016.0);
+/// The drawn title standing in for the cabinet's logo: the centre of its
+/// capitals (cabinet logo y about 485-640, directly above the panel), its
+/// largest size and letter spacing, and the widest it may run (cabinet logo
+/// about 1560 px wide; 1bAevGz0K2k 0:13.0, y8c8lEdPW8Y 0:09.0; STRONG).
+const CHOOSER_TITLE: (f32, f32, f32, f32) = (562.0, 195.0, 20.0, 1600.0);
+/// The meters' face's (Impact's) mean advance over capitals and spaces, in
+/// ems (the title "GOLDEN CENTURY" at 150 px measured 1000 px on a capture).
+const IMPACT_CAPS_ADVANCE: f32 = 0.476;
+
+/// The chooser title's type size: the largest up to the cabinet logo's
+/// width, smaller for a longer name.
+fn chooser_title_size(name: &str) -> f32 {
+    let (_, max, gap, widest) = CHOOSER_TITLE;
+    let n = name.chars().count().max(1) as f32;
+    max.min((widest - n * gap) / (n * IMPACT_CAPS_ADVANCE))
+}
+
+/// A chooser key's colours: its face, the lighter inner face of its bevel
+/// and its rim (cabinet camera colour, PARTIAL: cent keys red-orange about
+/// (247, 85, 44) with a darker red-brown rim, the dollar keys amber).
+#[derive(Clone, Copy)]
+enum ChooserFace {
+    Cents,
+    Dollars,
+}
+
+impl ChooserFace {
+    fn colours(self) -> (Color, Color, Color, Color) {
+        match self {
+            ChooserFace::Cents => (
+                Color::srgb_u8(245, 95, 45),
+                Color::srgb_u8(252, 140, 92),
+                Color::srgb_u8(247, 104, 54),
+                Color::srgb_u8(120, 35, 15),
+            ),
+            ChooserFace::Dollars => (
+                Color::srgb_u8(246, 205, 75),
+                Color::srgb_u8(252, 230, 140),
+                Color::srgb_u8(247, 210, 88),
+                Color::srgb_u8(150, 95, 20),
+            ),
+        }
+    }
+}
+
+/// The chooser keys' figures: white with a dark navy outline all round
+/// (eight copies 2 px off each way, as the status texts' edge).
+const KEY_FIGURE: Color = Color::srgb(0.97, 0.97, 1.0);
+const KEY_OUTLINE: Color = Color::srgb(0.05, 0.07, 0.22);
+const KEY_OUTLINE_OFFSETS: [(f32, f32); 8] = [
+    (-2.0, -2.0),
+    (0.0, -2.0),
+    (2.0, -2.0),
+    (-2.0, 0.0),
+    (2.0, 0.0),
+    (-2.0, 2.0),
+    (0.0, 2.0),
+    (2.0, 2.0),
+];
+/// The cent sign's size as a share of the digits' (the cabinet's is visibly
+/// smaller than the figures).
+const CENT_SIGN: f32 = 0.7;
+
+/// A denomination as the chooser's keys write it: the figures, and a cent
+/// sign drawn smaller after them.
+fn chooser_figure(cents: u64) -> (String, Option<&'static str>) {
+    if cents >= 100 {
+        (format!("${}", cents / 100), None)
+    } else {
+        (cents.to_string(), Some("¢"))
+    }
+}
+
+/// A bevelled chooser key, `w` x `h`: a dark rim, the face, and a lighter
+/// inner face shading to it.
+fn chooser_key<'a>(
+    row: &'a mut ChildSpawnerCommands,
+    w: f32,
+    h: f32,
+    face: ChooserFace,
+) -> EntityCommands<'a> {
+    let (base, light, low, rim) = face.colours();
+    let mut key = row.spawn((
+        Node {
+            width: Val::Px(w),
+            height: Val::Px(h),
+            border: UiRect::all(Val::Px(4.0)),
+            border_radius: BorderRadius::all(Val::Px(8.0)),
+            justify_content: JustifyContent::Center,
+            align_items: AlignItems::Center,
+            ..default()
+        },
+        BackgroundColor(base),
+        BorderColor::all(rim),
+    ));
+    key.with_children(|k| {
+        k.spawn((
+            Node {
+                position_type: PositionType::Absolute,
+                left: Val::Px(4.0),
+                right: Val::Px(4.0),
+                top: Val::Px(3.0),
+                bottom: Val::Px(5.0),
+                border_radius: BorderRadius::all(Val::Px(5.0)),
+                ..default()
+            },
+            bevy::ui::BackgroundGradient(vec![bevy::ui::Gradient::Linear(
+                bevy::ui::LinearGradient::to_bottom(vec![
+                    bevy::ui::ColorStop::new(light, Val::Percent(0.0)),
+                    bevy::ui::ColorStop::new(low, Val::Percent(100.0)),
+                ]),
+            )]),
+        ));
+    });
+    key
+}
+
+/// A key's figures, white in a navy outline, with an optional smaller tail
+/// (the cent sign) on the same baseline.
+fn spawn_key_figure(
+    k: &mut ChildSpawnerCommands,
+    font: &Handle<Font>,
+    size: f32,
+    (main, tail): (String, Option<&'static str>),
+) {
+    let face = |px: f32| TextFont {
+        font: bevy::text::FontSource::Handle(font.clone()),
+        font_size: FontSize::Px(px),
+        ..default()
+    };
+    k.spawn(Node::default()).with_children(|w| {
+        let mut one = |at: Option<(f32, f32)>, colour: Color| {
+            let node = match at {
+                Some((dx, dy)) => Node {
+                    position_type: PositionType::Absolute,
+                    left: Val::Px(dx),
+                    top: Val::Px(dy),
+                    ..default()
+                },
+                None => Node::default(),
+            };
+            w.spawn((
+                Text::new(main.clone()),
+                face(size),
+                TextColor(colour),
+                TextLayout::no_wrap(),
+                node,
+            ))
+            .with_children(|t| {
+                if let Some(tail) = tail {
+                    t.spawn((
+                        TextSpan::new(tail),
+                        face(size * CENT_SIGN),
+                        TextColor(colour),
+                    ));
+                }
+            });
+        };
+        for at in KEY_OUTLINE_OFFSETS {
+            one(Some(at), KEY_OUTLINE);
+        }
+        one(None, KEY_FIGURE);
+    });
+}
+
+/// Build the GAMES MENU (hidden until touched), with `title` drawn on its
+/// splash.
 fn spawn_games_menu(
     c: &mut ChildSpawnerCommands,
     art: &ArtPack,
     fonts: &CabFonts,
     profile: Profile,
+    title: &str,
 ) {
     let top = JACKPOT_BAR_TOP + JACKPOT_BAR_W * 104.0 / 1225.0 + 4.0;
-    // The title and panel are placed on the screen above the band; the
-    // splash itself runs down over the band to the screen's foot (footage).
-    let h = band_top(profile) - top;
     c.spawn((
         ChooserRoot,
         Node {
@@ -10075,16 +10328,21 @@ fn spawn_games_menu(
                 ..default()
             },
         ));
-        // The title (drawn: the cabinet's logo is not in the mobile build).
+        // The title (drawn: the cabinet's logo is not in the mobile build),
+        // its capitals where the logo stands, right over the panel.
+        let (title_y, _, gap, _) = CHOOSER_TITLE;
+        let size = chooser_title_size(title);
+        let (caps_top, caps_h) = IMPACT_CAPS;
         m.spawn((
-            Text::new("GOLDEN CENTURY"),
+            Text::new(title),
             TextFont {
                 font: bevy::text::FontSource::Handle(fonts.meter.clone()),
-                font_size: FontSize::Px(150.0),
+                font_size: FontSize::Px(size),
                 ..default()
             },
             TextColor(Color::srgb(1.0, 0.82, 0.25)),
             TextLayout::justify(Justify::Center),
+            LetterSpacing::Px(gap),
             TextShadow {
                 offset: Vec2::new(4.0, 6.0),
                 color: Color::srgba(0.35, 0.05, 0.0, 0.9),
@@ -10092,177 +10350,190 @@ fn spawn_games_menu(
             Node {
                 position_type: PositionType::Absolute,
                 left: Val::Px(0.0),
-                top: Val::Px(h * 0.16),
+                top: Val::Px(title_y - (caps_top + caps_h / 2.0) * size - top),
                 width: Val::Percent(100.0),
                 ..default()
             },
         ));
-        // The panel: header over the row of denominations.
-        let (pw, ph) = (1360.0, 250.0);
+        // The panel: header over the row of denominations, each placed on
+        // the canvas (a frame drawn under them, so no border shifts them).
+        let denoms = profile.denoms();
+        let (kw, kh, kgap, ktop) = CHOOSER_KEY;
+        let n = denoms.len() as f32;
+        let row_w = n * kw + (n - 1.0).max(0.0) * kgap;
+        let (pw0, ph, ptop) = CHOOSER_PANEL;
+        let pw = pw0.max(row_w + 2.0 * CHOOSER_MARGIN);
         m.spawn((
             ChooserPanel,
             Node {
                 position_type: PositionType::Absolute,
                 left: Val::Px((CANVAS_W - pw) / 2.0),
-                top: Val::Px(h * 0.6),
+                top: Val::Px(ptop - top),
                 width: Val::Px(pw),
                 height: Val::Px(ph),
-                border: UiRect::all(Val::Px(5.0)),
-                border_radius: BorderRadius::all(Val::Px(16.0)),
-                flex_direction: FlexDirection::Column,
-                justify_content: JustifyContent::SpaceEvenly,
-                align_items: AlignItems::Center,
                 ..default()
             },
-            BackgroundColor(Color::srgba(0.05, 0.02, 0.02, 0.86)),
-            BorderColor::all(Color::srgb(0.9, 0.68, 0.22)),
         ))
         .with_children(|p| {
+            p.spawn((
+                Node {
+                    position_type: PositionType::Absolute,
+                    left: Val::Px(0.0),
+                    top: Val::Px(0.0),
+                    width: Val::Percent(100.0),
+                    height: Val::Percent(100.0),
+                    border: UiRect::all(Val::Px(5.0)),
+                    border_radius: BorderRadius::all(Val::Px(4.0)),
+                    ..default()
+                },
+                BackgroundColor(Color::srgb(0.12, 0.08, 0.08)),
+                BorderColor::all(Color::srgb(0.9, 0.68, 0.22)),
+            ));
+            // Arial Bold's capitals are centred 0.59 of the size below its
+            // line's top.
+            let (header_y, header_size) = CHOOSER_HEADER;
             p.spawn((
                 ChooserHeader,
                 Text::new("CHOOSE YOUR DENOMINATION"),
                 TextFont {
                     font: bevy::text::FontSource::Handle(fonts.sans.clone()),
-                    font_size: FontSize::Px(40.0),
+                    font_size: FontSize::Px(header_size),
                     ..default()
                 },
-                TextColor(Color::srgb(1.0, 0.9, 0.55)),
+                TextColor(CHOOSER_HEADER_COLOUR),
+                TextLayout::justify(Justify::Center),
+                Node {
+                    position_type: PositionType::Absolute,
+                    left: Val::Px(0.0),
+                    top: Val::Px(header_y - 0.59 * header_size - ptop),
+                    width: Val::Percent(100.0),
+                    ..default()
+                },
             ));
             p.spawn(Node {
+                position_type: PositionType::Absolute,
+                left: Val::Px(0.0),
+                top: Val::Px(ktop - ptop),
+                width: Val::Percent(100.0),
+                height: Val::Px(kh),
                 flex_direction: FlexDirection::Row,
-                column_gap: Val::Px(26.0),
+                justify_content: JustifyContent::Center,
+                column_gap: Val::Px(kgap),
                 ..default()
             })
             .with_children(|row| {
-                for &cents in profile.denoms() {
+                for &cents in denoms {
                     let face = if cents >= 100 {
-                        Color::srgb(1.0, 0.8, 0.22)
+                        ChooserFace::Dollars
                     } else {
-                        Color::srgb(0.96, 0.5, 0.1)
+                        ChooserFace::Cents
                     };
-                    row.spawn((
-                        Node {
-                            width: Val::Px(186.0),
-                            height: Val::Px(112.0),
-                            border: UiRect::all(Val::Px(3.0)),
-                            border_radius: BorderRadius::all(Val::Px(16.0)),
-                            justify_content: JustifyContent::Center,
-                            align_items: AlignItems::Center,
-                            ..default()
-                        },
-                        BackgroundColor(face),
-                        BorderColor::all(Color::srgb(0.55, 0.3, 0.05)),
-                    ))
-                    .with_children(|b| {
-                        b.spawn((
-                            Text::new(denom_text(cents)),
-                            TextFont {
-                                font: bevy::text::FontSource::Handle(fonts.meter.clone()),
-                                font_size: FontSize::Px(68.0),
-                                ..default()
+                    chooser_key(row, kw, kh, face)
+                        .with_children(|b| {
+                            spawn_key_figure(b, &fonts.meter, 56.0, chooser_figure(cents));
+                        })
+                        .observe(
+                            move |_press: On<PointerPress>,
+                                  mut input: ResMut<CabinetInput>,
+                                  mut menu: ResMut<GamesMenu>| {
+                                if !menu.open || menu.pending.is_some() {
+                                    return;
+                                }
+                                if profile.confirms() {
+                                    menu.pending = Some(cents);
+                                } else {
+                                    input.denom = Some(cents);
+                                }
                             },
-                            TextColor(Color::srgb(0.9, 0.95, 1.0)),
-                            TextShadow {
-                                offset: Vec2::new(2.0, 3.0),
-                                color: Color::srgba(0.25, 0.08, 0.0, 0.85),
-                            },
-                        ));
-                    })
-                    .observe(
-                        move |_press: On<PointerPress>,
-                              mut input: ResMut<CabinetInput>,
-                              mut menu: ResMut<GamesMenu>| {
-                            if !menu.open || menu.pending.is_some() {
-                                return;
-                            }
-                            if profile.confirms() {
-                                menu.pending = Some(cents);
-                            } else {
-                                input.denom = Some(cents);
-                            }
-                        },
-                    );
+                        );
                 }
             });
         });
-        // Club: "<denomination> GAME / ARE YOU SURE?", centred over the row.
-        let (cw, ch) = (330.0, 190.0);
+        // Club: "<denomination> GAME / ARE YOU SURE?", wholly above the panel.
+        let (cw, ch, clear) = CHOOSER_CONFIRM;
         m.spawn((
             ChooserConfirm,
             Node {
                 position_type: PositionType::Absolute,
                 left: Val::Px((CANVAS_W - cw) / 2.0),
-                top: Val::Px(h * 0.6 - ch + 40.0),
+                top: Val::Px(ptop - clear - ch - top),
                 width: Val::Px(cw),
                 height: Val::Px(ch),
                 border: UiRect::all(Val::Px(4.0)),
-                border_radius: BorderRadius::all(Val::Px(12.0)),
+                border_radius: BorderRadius::all(Val::Px(8.0)),
                 flex_direction: FlexDirection::Column,
                 justify_content: JustifyContent::SpaceEvenly,
                 align_items: AlignItems::Center,
                 ..default()
             },
-            BackgroundColor(Color::srgba(0.05, 0.02, 0.02, 0.95)),
+            BackgroundColor(Color::srgb(0.05, 0.02, 0.02)),
             BorderColor::all(Color::srgb(0.9, 0.68, 0.22)),
             GlobalZIndex(13),
             Visibility::Hidden,
         ))
         .with_children(|q| {
+            let face = |px: f32| TextFont {
+                font: bevy::text::FontSource::Handle(fonts.sans.clone()),
+                font_size: FontSize::Px(px),
+                ..default()
+            };
+            // "<denomination> GAME" in bold yellow, "ARE YOU SURE?" in the
+            // header's cream.
             q.spawn((
                 ChooserQuestion,
                 Text::new(""),
-                TextFont {
-                    font: bevy::text::FontSource::Handle(fonts.sans.clone()),
-                    font_size: FontSize::Px(30.0),
-                    ..default()
-                },
-                TextColor(Color::srgb(1.0, 0.9, 0.55)),
+                face(30.0),
+                TextColor(Color::srgb(1.0, 0.86, 0.2)),
                 TextLayout::justify(Justify::Center),
-            ));
+            ))
+            .with_children(|t| {
+                t.spawn((
+                    TextSpan::new("ARE YOU SURE?"),
+                    face(30.0),
+                    TextColor(CHOOSER_HEADER_COLOUR),
+                ));
+            });
+            let (aw, ah, agap) = CHOOSER_ANSWER;
             q.spawn(Node {
                 flex_direction: FlexDirection::Row,
-                column_gap: Val::Px(30.0),
+                column_gap: Val::Px(agap),
                 ..default()
             })
             .with_children(|row| {
                 for yes in [true, false] {
-                    row.spawn((
-                        Node {
-                            width: Val::Px(120.0),
-                            height: Val::Px(62.0),
-                            border: UiRect::all(Val::Px(3.0)),
-                            border_radius: BorderRadius::all(Val::Px(12.0)),
-                            justify_content: JustifyContent::Center,
-                            align_items: AlignItems::Center,
-                            ..default()
-                        },
-                        BackgroundColor(Color::srgb(0.96, 0.5, 0.1)),
-                        BorderColor::all(Color::srgb(0.55, 0.3, 0.05)),
-                    ))
-                    .with_children(|b| {
-                        b.spawn((
-                            Text::new(if yes { "YES" } else { "NO" }),
-                            TextFont {
-                                font: bevy::text::FontSource::Handle(fonts.meter.clone()),
-                                font_size: FontSize::Px(40.0),
-                                ..default()
+                    let word = if yes { "YES" } else { "NO" };
+                    chooser_key(row, aw, ah, ChooserFace::Cents)
+                        .with_children(|b| {
+                            spawn_key_figure(b, &fonts.sans, 30.0, (word.to_string(), None));
+                        })
+                        .observe(
+                            move |_press: On<PointerPress>,
+                                  mut input: ResMut<CabinetInput>,
+                                  mut menu: ResMut<GamesMenu>| {
+                                let chosen = menu.pending.take();
+                                if yes {
+                                    input.denom = chosen;
+                                }
                             },
-                            TextColor(Color::srgb(0.9, 0.95, 1.0)),
-                        ));
-                    })
-                    .observe(
-                        move |_press: On<PointerPress>,
-                              mut input: ResMut<CabinetInput>,
-                              mut menu: ResMut<GamesMenu>| {
-                            let chosen = menu.pending.take();
-                            if yes {
-                                input.denom = chosen;
-                            }
-                        },
-                    );
+                        );
                 }
             });
         });
+        // Club: COLLECT stays, moved to the corner (inert, as on the band).
+        if profile == Profile::Club {
+            let (x, y) = CHOOSER_COLLECT;
+            pill(
+                m,
+                fonts,
+                "COLLECT",
+                x,
+                y - top,
+                176.0,
+                42.0,
+                32.0,
+                TabLook::Club,
+            );
+        }
     });
     // Over the splash only a rounded panel holding CREDIT stays (footage:
     // BET, WIN, the tabs and the denomination box give way).
@@ -10320,6 +10591,16 @@ pub fn games_menu(
             Without<ChooserCredit>,
         ),
     >,
+    mut tabs: Query<
+        &mut Visibility,
+        (
+            With<BandTab>,
+            Without<ChooserRoot>,
+            Without<ChooserCredit>,
+            Without<ChooserPanel>,
+            Without<ChooserConfirm>,
+        ),
+    >,
 ) {
     if !fidelity.0 {
         return;
@@ -10340,6 +10621,13 @@ pub fn games_menu(
     for mut v in &mut covers {
         if *v != vis(showing) {
             *v = vis(showing);
+        }
+    }
+    // The band's raised tabs give way to the splash: the chooser shows no
+    // GAMES MENU, and its COLLECT stands in the corner (spawn_games_menu).
+    for mut v in &mut tabs {
+        if *v != vis(!showing) {
+            *v = vis(!showing);
         }
     }
     for mut v in &mut panel {
@@ -10364,7 +10652,8 @@ pub fn games_menu(
         }
     }
     if let Some(cents) = menu.pending {
-        let q = format!("{} GAME\nARE YOU SURE?", denom_text(cents));
+        // "ARE YOU SURE?" is the question's own second span.
+        let q = format!("{} GAME\n", denom_text(cents));
         for mut t in &mut question {
             if t.0 != q {
                 t.0.clone_from(&q);
@@ -10480,6 +10769,16 @@ impl GambleShow {
             history,
             ..default()
         }
+    }
+
+    /// The choice whose screen button shows filled: from the frame its card
+    /// turns face up until the card goes (club cabinets: the fill comes with
+    /// the face, once a frame early; _XHUzg4qDXI 0:07.87 and 1:16.800,
+    /// iHDxUc1dlKs 0:12.433; STRONG), not at the press.
+    pub fn picked(&self) -> Option<GamblePick> {
+        self.card
+            .filter(|(_, _, t)| *t >= GAMBLE_FACE_DELAY)
+            .and(self.last.map(|(p, _)| p))
     }
 
     /// Testing: the gamble autoplay holds the unattended spin while a win can
@@ -10976,8 +11275,10 @@ pub fn spawn_gamble_screen(
             GlobalZIndex(13),
             Visibility::Hidden,
         ));
-        // The prompt takes the status line's place and style.
-        spawn_edged_text(
+        // The prompt takes the status line's place and style; on the club
+        // machines the bet line's yellow, spaced wider (see
+        // `GAMBLE_PROMPT_CLUB`).
+        let prompt = spawn_edged_text(
             g,
             "",
             fonts,
@@ -10993,8 +11294,24 @@ pub fn spawn_gamble_screen(
             None,
             GambleText::Prompt,
         );
+        if profile == Profile::Club {
+            let (colour, gap) = GAMBLE_PROMPT_CLUB;
+            g.commands()
+                .entity(prompt)
+                .insert((TextColor(colour), LetterSpacing::Px(gap)));
+        }
     });
 }
+
+/// The club gamble prompt's colour and letter spacing: yellow like the bet
+/// line and spaced so "Select a SUIT, RED/BLACK or TAKE WIN" spans about 730
+/// canvas px (club cabinets: a steady yellow, never white, on _XHUzg4qDXI
+/// 1:11.3-1:15.4 spanning x 589-1320, and on LwC3hVqFRMg 18:30-18:33;
+/// VERIFIED per machine). An NSW machine with a video deck (iHDxUc1dlKs
+/// 0:12.43) and the owner's Happy & Prosperous (00:13.53) show it white: a
+/// conflict, recorded in GOLDEN_CENTURY_CABINET_DECK.md.
+const GAMBLE_PROMPT_CLUB: (Color, f32) =
+    (Color::srgb(225.0 / 255.0, 225.0 / 255.0, 80.0 / 255.0), 6.0);
 
 /// A gamble button on the screen: the silver RED / BLACK capsules and the
 /// suit ovals, gold-capped (`cy` is relative to the gamble screen's top).
@@ -11155,7 +11472,7 @@ pub fn gamble_screen(
     };
     // The chosen button fills pale yellow while its card shows; suits not
     // offered show their blank capsule.
-    let chosen = shown.and(gamble.last.map(|(p, _)| p));
+    let chosen = gamble.picked();
     for (b, mut image) in &mut buttons {
         let base = button_art(b.0);
         let want = if !is_colour(b.0) && !suits_open {
@@ -11805,13 +12122,16 @@ pub fn big_art(
     labels: Query<(&CellLabel, &Text), Without<BigValue>>,
     mut big: Query<(&mut Node, &mut ImageNode, &mut Visibility), With<BigArt>>,
     mut value: Query<&mut Text, With<BigValue>>,
+    gamble: Res<GambleShow>,
 ) {
     if !fidelity.0 {
         return;
     }
+    // Not over the gamble (see `feature_screen`).
     let shown = show
         .big
         .as_ref()
+        .filter(|_| !gamble.active)
         .filter(|(_, first, width)| !(*first..first + width).any(|reel| reels.moving(reel)));
     let image = shown.and_then(|(key, _, _)| art.symbols.get(&format!("big_{key}")));
     for (mut node, mut img, mut vis) in &mut big {
@@ -11939,13 +12259,15 @@ pub fn wild_talls(
     art: Res<ArtPack>,
     stacks: Res<WildStacks>,
     show: Res<FeatureShow>,
+    gamble: Res<GambleShow>,
     mut talls: Query<(&WildTall, &mut Node, &mut ImageNode, &mut Visibility)>,
 ) {
     if !fidelity.0 {
         return;
     }
-    // Not over a Hold & Spin board.
-    if show.hold_and_spin() {
+    // Not over a Hold & Spin board, nor over the gamble (its head stands
+    // above the gamble screen's top; see `feature_screen`).
+    if show.hold_and_spin() || gamble.active {
         for (_, _, _, mut vis) in &mut talls {
             if *vis != Visibility::Hidden {
                 *vis = Visibility::Hidden;
@@ -12029,11 +12351,28 @@ pub fn symbol_fx(
     sim: Res<Sim>,
     art: Res<ArtPack>,
     stacks: Res<WildStacks>,
+    gamble: Res<GambleShow>,
     labels: Query<(&CellLabel, &Text)>,
     mut fx: Query<(&SymbolFx, &mut Node, &mut ImageNode, &mut Visibility), Without<CellImage>>,
     mut images: Query<(&CellImage, &mut Visibility), Without<SymbolFx>>,
 ) {
     if !fidelity.0 {
+        return;
+    }
+    // Over the gamble no symbol shows, still or animated: the tall ones
+    // overhang the gamble screen's top (see `feature_screen`); they come back
+    // with the last line win after a loss.
+    if gamble.active {
+        for (_, _, _, mut vis) in &mut fx {
+            if *vis != Visibility::Hidden {
+                *vis = Visibility::Hidden;
+            }
+        }
+        for (_, mut vis) in &mut images {
+            if *vis != Visibility::Hidden {
+                *vis = Visibility::Hidden;
+            }
+        }
         return;
     }
     // The positions animating now.
@@ -14997,5 +15336,270 @@ mod tests {
         assert!(p[0].now_y > 0.0);
         roll.advance(1.0);
         assert!(still(&roll));
+    }
+
+    /// The cabinet spawned into a world with no pack, for layout tests.
+    fn spawned_cabinet(profile: Profile) -> World {
+        let mut world = World::new();
+        let model = dragonlink_model::fixtures::golden_century_synthetic();
+        let art = ArtPack::default();
+        let fonts = CabFonts {
+            meter: Handle::default(),
+            sans: Handle::default(),
+            symbols: Handle::default(),
+            heavy: Handle::default(),
+            msg: Handle::default(),
+        };
+        {
+            let mut commands = world.commands();
+            spawn(&mut commands, &model, &art, &fonts, profile);
+        }
+        world.flush();
+        world
+    }
+
+    fn px(v: Val) -> f32 {
+        match v {
+            Val::Px(p) => p,
+            other => panic!("not pixels: {other:?}"),
+        }
+    }
+
+    /// Club cabinets: COLLECT and GAMES MENU stay over the gamble screen
+    /// and give way on the chooser, whose own COLLECT stands in the bottom
+    /// right corner (the casino profile unchanged).
+    #[test]
+    fn the_club_tabs_stay_over_the_gamble_and_collect_moves_on_the_chooser() {
+        use bevy::ecs::system::RunSystemOnce;
+        let mut world = spawned_cabinet(Profile::Club);
+        let mut tabs = world.query::<(&BandTab, &GlobalZIndex)>();
+        let found: Vec<(BandTab, i32)> = tabs.iter(&world).map(|(t, z)| (*t, z.0)).collect();
+        assert_eq!(found.len(), 2);
+        for kind in [BandTab::Collect, BandTab::GamesMenu] {
+            assert!(found.contains(&(kind, BAND_TAB_LAYER)), "{kind:?}");
+        }
+        // Over the gamble screen and the chooser's splash (12).
+        const { assert!(BAND_TAB_LAYER > 12) };
+        // The chooser keeps a COLLECT of its own, in the corner.
+        let mut roots = world.query_filtered::<Entity, With<ChooserRoot>>();
+        let root = roots.single(&world).unwrap();
+        let mut texts = world.query::<(Entity, &Text)>();
+        let collects: Vec<Entity> = texts
+            .iter(&world)
+            .filter(|(_, t)| t.0 == "COLLECT")
+            .map(|(e, _)| e)
+            .collect();
+        assert_eq!(collects.len(), 2, "the band's and the chooser's");
+        let in_chooser = |world: &World, mut e: Entity| {
+            while let Some(parent) = world.get::<ChildOf>(e) {
+                e = parent.parent();
+                if e == root {
+                    return true;
+                }
+            }
+            false
+        };
+        let chooser_pill = collects.iter().filter(|e| in_chooser(&world, **e)).count();
+        assert_eq!(chooser_pill, 1);
+        // The tabs hide while the chooser shows, and come back after.
+        world.insert_resource(Fidelity(true));
+        world.insert_resource(Time::<()>::default());
+        world.insert_resource(Smoke {
+            frames_left: None,
+            screenshot: None,
+            frame: 0,
+            hold: 0,
+            real_time: false,
+            capture: None,
+        });
+        world.insert_resource(Reels::default());
+        let mut menu = GamesMenu::default();
+        menu.open_now();
+        world.insert_resource(menu);
+        world.run_system_once(games_menu).unwrap();
+        let mut vis = world.query_filtered::<&Visibility, With<BandTab>>();
+        assert!(vis.iter(&world).all(|v| *v == Visibility::Hidden));
+        world.resource_mut::<GamesMenu>().open = false;
+        world.run_system_once(games_menu).unwrap();
+        assert!(vis.iter(&world).all(|v| *v == Visibility::Inherited));
+        // The casino keeps its tabs as they were.
+        let mut world = spawned_cabinet(Profile::Casino);
+        let mut tabs = world.query::<&BandTab>();
+        assert_eq!(tabs.iter(&world).count(), 0);
+    }
+
+    /// The club gamble prompt is the bet line's yellow, spaced wider (club
+    /// cabinets: _XHUzg4qDXI, LwC3hVqFRMg); the casino's keeps the status
+    /// line's look.
+    #[test]
+    fn the_club_gamble_prompt_is_yellow_and_spaced() {
+        let (yellow, gap) = GAMBLE_PROMPT_CLUB;
+        let c = yellow.to_srgba();
+        assert!(c.red > 0.8 && c.green > 0.8 && c.blue < 0.4);
+        // Verdana Bold 23 writes the 36 letters about 518 px wide; spaced,
+        // about 728 against the cabinet's about 731.
+        let wide = 518.0 + 35.0 * gap;
+        assert!((700.0..=760.0).contains(&wide), "{wide}");
+        for (profile, want) in [
+            (Profile::Club, (yellow, LetterSpacing::Px(gap))),
+            (
+                Profile::Casino,
+                (Color::srgb_u8(210, 220, 245), LetterSpacing::Px(1.5)),
+            ),
+        ] {
+            let mut world = spawned_cabinet(profile);
+            let mut q = world.query::<(&GambleText, &TextColor, &LetterSpacing)>();
+            let prompt: Vec<(Color, LetterSpacing)> = q
+                .iter(&world)
+                .filter(|(t, ..)| **t == GambleText::Prompt)
+                .map(|(_, c, s)| (c.0, *s))
+                .collect();
+            assert_eq!(prompt, vec![want], "{profile:?}");
+        }
+    }
+
+    /// The chooser as two club recordings show it (homography): the panel
+    /// about 995 x 195 centred near y 755 with its keys inside it, the
+    /// header's capitals near y 703, ARE YOU SURE? wholly above the panel
+    /// with a small gap, the drawn title's capitals about y 485-640 and
+    /// about 1560 wide.
+    #[test]
+    fn the_chooser_is_laid_out_as_on_the_club_cabinet() {
+        let (pw, ph, ptop) = CHOOSER_PANEL;
+        assert!((980.0..=1010.0).contains(&pw));
+        assert!((190.0..=200.0).contains(&ph));
+        assert!((750.0..=760.0).contains(&(ptop + ph / 2.0)));
+        let (kw, kh, gap, ktop) = CHOOSER_KEY;
+        assert!((155.0..=165.0).contains(&kw) && (78.0..=82.0).contains(&kh));
+        assert!((25.0..=29.0).contains(&gap));
+        assert!((775.0..=785.0).contains(&(ktop + kh / 2.0)));
+        assert!(ktop > CHOOSER_HEADER.0 && ktop + kh < ptop + ph);
+        const { assert!(CHOOSER_MARGIN > 30.0) };
+        // The title fits the logo's place, and every title's name fits the
+        // canvas.
+        assert_eq!(chooser_title_size("GOLDEN CENTURY"), CHOOSER_TITLE.1);
+        let (title_y, _, spacing, _) = CHOOSER_TITLE;
+        let size = CHOOSER_TITLE.1;
+        let caps = (
+            title_y - IMPACT_CAPS.1 * size / 2.0,
+            title_y + IMPACT_CAPS.1 * size / 2.0,
+        );
+        assert!((475.0..=495.0).contains(&caps.0) && (630.0..=650.0).contains(&caps.1));
+        assert!(caps.1 < ptop, "the title stands over the panel");
+        let wide = |name: &str| {
+            let n = name.chars().count() as f32;
+            n * IMPACT_CAPS_ADVANCE * chooser_title_size(name) + n * spacing
+        };
+        assert!((1500.0..=1620.0).contains(&wide("GOLDEN CENTURY")));
+        for slug in [
+            "golden-century",
+            "autumn-moon",
+            "happy-prosperous",
+            "panda-magic",
+            "genghis-khan",
+            "golden-gong",
+            "peace-long-life",
+            "spring-festival",
+        ] {
+            let name = title_name(slug);
+            assert_ne!(name, title_name("synthetic"), "{slug}");
+            assert!(wide(name) <= CHOOSER_TITLE.3 + 1.0, "{name}");
+        }
+        // The spawned chooser: the confirmation wholly above the panel, a
+        // small gap between; six keys widen the panel to hold them.
+        for profile in [Profile::Club, Profile::Casino] {
+            let mut world = spawned_cabinet(profile);
+            let mut q = world.query_filtered::<&Node, With<ChooserPanel>>();
+            let panel = q.single(&world).unwrap().clone();
+            let mut q = world.query_filtered::<&Node, With<ChooserConfirm>>();
+            let confirm = q.single(&world).unwrap().clone();
+            let gap = px(panel.top) - (px(confirm.top) + px(confirm.height));
+            assert!((5.0..=15.0).contains(&gap), "{gap}");
+            let n = profile.denoms().len() as f32;
+            assert!(px(panel.width) >= n * kw + (n - 1.0) * CHOOSER_KEY.2);
+            assert_eq!(px(panel.width) == pw, n == 5.0, "{profile:?}");
+        }
+        // The cent sign is drawn apart, smaller; dollars whole.
+        assert_eq!(chooser_figure(5), ("5".to_string(), Some("¢")));
+        assert_eq!(chooser_figure(100), ("$1".to_string(), None));
+        const { assert!(CENT_SIGN < 0.8) };
+    }
+
+    /// Club footage: the teardrop shows a card-back lattice through the
+    /// gamble with no legend (a pack without that art keeps the dark
+    /// teardrop), and stays dark on the chooser.
+    #[test]
+    fn the_teardrop_shows_a_lattice_in_the_gamble() {
+        let mut look = club_look(DeckMode::Gamble);
+        assert_eq!(look.face(CabButton::Spin), "spin_lattice");
+        assert!(look.words(CabButton::Spin).is_empty());
+        assert_eq!(
+            resolve_face("spin_lattice", |k| k == "spin_dim"),
+            ("spin_dim", Color::WHITE)
+        );
+        assert_eq!(
+            resolve_face("spin_lattice", |_| true),
+            ("spin_lattice", Color::WHITE)
+        );
+        look.deck.mode = DeckMode::Menu;
+        assert_eq!(look.face(CabButton::Spin), "spin_dim");
+    }
+
+    /// The picked button fills with the card's face, not at the press (club
+    /// cabinets: _XHUzg4qDXI 0:07.87 and 1:16.800, iHDxUc1dlKs 0:12.433).
+    #[test]
+    fn the_picked_button_fills_with_the_card_face() {
+        let mut gamble = GambleShow {
+            active: true,
+            last: Some((GamblePick::Red, 20)),
+            card: Some((3, true, 0.0)),
+            ..GambleShow::default()
+        };
+        assert_eq!(gamble.picked(), None, "the card still face down");
+        gamble.card = Some((3, true, GAMBLE_FACE_DELAY - 0.01));
+        assert_eq!(gamble.picked(), None);
+        gamble.card = Some((3, true, GAMBLE_FACE_DELAY));
+        assert_eq!(gamble.picked(), Some(GamblePick::Red));
+        gamble.card = Some((3, false, GAMBLE_FACE_DELAY + GAMBLE_SHOW_LOSS - 0.01));
+        assert_eq!(gamble.picked(), Some(GamblePick::Red));
+        gamble.card = None;
+        assert_eq!(gamble.picked(), None, "gone with the card");
+    }
+
+    /// Nothing of the base screen stands over the gamble: a tall wild hides
+    /// while it shows and stands again after (club cabinets: LwC3hVqFRMg
+    /// 18:30.4-18:33.7, _XHUzg4qDXI 1:13.00).
+    #[test]
+    fn a_tall_wild_gives_way_to_the_gamble() {
+        use bevy::ecs::system::RunSystemOnce;
+        let mut world = World::new();
+        let mut art = ArtPack::default();
+        art.anims
+            .insert("wild3_intro".to_string(), vec![Handle::default()]);
+        world.insert_resource(art);
+        world.insert_resource(Fidelity(true));
+        world.insert_resource(Time::<()>::default());
+        world.insert_resource(FeatureShow::default());
+        world.insert_resource(WildStacks {
+            list: vec![(1, 0, 3, 0.0)],
+            ..WildStacks::default()
+        });
+        world.insert_resource(GambleShow {
+            active: true,
+            ..GambleShow::default()
+        });
+        let tall = world
+            .spawn((
+                WildTall { reel: 1 },
+                Node::default(),
+                ImageNode::default(),
+                Visibility::Inherited,
+            ))
+            .id();
+        world.run_system_once(wild_talls).unwrap();
+        assert_eq!(world.get::<Visibility>(tall), Some(&Visibility::Hidden));
+        world.resource_mut::<GambleShow>().active = false;
+        world.run_system_once(wild_talls).unwrap();
+        assert_eq!(world.get::<Visibility>(tall), Some(&Visibility::Inherited));
     }
 }

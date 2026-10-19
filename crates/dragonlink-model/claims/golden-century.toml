@@ -433,6 +433,28 @@ scope = "cabinet-au, club presentation"
 note = "Bottom keys 1 and 2 are not legible; TAKE WIN and RED there are hypotheses."
 
 [[claim]]
+id = "gamble.screen-over-base"
+statement = "Nothing of the base screen shows during the gamble (no feature banner such as FEATURE COMPLETED, no tall symbol), and it comes back after a loss; COLLECT and GAMES MENU stay at their places; the chosen screen button fills yellow in the frame the card turns face up, not at the touch."
+value = "base screen hidden; COLLECT and GAMES MENU kept; fill with the face"
+confidence = "verified"
+source = "gameplay_recording"
+citation = "Public recordings: LwC3hVqFRMg 18:30.4-18:33.7; _XHUzg4qDXI 0:07.60, 0:07.87, 1:13.00, 1:16.800; iHDxUc1dlKs 0:12.433; owner's recording (private) 00:13.53 (docs/reverse-engineering/GOLDEN_CENTURY_CABINET_DECK.md)"
+accessed = "2026-10-19"
+scope = "cabinet-au, club presentation"
+note = "The fill's timing is strong evidence (three reveals on two machines, once a frame early). Two club machines draw the gamble prompt yellow and letter-spaced like their bet line; an NSW machine with a video deck draws it white and the owner's Happy & Prosperous pale: a conflict, recorded in the doc."
+
+[[claim]]
+id = "menu.chooser-layout"
+statement = "On Queensland club machines the denomination chooser's panel is about 980-1010 by 190-200 canvas pixels centred near y 755, opaque black-brown in a thin gold frame, with bevelled keys about 160 by 80, 26 apart (cents red-orange, dollars amber, white figures in a dark outline, a smaller cent sign); ARE YOU SURE? sits wholly above the panel; the title logo is about 1560 pixels wide just above the panel; a COLLECT pill stays, moved to the screen's bottom right corner."
+value = "panel ~995 x 195 at y ~657-852; keys ~160 x 80, gap ~26; logo ~1560 wide, caps y ~485-640; COLLECT at ~(1830, 1016)"
+confidence = "strong_evidence"
+source = "gameplay_recording"
+citation = "Public recordings 1bAevGz0K2k 0:13.0-0:15.0 and y8c8lEdPW8Y 0:08.0-0:11.7, mapped by homography from the reel frame; etaH-vbYBKY 0:00-0:08 for COLLECT on a 2018 layout (docs/reverse-engineering/GOLDEN_CENTURY_CABINET_DECK.md)"
+accessed = "2026-10-19"
+scope = "cabinet-au, club presentation"
+note = "Both recordings are from one venue; the confirmation's sizes rest on one weak homography (partial). The look is verified; the colours are camera colours (partial). The 2018 layout keeps COLLECT at the left above the clock instead. An earlier linear mapping (a panel 1124 x 222 at y 696) is superseded."
+
+[[claim]]
 id = "meters.unit-switching"
 statement = "Club machines switch CREDIT, BET and WIN between dollars and credits every 1.00 s while a win is offered and through the gamble, on the same clock as the deck's 1 Hz flash, and show dollars at rest; the casino-style machines show dollars throughout."
 value = "1.00 s switch, club only"
