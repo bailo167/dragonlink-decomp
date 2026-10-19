@@ -2990,14 +2990,24 @@ struct ReelState {
     landing_at: i64,
     /// Set for one frame when the reel hits its stop (for the stop sound).
     stopped_now: bool,
+    /// This spin scrolls the free reels' strip.
+    free: bool,
+    /// The window leaving or the one coming holds a scatter, so no other
+    /// passes on this reel this spin: the machine never shows two on a reel.
+    quiet: bool,
 }
 
 /// All reels' motion.
 #[derive(Resource, Default)]
 pub struct Reels {
     states: Vec<ReelState>,
-    /// The symbol keys the reels scroll through while spinning.
-    strips: Vec<Vec<String>>,
+    /// The symbol keys the reels scroll through while spinning: the base
+    /// game's strips and the free games' (the engine's own, NS 4.8: reels
+    /// are shown as their strips are arranged).
+    base: Vec<Vec<String>>,
+    free: Vec<Vec<String>>,
+    /// The title's scatter.
+    scatter: String,
     /// Seconds since every reel came to rest.
     rested: f32,
 }
@@ -3062,11 +3072,21 @@ impl Reels {
         if (0..s.landing.len() as i64).contains(&k) {
             return &s.landing[k as usize];
         }
-        let strip = &self.strips[reel];
-        if strip.is_empty() {
+        let strips = if s.free { &self.free } else { &self.base };
+        let Some(strip) = strips.get(reel).filter(|s| !s.is_empty()) else {
             return "";
+        };
+        let len = strip.len();
+        let mut i = n.rem_euclid(len as i64) as usize;
+        if s.quiet {
+            for _ in 0..len {
+                if strip[i] != self.scatter {
+                    break;
+                }
+                i = (i + 1) % len;
+            }
         }
-        &strip[n.rem_euclid(strip.len() as i64) as usize]
+        &strip[i]
     }
 }
 
@@ -3108,29 +3128,62 @@ fn column_width() -> f32 {
     PITCH.0
 }
 
-/// The strips the reels scroll through, as symbol keys.
+/// The strips the reels scroll through, as symbol keys: the model's base
+/// strips and its free games' (the base ones again when it has none).
 pub fn reel_strips(model: &MathModel) -> Reels {
-    let strips = model
-        .reel_strips
-        .iter()
-        .map(|strip| {
-            strip
-                .iter()
-                .map(|id| model.symbols[id.0 as usize].key.clone())
-                .collect()
-        })
-        .collect::<Vec<Vec<String>>>();
-    let states = (0..strips.len())
+    let keys = |strips: &[Vec<dragonlink_model::SymbolId>]| {
+        strips
+            .iter()
+            .map(|strip| {
+                strip
+                    .iter()
+                    .map(|id| {
+                        model
+                            .symbols
+                            .get(id.0 as usize)
+                            .map(|s| s.key.clone())
+                            .unwrap_or_default()
+                    })
+                    .collect()
+            })
+            .collect::<Vec<Vec<String>>>()
+    };
+    let base = keys(&model.reel_strips);
+    let free = model
+        .free_games
+        .as_ref()
+        .map(|fg| keys(&fg.free_reel_strips))
+        .filter(|f| f.len() == base.len())
+        .unwrap_or_else(|| base.clone());
+    let states = (0..base.len())
         .map(|reel| ReelState {
-            pos: ((reel * 7 + 2) % strips[reel].len().max(1)) as f32,
+            pos: ((reel * 7 + 2) % base[reel].len().max(1)) as f32,
             ..default()
         })
         .collect();
     Reels {
         states,
-        strips,
+        base,
+        free,
+        scatter: Roles::from_model(model).scatter,
         rested: SPIN_AFTER_REST,
     }
+}
+
+/// The labels of `reel`'s window, top row first, any dimming taken off.
+fn window_labels(labels: &Query<(&CellLabel, &Text)>, reel: usize) -> Vec<String> {
+    let mut window = vec![String::new(); 3];
+    for (label, text) in labels {
+        if label.reel as usize == reel && (label.row as usize) < 3 {
+            window[label.row as usize] = label_symbol_owned(&text.0);
+        }
+    }
+    window
+}
+
+/// A cell label with any dimming taken off.
+fn label_symbol_owned(label: &str) -> String {
+    label.strip_prefix(DIM).unwrap_or(label).to_string()
 }
 
 /// The reel strips: a clipped column per reel over the panel, shown only
@@ -3276,13 +3329,29 @@ pub fn spin_reels(
     let dt = smoke.dt(&time).min(0.05);
     for reel in 0..reels.states.len() {
         let spinning = anim.spinning.get(reel).copied().unwrap_or(false);
+        // A spin starting: the window on screen scrolls away; when it or the
+        // window coming holds a scatter, no other passes on this reel.
+        let starting = (reels.states[reel].motion == Motion::Idle && spinning).then(|| {
+            let leaving = window_labels(&labels, reel);
+            let quiet = leaving
+                .iter()
+                .chain(anim.coming.get(reel).into_iter().flatten())
+                .any(|l| symbol_of(l) == reels.scatter);
+            (leaving, quiet)
+        });
         let state = &mut reels.states[reel];
         state.stopped_now = false;
         match state.motion {
             Motion::Idle if spinning => {
-                // Start from the last result: the landed symbols stay on the
-                // strip and scroll away.
+                // Start from what is on screen: the window stays on the strip
+                // and scrolls away.
                 state.pos = state.pos.round();
+                if let Some((leaving, quiet)) = starting {
+                    state.landing_at = state.pos as i64;
+                    state.landing = leaving;
+                    state.quiet = quiet;
+                }
+                state.free = anim.free;
                 state.motion = Motion::Spinning { t: 0.0 };
             }
             Motion::Idle => {}
@@ -9322,6 +9391,98 @@ mod tests {
                 (125_000, 25_000)
             ]
         );
+    }
+
+    /// Golden Century with a flag every fourth stop of every strip, base and
+    /// free, so flags pass a moving reel all the time.
+    fn flag_heavy_reels() -> Reels {
+        let mut model = dragonlink_model::fixtures::golden_century_synthetic();
+        let flag = model
+            .symbols
+            .iter()
+            .position(|s| s.kind == dragonlink_model::SymbolKind::Scatter)
+            .map(|i| dragonlink_model::SymbolId(i as u16))
+            .unwrap();
+        let fg = model.free_games.as_mut().unwrap();
+        for strip in model
+            .reel_strips
+            .iter_mut()
+            .chain(fg.free_reel_strips.iter_mut())
+        {
+            for (i, s) in strip.iter_mut().enumerate() {
+                if i % 4 == 0 {
+                    *s = flag;
+                }
+            }
+        }
+        reel_strips(&model)
+    }
+
+    /// The flags a reel shows with its top at `pos`: every strip index in
+    /// view (partly or wholly).
+    fn flags_in_view(reels: &Reels, reel: usize, pos: f32) -> usize {
+        let first = pos.floor() as i64;
+        let last = (pos + 3.0).ceil() as i64 - 1;
+        (first..=last)
+            .filter(|n| symbol_of(reels.key_at(reel, *n)) == reels.scatter)
+            .count()
+    }
+
+    #[test]
+    fn a_moving_reel_never_shows_two_flags() {
+        let mut reels = flag_heavy_reels();
+        let flag = reels.scatter.clone();
+        for free in [false, true] {
+            for reel in 0..5 {
+                for row in 0..3 {
+                    let mut window = vec!["K".to_string(); 3];
+                    window[row] = flag.clone();
+                    // A spin starting from a window with a flag: it scrolls
+                    // away (spin_reels marks the reel quiet).
+                    let at = 40i64;
+                    {
+                        let s = &mut reels.states[reel];
+                        s.free = free;
+                        s.quiet = true;
+                        s.landing = window.clone();
+                        s.landing_at = at;
+                    }
+                    let mut pos = at as f32;
+                    while pos >= at as f32 - 5.0 {
+                        assert!(
+                            flags_in_view(&reels, reel, pos) <= 1,
+                            "start, reel {reel} row {row} pos {pos}"
+                        );
+                        pos -= 0.02;
+                    }
+                    // Landing on a window with a flag: it runs on past its
+                    // stop and back.
+                    let target = 20i64;
+                    reels.states[reel].landing_at = target;
+                    let mut pos = target as f32 + 4.0;
+                    while pos >= target as f32 - DEEP {
+                        assert!(
+                            flags_in_view(&reels, reel, pos) <= 1,
+                            "landing, reel {reel} row {row} pos {pos}"
+                        );
+                        pos -= 0.02;
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn a_reel_without_a_flag_still_passes_flags() {
+        let mut reels = flag_heavy_reels();
+        let s = &mut reels.states[0];
+        s.quiet = false;
+        s.landing = vec!["K".to_string(); 3];
+        s.landing_at = 1000;
+        let flags = (0..40)
+            .filter(|n| reels.key_at(0, *n) == reels.scatter)
+            .count();
+        assert!(flags >= 8, "{flags}");
     }
 
     #[test]

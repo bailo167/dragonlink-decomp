@@ -934,6 +934,31 @@ struct ReelAnim {
     spinning: Vec<bool>,
     timer: f32,
     phase: usize,
+    /// The spin under way is a free game (its reels scroll the free strips).
+    free: bool,
+    /// Each reel's window this spin will land on, known when it starts.
+    coming: Vec<Vec<String>>,
+}
+
+/// The windows a spin starting now lands on, by reel: its `ReelStopped`
+/// events, up to the next spin.
+fn coming_windows(
+    queue: &std::collections::VecDeque<(f32, Event)>,
+    reels: usize,
+) -> Vec<Vec<String>> {
+    let mut coming = vec![Vec::new(); reels];
+    for (_, e) in queue {
+        match e {
+            Event::SpinStarted { .. } | Event::FreeGameStarted { .. } => break,
+            Event::ReelStopped { reel, symbols, .. } => {
+                if let Some(c) = coming.get_mut(*reel as usize) {
+                    c.clone_from(symbols);
+                }
+            }
+            _ => {}
+        }
+    }
+    coming
 }
 
 #[derive(Resource)]
@@ -1947,6 +1972,8 @@ fn present(
                 for s in reels_spin.spinning.iter_mut() {
                     *s = true;
                 }
+                reels_spin.free = false;
+                reels_spin.coming = coming_windows(&presentation.queue, reels);
                 // A new base spin clears any lingering feature banner.
                 presentation.banner.clear();
                 presentation.banner_timer = 0.0;
@@ -2052,10 +2079,13 @@ fn present(
                 presentation.status = format!("FREE GAMES  -  {games} games won");
             }
             Event::FreeGameStarted { number, remaining } => {
-                // Each free game spins the reels like a paid game.
+                // Each free game spins the reels like a paid game, on the
+                // free reels' strips.
                 for s in reels_spin.spinning.iter_mut() {
                     *s = true;
                 }
+                reels_spin.free = true;
+                reels_spin.coming = coming_windows(&presentation.queue, reels);
                 presentation.status = format!("FREE GAME {number}  ({remaining} to come)");
             }
             Event::MysteryRevealed { symbol, count } => {
@@ -2772,10 +2802,10 @@ fn main() -> AppExit {
     .insert_resource(cabinet::Profile::from_env())
     .insert_resource(cabinet::WildStacks::default())
     .insert_resource(cabinet::Music::default())
-    .insert_resource(if fidelity {
-        cabinet::reel_strips(&cli.game.model())
-    } else {
-        cabinet::Reels::default()
+    .insert_resource(match direct_sim.as_ref() {
+        // The strips of the model the game plays, any scenario included.
+        Some((_, sim)) if fidelity => cabinet::reel_strips(sim.game.model()),
+        _ => cabinet::Reels::default(),
     })
     .insert_resource(Presentation {
         shown_credits: cli.credits,
@@ -3435,6 +3465,31 @@ mod tests {
                 _ => {}
             }
         }
+    }
+
+    #[test]
+    fn a_spin_knows_the_windows_it_lands_on() {
+        let stop = |reel: u8, top: &str| Event::ReelStopped {
+            reel,
+            stop: Some(0),
+            symbols: vec![top.to_string(), "K".to_string(), "Q".to_string()],
+        };
+        let queue: std::collections::VecDeque<(f32, Event)> = [
+            stop(0, "pennant"),
+            stop(1, "J"),
+            Event::FreeGameStarted {
+                number: 1,
+                remaining: 5,
+            },
+            stop(0, "orb"),
+        ]
+        .into_iter()
+        .map(|e| (0.0, e))
+        .collect();
+        let coming = coming_windows(&queue, 3);
+        assert_eq!(coming[0][0], "pennant");
+        assert_eq!(coming[1][0], "J");
+        assert!(coming[2].is_empty());
     }
 
     #[test]
