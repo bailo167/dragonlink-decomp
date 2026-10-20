@@ -595,21 +595,19 @@ struct MenuItem {
     index: usize,
 }
 
-/// The denomination: how much money one credit stands for. The simulation
-/// works in credits; a change recounts them so the money is unchanged
-/// (`Command::ChangeDenomination`). These are simulation dollars and stand for no real
-/// money.
-#[derive(Resource, Default)]
+/// The denomination: how much money one credit stands for, in cents. The
+/// simulation works in credits; a change recounts them so the money is
+/// unchanged (`Command::ChangeDenomination`). These are simulation dollars
+/// and stand for no real money. It is always one the market offers (see
+/// [`market_game`]).
+#[derive(Resource)]
 struct Denom {
-    index: usize,
+    cents: u64,
 }
-
-/// Cents per credit for each denomination, cheapest first.
-const DENOM_CENTS: [u64; 6] = cabinet::MENU_DENOMS;
 
 impl Denom {
     fn cents(&self) -> u64 {
-        DENOM_CENTS.get(self.index).copied().unwrap_or(1)
+        self.cents
     }
 
     fn label(&self) -> String {
@@ -1345,7 +1343,7 @@ fn setup(
     mut sounds: ResMut<cabinet::Sounds>,
     mut show: ResMut<cabinet::FeatureShow>,
     mut timing: ResMut<Timing>,
-    profile: Res<cabinet::Profile>,
+    market: Res<cabinet::Market>,
     pack: Res<PackDir>,
     machines: Res<cabinet::MachineMenu>,
     mut images: ResMut<Assets<Image>>,
@@ -1400,7 +1398,7 @@ fn setup(
             show.wild_fg_clip = sounds.seconds("SND_WildFG").unwrap_or(0.0);
             show.expand_clip = sounds.seconds("SND_ExpandWin").unwrap_or(0.0);
         }
-        cabinet::spawn(&mut commands, model, &art, &cab_fonts, *profile);
+        cabinet::spawn(&mut commands, model, &art, &cab_fonts, *market);
         cabinet::spawn_machine_menu(&mut commands, &cab_fonts, &machines);
         cabinet::spawn_rules(&mut commands, &art);
         return;
@@ -1718,13 +1716,13 @@ fn input(
     mut menu: ResMut<cabinet::GamesMenu>,
     sounds: Res<cabinet::Sounds>,
     mut commands: Commands,
-    (profile, mut rules, mut menu_shown): (
-        Res<cabinet::Profile>,
+    (market, mut rules, mut menu_shown): (
+        Res<cabinet::Market>,
         ResMut<cabinet::GameRules>,
         Local<bool>,
     ),
 ) {
-    let profile = *profile;
+    let market = *market;
     // Idle means the reels have come to rest on screen too: the last one runs
     // on and settles after the game has stopped it, and a spin started then
     // would throw it straight back into motion mid-settle.
@@ -1752,27 +1750,22 @@ fn input(
         menu.open_now();
         if menu_pending {
             *menu_shown = true;
-            if confirm && profile.confirms() {
-                menu.pending = profile.denoms().get(1).copied();
+            if confirm && market.profile.confirms() {
+                menu.pending = market.cents_at(1);
             }
         }
     }
-    // A denomination: touched on the GAMES MENU, or the next one with D.
-    let offered = if fidelity.0 {
-        profile.denoms()
-    } else {
-        &DENOM_CENTS[..]
-    };
+    // A denomination the market offers: touched on the GAMES MENU, or the
+    // next one with D.
     let chosen = if menu.open {
         cabinet_input.denom
     } else {
-        (keys.just_pressed(KeyCode::KeyD) && at_rest && !menu.showing()).then(|| {
-            let here = offered.iter().position(|c| *c == denom.cents());
-            offered[here.map_or(0, |i| (i + 1) % offered.len())]
-        })
+        (keys.just_pressed(KeyCode::KeyD) && at_rest && !menu.showing())
+            .then(|| market.next_cents(denom.cents()))
+            .flatten()
     };
     if let Some(to) = chosen
-        && let Some(index) = DENOM_CENTS.iter().position(|c| *c == to)
+        && let Some(row) = market.row(to)
     {
         if menu.open {
             menu.close();
@@ -1798,7 +1791,7 @@ fn input(
                     let _ = game.apply(
                         Command::SetStake {
                             index: 0,
-                            lines: profile.lines_on_change(to),
+                            lines: row.lines_on_change(),
                         },
                         rng,
                     );
@@ -1806,21 +1799,22 @@ fn input(
                     menu.last_bet_cents = last_bet;
                 }
                 presentation.shown_credits = game.credits();
-                denom.index = index;
+                denom.cents = to;
             }
         }
     }
-    // The lines a denomination allows: fixed in the casino style, the
-    // denomination's ladder on the club machines.
+    // The lines a denomination allows (the market's table): fixed in the
+    // casino style, the denomination's lines keys on the club machines.
     let lines_fix = (fidelity.0 && at_rest)
-        .then(|| match profile {
-            cabinet::Profile::Casino => cabinet::lines_for(denom.cents()),
-            cabinet::Profile::Club => {
-                let ladder = cabinet::line_keys(denom.cents());
-                if ladder.contains(&sim.game.lines()) {
+        .then(|| market.row(denom.cents()))
+        .flatten()
+        .map(|row| match row.keys {
+            cabinet::DeckKeys::Casino { .. } => row.lines,
+            cabinet::DeckKeys::Club { lines, .. } => {
+                if lines.contains(&sim.game.lines()) {
                     sim.game.lines()
                 } else {
-                    ladder[0]
+                    lines[0]
                 }
             }
         })
@@ -1842,8 +1836,13 @@ fn input(
         && smoke.frame.is_multiple_of(SMOKE_PRESS_EVERY);
     // Features play by themselves (see `drive_features`); the player spins and
     // sets the stake.
-    let auto =
-        auto && !gamble.holds_autospin(cabinet::gamble_open(&sim.game, denom.cents(), &feature));
+    let auto = auto
+        && !gamble.holds_autospin(cabinet::gamble_open(
+            &sim.game,
+            denom.cents(),
+            &market.gamble,
+            &feature,
+        ));
     // A GAMES MENU still to open for a capture: the reels come to rest.
     let auto = auto && !menu_pending;
     let options = sim.game.model().bet.credits_per_line_options.clone();
@@ -3123,6 +3122,8 @@ fn menu_input(
     mut commands: Commands,
     mut presentation: ResMut<Presentation>,
     mut next: ResMut<NextState<Screen>>,
+    market: Res<cabinet::Market>,
+    mut denom: ResMut<Denom>,
 ) {
     let count = MENU_GAMES.len();
     if keys.just_pressed(KeyCode::ArrowDown) {
@@ -3150,18 +3151,41 @@ fn menu_input(
     }
     let game = MENU_GAMES[launch.selected];
     let (model, seed) = scenario(game, game.model(), launch.seed);
-    match Game::new(model, launch.credits) {
+    match market_game(model, launch.credits, &market) {
         Ok(mut g) => {
             commands.insert_resource(open_link(&mut g, seed));
+            presentation.shown_credits = g.credits();
+            denom.cents = market.first_cents();
             commands.insert_resource(Sim {
                 game: g,
                 rng: DevRng::new(seed),
             });
-            presentation.shown_credits = launch.credits;
             next.set(Screen::Playing);
         }
         Err(e) => eprintln!("cannot start {}: {e}", game.title()),
     }
+}
+
+/// A new game for `market`: the engine told the market's configuration (its
+/// gambles in a row), and `credits` at 1c recounted at the market's first
+/// denomination, where its machines start (the cents left over held as the
+/// engine's residue).
+fn market_game(
+    model: MathModel,
+    credits: u64,
+    market: &cabinet::Market,
+) -> Result<Game, dragonlink_core::GameError> {
+    let mut game = Game::new(model, credits)?.with_config(market.game_config());
+    let to =
+        u32::try_from(market.first_cents()).map_err(|_| dragonlink_core::GameError::Overflow)?;
+    if to != 1 {
+        // A recount draws nothing: an empty outcome source proves it.
+        game.apply(
+            Command::ChangeDenomination { from: 1, to },
+            &mut dragonlink_core::ScriptedRng::new(Vec::new()),
+        )?;
+    }
+    Ok(game)
 }
 
 /// Remove the launcher once a game has begun.
@@ -3218,9 +3242,11 @@ fn main() -> AppExit {
     }
     let explicit_game = args.iter().any(|a| a == "--game");
     let direct_boot = fidelity || explicit_game || cli.smoke_frames.is_some();
+    // The market the machine is configured for (`DRAGONLINK_MARKET`).
+    let market = cabinet::Market::from_env();
     let direct_sim = if direct_boot {
         let (model, seed) = scenario(cli.game, cli.game.model(), cli.seed);
-        match Game::new(model, cli.credits) {
+        match market_game(model, cli.credits, &market) {
             Ok(mut game) => Some((
                 open_link(&mut game, seed),
                 Sim {
@@ -3299,7 +3325,7 @@ fn main() -> AppExit {
     .insert_resource(cabinet::GameRules::default())
     .insert_resource(cabinet::DeckState::default())
     .insert_resource(cabinet::SystemSlot::default())
-    .insert_resource(cabinet::Profile::from_env())
+    .insert_resource(market)
     .insert_resource(cabinet::WildStacks::default())
     .insert_resource(cabinet::Music::default())
     .insert_resource(match direct_sim.as_ref() {
@@ -3308,10 +3334,14 @@ fn main() -> AppExit {
         _ => cabinet::Reels::default(),
     })
     .insert_resource(Presentation {
-        shown_credits: cli.credits,
+        shown_credits: direct_sim
+            .as_ref()
+            .map_or(cli.credits, |(_, sim)| sim.game.credits()),
         ..default()
     })
-    .insert_resource(Denom::default())
+    .insert_resource(Denom {
+        cents: market.first_cents(),
+    })
     .insert_resource(ArtPack::default())
     .insert_resource(ReelAnim::default())
     .insert_resource(Smoke {
@@ -4220,5 +4250,20 @@ mod tests {
         assert_ne!(orb, wild);
         assert_ne!(orb, regular);
         assert_eq!(orb_text(OrbValue::BetMultiple(4)), "ORB\nx4");
+    }
+
+    /// A game starts at its market's first denomination with the money
+    /// unchanged and the market's gambles in a row: the Queensland clubs at
+    /// 1c, The Star at 5c with the odd cents held.
+    #[test]
+    fn a_game_starts_at_its_markets_first_denomination() {
+        let qld = market_game(golden_century_synthetic(), 10_000, &cabinet::QLD_CLUB).unwrap();
+        let state = qld.state();
+        assert_eq!((qld.credits(), state.unit, state.residue), (10_000, 1, 0));
+        assert_eq!(qld.config().gamble_limit, cabinet::QLD_CLUB.gamble.rounds);
+        let star = market_game(golden_century_synthetic(), 10_003, &cabinet::STAR_CASINO).unwrap();
+        let state = star.state();
+        assert_eq!((star.credits(), state.unit, state.residue), (2_000, 5, 3));
+        assert!(star.is_idle());
     }
 }
