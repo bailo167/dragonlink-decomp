@@ -58,8 +58,10 @@ fn the_synthetic_golden_century_is_playable() {
 
 /// The configurations a flat return is measured over: (label, credit size
 /// in cents, bet option index, lines).
-/// Every one is a bet the club or casino deck allows (cabinet::line_keys,
-/// lines_for and the bet keys).
+/// The club decks' stakes (the app's market table, cabinet::MARKETS) and $1
+/// at 10 credits on 5 lines (the earlier casino style's). The Star's 50 lines
+/// at $1 and $2 are not among them: there the stake can pass the club's
+/// Mini, and the return is lower (GOLDEN_CENTURY_CABINET_DECK.md, Not done).
 const STAKES: [(&str, u32, usize, u16); 8] = [
     ("1c 1x1", 1, 0, 1),
     ("1c 1x50", 1, 0, 50),
