@@ -17,13 +17,14 @@ The scene data names cues; it does not say when game logic fires them.
 | Spin that triggers a feature, after the last reel | `feature_bell` | STRONG EVIDENCE (Hold & Spin); PARTIAL (free games) |
 | Free games won ("x FREE GAMES WON", flags wave) | `SND_Scatter` | PARTIAL |
 | Free games: music | `SND_Fea_BGM`, looped, from the start press | VERIFIED |
-| Free games: spin start, door reveal, an ordinary win | nothing (the music carries on; no win tune) | VERIFIED |
+| Free games: spin start, door reveal, an ordinary win | nothing (the music carries on; no win tune); no `SND_EndMask` at the doors (tg4nMylHxhI 5 of 5; a faint unidentified sound PARTIAL) | VERIFIED |
 | Hold & Spin: coins ignite at the intro | `SND_FeatureTrigger` | VERIFIED |
 | Hold & Spin: music | `SND_FreeSpin_BGM` looped from the end of the intro; `SND_FreeSpin_BGMFast` once 13 coins are held | PARTIAL |
 | Hold & Spin: each respin pressed | `SND_Button` | VERIFIED |
 | Hold & Spin: counter count-up, an empty spot stopping | no evidence of any clip | UNKNOWN |
 | Hold & Spin: n-th coin landing in a respin | `SND_HandSDoonk{n}` | PARTIAL |
-| Hold & Spin: "FREE SPINS COMPLETED" | `SND_Fea_End`; the music stops | PARTIAL |
+| Hold & Spin: "FREE SPINS COMPLETED" | `SND_Fea_End` (the family's 3.0 s sting, on every title); the music stops | VERIFIED (the later titles' audit, 2026-10-20: LATER_TITLES_AUDIT.md) |
+| Free games: "FEATURE COMPLETED" | Genghis Khan's 2.2 s sting on the club cabinet (the official app: its own 3.0 s `SND_Fea_End`; a conflict recorded, the cabinet followed) | STRONG (tg4nMylHxhI, 2 of 2) |
 | Hold & Spin: each value coin counted into the total | `SND_Medium_1..5` (identical) from 0.40 s into the clip | VERIFIED |
 | Hold & Spin: each MINI coin counted | `SND_Credit1` | PARTIAL |
 | Base win | `wintuneNN`, rising with the win; meter counts over the tune | STRONG EVIDENCE for the tune family; the exact choice rule is PARTIAL |

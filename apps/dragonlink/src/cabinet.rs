@@ -5641,6 +5641,10 @@ pub struct BigSlot(u8);
 #[derive(Component)]
 pub struct BigBlockCell(u8, u8, u8);
 
+/// One character of a passing BIG coin's prize (in slot `.0`, index `.1`).
+#[derive(Component)]
+pub struct BigSlotDigit(u8, u8);
+
 /// The BIG reel's window and its slots (hidden until a BIG free game spins).
 pub fn spawn_big_strip(c: &mut ChildSpawnerCommands, big: Option<(u8, u8)>) {
     let Some((first, width)) = big else {
@@ -5677,6 +5681,33 @@ pub fn spawn_big_strip(c: &mut ChildSpawnerCommands, big: Option<(u8, u8)>) {
                 },
             ))
             .with_children(|s| {
+                // A passing BIG coin's prize, centred on it.
+                s.spawn(Node {
+                    position_type: PositionType::Absolute,
+                    left: Val::Px(0.0),
+                    top: Val::Px(0.0),
+                    width: Val::Percent(100.0),
+                    height: Val::Percent(100.0),
+                    justify_content: JustifyContent::Center,
+                    align_items: AlignItems::Center,
+                    ..default()
+                })
+                .with_children(|row| {
+                    for index in 0..COIN_SLOTS {
+                        row.spawn((
+                            BigSlotDigit(slot, index),
+                            Node {
+                                display: Display::None,
+                                ..default()
+                            },
+                            ImageNode {
+                                image_mode: NodeImageMode::Stretch,
+                                ..default()
+                            },
+                            Visibility::Hidden,
+                        ));
+                    }
+                });
                 for r in 0..width {
                     for row in 0..3u8 {
                         s.spawn((
@@ -5719,14 +5750,32 @@ pub fn big_strip_draw(
     fidelity: Res<Fidelity>,
     reels: Res<Reels>,
     art: Res<ArtPack>,
+    sim: Res<Sim>,
+    denom: Res<Denom>,
+    mut digits: Query<
+        (&BigSlotDigit, &mut Node, &mut ImageNode, &mut Visibility),
+        (
+            Without<BigStripColumn>,
+            Without<BigSlot>,
+            Without<BigBlockCell>,
+        ),
+    >,
     mut column: Query<&mut Visibility, With<BigStripColumn>>,
     mut slots: Query<
         (&BigSlot, &mut Node, &mut ImageNode, &mut Visibility),
-        (Without<BigStripColumn>, Without<BigBlockCell>),
+        (
+            Without<BigStripColumn>,
+            Without<BigBlockCell>,
+            Without<BigSlotDigit>,
+        ),
     >,
     mut cells: Query<
         (&BigBlockCell, &mut Node, &mut ImageNode, &mut Visibility),
-        (Without<BigStripColumn>, Without<BigSlot>),
+        (
+            Without<BigStripColumn>,
+            Without<BigSlot>,
+            Without<BigSlotDigit>,
+        ),
     >,
 ) {
     if !fidelity.0 {
@@ -5765,8 +5814,18 @@ pub fn big_strip_draw(
         b.strip.get(n.rem_euclid(len) as usize).map(String::as_str)
     };
     let mut block_slot = None;
+    // Passing BIG coins carry a prize as single coins do (club cabinets:
+    // "100", "1500", "6250", "$15" scrolling by; VERIFIED), the landing one
+    // its own (shown once it lands).
+    let mut coin_text_at: Vec<(u8, String)> = Vec::new();
     for (slot, mut node, mut image, mut vis) in &mut slots {
         let n = pos.floor() as i64 - 1 + i64::from(slot.0);
+        if entry(n) == Some("orb")
+            && n != b.state.landing_at
+            && let Some(credits) = face_credits(passing_face(b.first + 16, n), sim.game.total_bet())
+        {
+            coin_text_at.push((slot.0, coin_text(credits, denom.cents())));
+        }
         let top = (n as f32 - pos) * h;
         match entry(n) {
             Some(key) => {
@@ -5795,6 +5854,48 @@ pub fn big_strip_draw(
         }
         if *vis != Visibility::Inherited {
             *vis = Visibility::Inherited;
+        }
+    }
+    let scale = BIG_DIGIT_TALL * PITCH.1 * COIN_DIGIT_SHARE / 73.0;
+    for (d, mut node, mut image, mut vis) in &mut digits {
+        let glyph = coin_text_at
+            .iter()
+            .find(|(slot, _)| *slot == d.0)
+            .and_then(|(_, text)| text.chars().nth(d.1 as usize))
+            .and_then(|c| {
+                let key = coin_key(c);
+                art.ui
+                    .get(&key)
+                    .zip(art.sizes.get(&key))
+                    .map(|(h, (w, gh))| {
+                        let (gw, gh, drop) = coin_glyph(c, *w, *gh, scale);
+                        (
+                            h.clone(),
+                            gw * BIG_DIGIT_NARROW / COIN_DIGIT_XSTRETCH,
+                            gh,
+                            drop,
+                        )
+                    })
+            });
+        match glyph {
+            Some((handle, w, h, drop)) => {
+                if image.image != handle {
+                    image.image = handle;
+                }
+                node.width = Val::Px(w);
+                node.height = Val::Px(h);
+                node.margin.top = Val::Px(drop);
+                node.display = Display::Flex;
+                if *vis != Visibility::Inherited {
+                    *vis = Visibility::Inherited;
+                }
+            }
+            None => {
+                node.display = Display::None;
+                if *vis != Visibility::Hidden {
+                    *vis = Visibility::Hidden;
+                }
+            }
         }
     }
     let (cw, ch) = cell_size();
@@ -12570,7 +12671,7 @@ fn line_win_note(line: u16, award: u64) -> String {
 /// 50 x 2 = 100", "Line 4 wins 50 x 4 = 200" (Genghis Khan club cabinets,
 /// four recordings; VERIFIED as displayed).
 fn line_win_note_times(line: u16, award: u64, multiplier: u64) -> String {
-    if multiplier <= 1 || award % multiplier != 0 {
+    if multiplier <= 1 || !award.is_multiple_of(multiplier) {
         return line_win_note(line, award);
     }
     format!(

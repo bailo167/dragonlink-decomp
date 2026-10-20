@@ -380,3 +380,24 @@ owner chose the coins first, then the Grand. A Major follows the cabinet (first;
 - The size above which a collected coin sounds SND_Medium_1.
 - The flame plumes beside the medallion: not matched to any animation in the game's files.
 - Whether the payout tracks rotate or are chosen by win size.
+
+## Changed by the later titles' audit (2026-10-20)
+
+The audit of the seven later titles against their own club footage
+([LATER_TITLES_AUDIT.md](LATER_TITLES_AUDIT.md)) found family-wide rules that Golden Century's own
+club footage confirms, so this presentation follows them now. Where a row above says otherwise,
+this section wins:
+
+- The flags' wave lasts the title's SND_Scatter + 0.12 s: 4.87 s here (club cabinets, STRONG;
+  the official app's count follows its 4.75 s clip directly).
+- The pictures, flags and emperor animate at 20 fps (video textures; official app and club
+  cabinet), not 30.
+- The first free game's reels rest 1.79 s later than a later free game's (1bAevGz0K2k 329.10,
+  y8c8lEdPW8Y 950.33; VERIFIED).
+- A stand's lines show at once; only WIN's count waits for SND_Wild + 0.2 s (y8c8lEdPW8Y
+  732-733; STRONG). "The win waits 2.5 s" above means the count.
+- FEATURE COMPLETED plays Genghis Khan's 2.2 s sting on the club cabinet (tg4nMylHxhI, 2 of 2;
+  STRONG, one recording), FREE SPINS COMPLETED the 3.0 s SND_Fea_End; the doors open without
+  SND_EndMask (5 of 5; STRONG). Conflicts with the official app, recorded; the cabinet followed.
+- The coin shower from 25x the bet (none at 20x and 22x on the club cabinet); the free games'
+  big-win plaque burns every 2.0 s under it; the counter bursts on every return to 3 (VERIFIED).

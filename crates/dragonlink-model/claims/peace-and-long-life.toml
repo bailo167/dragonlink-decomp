@@ -64,3 +64,73 @@ source = "gameplay_recording"
 citation = "Pay table stops at five; public recordings 3ggOSOerdhc 26:21, wRZ5CyogZ0Q 15:12"
 accessed = "2026-10-19"
 scope = "cabinet-au"
+
+# ---------------------------------------------------------------------------
+# Side-by-side audit against the title's own club footage (2026-10-20)
+# ---------------------------------------------------------------------------
+
+[[claim]]
+id = "free-games.retrigger"
+statement = "A retrigger adds six free games."
+value = "6"
+confidence = "verified"
+source = "gameplay_recording"
+citation = "Public recording, YouTube id and time: jM1NDlBHZCs 1:01-1:03 (the banner counts 1 OF 6 up to 1 OF 12)"
+accessed = "2026-10-20"
+scope = "cabinet-au, Queensland clubs"
+note = "One case: the only retrigger in 18 filmed features. Side-by-side audit of 2026-10-20: found by one reader, then re-measured by a second (refute-first, other moments and recordings); private notes in the source root, research/side-audit-2026-10-20/."
+
+[[claim]]
+id = "presentation.tall-sage"
+statement = "A 2- or 3-high stack on a win becomes the tall sage filling exactly its column and rows (its own scene rect, not Golden Century's)."
+value = "own rect"
+confidence = "verified"
+source = "gameplay_recording"
+citation = "Public recordings, YouTube ids: DWBTkIVcHNM, 3ggOSOerdhc, wRZ5CyogZ0Q; the mobile scene's StackSymbols groups"
+accessed = "2026-10-20"
+scope = "cabinet-au, Queensland clubs"
+note = "Side-by-side audit of 2026-10-20: found by one reader, then re-measured by a second (refute-first, other moments and recordings); private notes in the source root, research/side-audit-2026-10-20/."
+
+[[claim]]
+id = "presentation.sage-cell"
+statement = "The sage panel fills its cell (drawn 1.12 x 1.10 of the still, 0.2 row above its centre, as the scene's reel cells do)."
+value = "fills the cell"
+confidence = "verified"
+source = "gameplay_recording"
+citation = "Public recordings, YouTube ids and times: DWBTkIVcHNM 24:07.5, 3ggOSOerdhc 27:48"
+accessed = "2026-10-20"
+scope = "cabinet-au, Queensland clubs"
+note = "Side-by-side audit of 2026-10-20: found by one reader, then re-measured by a second (refute-first, other moments and recordings); private notes in the source root, research/side-audit-2026-10-20/."
+
+[[claim]]
+id = "sound.x2-wild"
+statement = "The free games' x2 wild plays no sound, and the ordinary wild sound does not play on x2 wins."
+value = "silent"
+confidence = "strong_evidence"
+source = "gameplay_recording"
+citation = "Public recordings with sound: three recordings, 12 rounds"
+accessed = "2026-10-20"
+scope = "cabinet-au, Queensland clubs"
+note = "Side-by-side audit of 2026-10-20: found by one reader, then re-measured by a second (refute-first, other moments and recordings); private notes in the source root, research/side-audit-2026-10-20/."
+
+[[claim]]
+id = "presentation.gamble-dim"
+statement = "The orchard behind the gamble screen is dimmed to about 0.45."
+value = "about 0.45"
+confidence = "partial"
+source = "gameplay_recording"
+citation = "Public recording, YouTube id and time: wRZ5CyogZ0Q 15:52-16:00 (the meters as bright as before)"
+accessed = "2026-10-20"
+scope = "cabinet-au, Queensland clubs"
+note = "Golden Century, Golden Gong and Happy & Prosperous do not dim. Side-by-side audit of 2026-10-20: found by one reader, then re-measured by a second (refute-first, other moments and recordings); private notes in the source root, research/side-audit-2026-10-20/."
+
+[[claim]]
+id = "presentation.chooser-keys"
+statement = "The GAMES MENU's cent keys and YES / NO are green."
+value = "green"
+confidence = "verified"
+source = "gameplay_recording"
+citation = "Public recordings, YouTube ids and times: 3ggOSOerdhc 17:20, DWBTkIVcHNM 26:19, jM1NDlBHZCs 0:10, tjQ6rIGJSCk 3:50"
+accessed = "2026-10-20"
+scope = "cabinet-au, Queensland clubs"
+note = "Side-by-side audit of 2026-10-20: found by one reader, then re-measured by a second (refute-first, other moments and recordings); private notes in the source root, research/side-audit-2026-10-20/."

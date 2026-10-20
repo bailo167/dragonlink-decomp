@@ -74,3 +74,51 @@ source = "official_mobile"
 citation = "Official mobile build, help page 3"
 accessed = "2026-10-19"
 note = "A third-party page says three; the app adds three (HYPOTHESIS)."
+
+# ---------------------------------------------------------------------------
+# Side-by-side audit against the title's own club footage (2026-10-20)
+# ---------------------------------------------------------------------------
+
+[[claim]]
+id = "presentation.x2-message"
+statement = "A free-game line win through x2 wilds reads \"Line N wins A x M = B\", M doubling with each x2 wild on the line."
+value = "\"Line 8 wins 50 x 2 = 100\""
+confidence = "verified"
+source = "gameplay_recording"
+citation = "Public recordings, YouTube ids and times: GfJgVpPiNbw 27:30.7, 27:32.3, 27:33.7; 1mhLqnuUGTw 9:52.0, 10:10; 3FEkN_FN2ik; Rlxgwa3neEg"
+accessed = "2026-10-20"
+scope = "cabinet-au, Queensland clubs"
+note = "Side-by-side audit of 2026-10-20: found by one reader, then re-measured by a second (refute-first, other moments and recordings); private notes in the source root, research/side-audit-2026-10-20/."
+
+[[claim]]
+id = "presentation.x2-wild"
+statement = "A winning x2 wild plays the Khan's own win animation (white flash, red burn, burning frame) with its gold x2 badge pulsing over it."
+value = "the wild's animation under the badge"
+confidence = "strong_evidence"
+source = "gameplay_recording"
+citation = "Public recordings, YouTube ids and times: GfJgVpPiNbw 27:29-27:35, 1mhLqnuUGTw 9:52, 3FEkN_FN2ik 7:24, Rlxgwa3neEg 3:18"
+accessed = "2026-10-20"
+scope = "cabinet-au, Queensland clubs"
+note = "Side-by-side audit of 2026-10-20: found by one reader, then re-measured by a second (refute-first, other moments and recordings); private notes in the source root, research/side-audit-2026-10-20/."
+
+[[claim]]
+id = "presentation.chooser-keys"
+statement = "The GAMES MENU's cent keys are green, its $1 key gold."
+value = "green cents, gold $1"
+confidence = "verified"
+source = "gameplay_recording"
+citation = "Public recordings, YouTube ids and times: 3FEkN_FN2ik 0:01, Rlxgwa3neEg 0:01"
+accessed = "2026-10-20"
+scope = "cabinet-au, Queensland clubs"
+note = "Shade PARTIAL. Side-by-side audit of 2026-10-20: found by one reader, then re-measured by a second (refute-first, other moments and recordings); private notes in the source root, research/side-audit-2026-10-20/."
+
+[[claim]]
+id = "presentation.prompt"
+statement = "PRESS START FEATURE BUTTON is lettered in gold."
+value = "gold (about (235,195,90) on camera)"
+confidence = "strong_evidence"
+source = "gameplay_recording"
+citation = "Public recordings: ten Genghis Khan triggers on five recordings"
+accessed = "2026-10-20"
+scope = "cabinet-au, Queensland clubs"
+note = "Side-by-side audit of 2026-10-20: found by one reader, then re-measured by a second (refute-first, other moments and recordings); private notes in the source root, research/side-audit-2026-10-20/."

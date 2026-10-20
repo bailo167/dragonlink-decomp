@@ -190,3 +190,51 @@ citation = "https://play.google.com/store/apps/details?id=com.productmadness.faf
 accessed = "2026-10-13"
 scope = "mobile"
 note = "From the store listing, read once; not checked in the app. Lightning Link Casino's App Store listing also names Panda Magic."
+
+# ---------------------------------------------------------------------------
+# Side-by-side audit against the title's own club footage (2026-10-20)
+# ---------------------------------------------------------------------------
+
+[[claim]]
+id = "presentation.stacked-pandas"
+statement = "Every panda of a stack plays its own intro and chewing loop in its own cell; there is no tall panda."
+value = "per cell"
+confidence = "verified"
+source = "gameplay_recording"
+citation = "Public recordings, YouTube ids and times: tg4nMylHxhI 6:52, 8V086h-IJ6I (four cases on two recordings)"
+accessed = "2026-10-20"
+scope = "cabinet-au, Queensland clubs"
+note = "Side-by-side audit of 2026-10-20: found by one reader, then re-measured by a second (refute-first, other moments and recordings); private notes in the source root, research/side-audit-2026-10-20/."
+
+[[claim]]
+id = "presentation.chooser-keys"
+statement = "The GAMES MENU's cent keys and YES / NO are green, the $1 key gold, the header gold-yellow."
+value = "green cents, gold $1"
+confidence = "verified"
+source = "gameplay_recording"
+citation = "Public recordings, YouTube ids: y3yNze50f3U, nYM0NGR3px0, 8V086h-IJ6I"
+accessed = "2026-10-20"
+scope = "cabinet-au, Queensland clubs"
+note = "Shades PARTIAL (camera colour); YES / NO take the chosen key's colour (gold for $1, one case). Side-by-side audit of 2026-10-20: found by one reader, then re-measured by a second (refute-first, other moments and recordings); private notes in the source root, research/side-audit-2026-10-20/."
+
+[[claim]]
+id = "presentation.counter"
+statement = "FREE GAME n OF m: the game number ends about 24 art pixels before OF and the total starts about 21 after it; Panda Magic's banner lettering sits 23 pixels right of Golden Century's."
+value = "right- and left-aligned to OF"
+confidence = "verified"
+source = "gameplay_recording"
+citation = "Public recording: tg4nMylHxhI; the pack's banner_free_game.png alpha"
+accessed = "2026-10-20"
+scope = "cabinet-au, Queensland clubs"
+note = "Side-by-side audit of 2026-10-20: found by one reader, then re-measured by a second (refute-first, other moments and recordings); private notes in the source root, research/side-audit-2026-10-20/."
+
+[[claim]]
+id = "sound.feature-end"
+statement = "FEATURE COMPLETED plays no sting."
+value = "none"
+confidence = "strong_evidence"
+source = "gameplay_recording"
+citation = "Public recordings with sound: Panda Magic recordings (one faint 2.0 s trace)"
+accessed = "2026-10-20"
+scope = "cabinet-au, Queensland clubs"
+note = "Side-by-side audit of 2026-10-20: found by one reader, then re-measured by a second (refute-first, other moments and recordings); private notes in the source root, research/side-audit-2026-10-20/."

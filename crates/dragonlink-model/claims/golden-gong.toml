@@ -64,3 +64,51 @@ source = "gameplay_recording"
 citation = "Public recordings HEbwBOTh0S0, I2HtFMVzZK4 (Queensland clubs)"
 accessed = "2026-10-19"
 scope = "cabinet-au"
+
+# ---------------------------------------------------------------------------
+# Side-by-side audit against the title's own club footage (2026-10-20)
+# ---------------------------------------------------------------------------
+
+[[claim]]
+id = "free-games.expansion"
+statement = "In the free games nothing happens as a monk lands; as the reels come to rest every monk grows out of the cell it landed in to fill its reel (visible from rest + 0.33-0.37 s, full by + 0.67-0.70 s), ending on the dark panel with glowing characters when the reel is in a win and on the blue panel when not; the first line shows at rest + 1.5 s and WIN counts at rest + 2.45-2.60 s."
+value = "grows from the landed cell over 0.7 s"
+confidence = "verified"
+source = "gameplay_recording"
+citation = "Public recordings, YouTube ids: DWBTkIVcHNM, 0ApUzEKj3X8, I2HtFMVzZK4 (twelve expansions, frame by frame)"
+accessed = "2026-10-20"
+scope = "cabinet-au, Queensland clubs"
+note = "Side-by-side audit of 2026-10-20: found by one reader, then re-measured by a second (refute-first, other moments and recordings); private notes in the source root, research/side-audit-2026-10-20/."
+
+[[claim]]
+id = "presentation.line-tabs"
+statement = "The \"N LINES\" tabs show the lines played (25 at 5c and 10c, 5 or 3 at $1)."
+value = "live count"
+confidence = "verified"
+source = "gameplay_recording"
+citation = "Public recordings, YouTube ids: DWBTkIVcHNM, 0ApUzEKj3X8 (15:18.33-15:19.23 \"1 LINE\" after a denomination change)"
+accessed = "2026-10-20"
+scope = "cabinet-au, Queensland clubs"
+note = "Side-by-side audit of 2026-10-20: found by one reader, then re-measured by a second (refute-first, other moments and recordings); private notes in the source root, research/side-audit-2026-10-20/."
+
+[[claim]]
+id = "presentation.symbol-sizes"
+statement = "Against Golden Century's sizing the bamboo is larger, the disciples smaller and higher, the rooster shorter, the monk and gong panels a little larger."
+value = "bamboo x1.45; disciples x0.88, 0.22 row up; rooster height x0.82; monk and gong x1.10 x 1.06"
+confidence = "strong_evidence"
+source = "gameplay_recording"
+citation = "Public recordings, YouTube ids: DWBTkIVcHNM, 0ApUzEKj3X8, I2HtFMVzZK4"
+accessed = "2026-10-20"
+scope = "cabinet-au, Queensland clubs"
+note = "Rooster, monk and gong PARTIAL. Side-by-side audit of 2026-10-20: found by one reader, then re-measured by a second (refute-first, other moments and recordings); private notes in the source root, research/side-audit-2026-10-20/."
+
+[[claim]]
+id = "sound.expansion"
+statement = "One sound plays as the monks expand: SND_Wild when a filled reel is in a win, SND_ExpandNoWin when not; none at the win display."
+value = "SND_Wild / SND_ExpandNoWin"
+confidence = "strong_evidence"
+source = "gameplay_recording"
+citation = "Public recordings with sound: DWBTkIVcHNM, I2HtFMVzZK4 (SND_Wild's pattern on 6 of 7 winning expansions)"
+accessed = "2026-10-20"
+scope = "cabinet-au, Queensland clubs"
+note = "Side-by-side audit of 2026-10-20: found by one reader, then re-measured by a second (refute-first, other moments and recordings); private notes in the source root, research/side-audit-2026-10-20/."

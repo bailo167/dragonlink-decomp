@@ -245,3 +245,51 @@ citation = "https://play.google.com/store/apps/details?id=com.productmadness.faf
 accessed = "2026-10-13"
 scope = "mobile"
 note = "From the store listing, read once; not checked in the app."
+
+# ---------------------------------------------------------------------------
+# Side-by-side audit against the title's own club footage (2026-10-20)
+# ---------------------------------------------------------------------------
+
+[[claim]]
+id = "presentation.moon-gate"
+statement = "The moon gates open in 0.60-0.67 s, their 20 frames at 30 a second (the mobile video's own rate); Golden Century's doors open faster."
+value = "30 fps"
+confidence = "strong_evidence"
+source = "gameplay_recording"
+citation = "Public recordings, YouTube ids and times: nYM0NGR3px0, TsTj-sxJ6Yc, cXHGn3T7eyg"
+accessed = "2026-10-20"
+scope = "cabinet-au, Queensland clubs"
+note = "Side-by-side audit of 2026-10-20: found by one reader, then re-measured by a second (refute-first, other moments and recordings); private notes in the source root, research/side-audit-2026-10-20/."
+
+[[claim]]
+id = "presentation.revealed-stacks"
+statement = "Wilds the moon gates reveal in a run stand as the tall woman."
+value = "revealed runs stand"
+confidence = "strong_evidence"
+source = "gameplay_recording"
+citation = "Public recordings, YouTube ids and times: TsTj-sxJ6Yc 678.4, cXHGn3T7eyg 1055.9; Golden Century y8c8lEdPW8Y (doors)"
+accessed = "2026-10-20"
+scope = "cabinet-au, Queensland clubs"
+note = "Side-by-side audit of 2026-10-20: found by one reader, then re-measured by a second (refute-first, other moments and recordings); private notes in the source root, research/side-audit-2026-10-20/."
+
+[[claim]]
+id = "presentation.chooser-keys"
+statement = "The GAMES MENU's cent keys are purple, its $1 key gold."
+value = "purple cents, gold $1"
+confidence = "verified"
+source = "gameplay_recording"
+citation = "Public recordings, YouTube ids and times: nYM0NGR3px0 0:02 (face about (112,40,207) on camera), AWJciGGOUEk 0:00-0:10"
+accessed = "2026-10-20"
+scope = "cabinet-au, Queensland clubs"
+note = "The shade PARTIAL (camera colour). Side-by-side audit of 2026-10-20: found by one reader, then re-measured by a second (refute-first, other moments and recordings); private notes in the source root, research/side-audit-2026-10-20/."
+
+[[claim]]
+id = "sound.free-game-pictures"
+statement = "In the free games a picture win of three or more sounds the picture's own clip, wilds allowed, in place of the wild sound."
+value = "three or more, wilds allowed"
+confidence = "strong_evidence"
+source = "gameplay_recording"
+citation = "Public recordings with sound (three fans in the free games, among others)"
+accessed = "2026-10-20"
+scope = "cabinet-au, Queensland clubs"
+note = "That two of the picture itself are needed fits all twelve cases on three titles (HYPOTHESIS). Side-by-side audit of 2026-10-20: found by one reader, then re-measured by a second (refute-first, other moments and recordings); private notes in the source root, research/side-audit-2026-10-20/."

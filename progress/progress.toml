@@ -722,18 +722,19 @@ note = "Six free games on royal-free reels (rebuilt, synthetic), three more on a
 id = "art-ui"
 name = "Title artwork, UI layout and typography"
 status = "partial"
-note = "Plays in the cabinet from its own local pack through the shared presentation (single-cell wild, no tall stack); not compared side by side with its footage."
+note = "Compared side by side with its own club footage on 2026-10-20 and every difference verified by a second reader; fixed: the Buddha on its lotus tile with falling coins, runs animating cell by cell, picture runs on the free reels (docs/reverse-engineering/LATER_TITLES_AUDIT.md). The chooser splash is not in the pack."
 
 [[category.item]]
 id = "audio"
 name = "Sound and music"
 status = "partial"
-note = "The pack's own clips play where Golden Century's do; not checked title by title against recordings."
+note = "Placements checked on club recordings with sound: its wild, pictures, scatter (retriggers too), FEATURE COMPLETED's 2.0 s sting (from Golden Gong's pack, as the cabinet plays it) (docs/reverse-engineering/LATER_TITLES_AUDIT.md)."
 
 [[category.item]]
 id = "animation-timing"
 name = "Animation and sequence timing"
-status = "not_started"
+status = "partial"
+note = "Trigger, retrigger and wild-win timings and the animations' 20 fps measured on its club footage and followed (docs/reverse-engineering/LATER_TITLES_AUDIT.md)."
 
 [[category.item]]
 id = "attract"
@@ -817,18 +818,19 @@ note = "Six free games on royal-free reels (rebuilt, synthetic), three more on a
 id = "art-ui"
 name = "Title artwork, UI layout and typography"
 status = "partial"
-note = "Plays in the cabinet from its own local pack through the shared presentation (single-cell wild, no tall stack); not compared side by side with its footage."
+note = "Compared side by side with its own club footage on 2026-10-20 and every difference verified by a second reader; fixed: stacked pandas animating in their own cells, green chooser keys, the FREE GAME n OF m numbers placed on its own banner art (docs/reverse-engineering/LATER_TITLES_AUDIT.md). The chooser splash is not in the pack."
 
 [[category.item]]
 id = "audio"
 name = "Sound and music"
 status = "partial"
-note = "The pack's own clips play where Golden Century's do; not checked title by title against recordings."
+note = "Placements checked on club recordings with sound: its wild, pictures (free-game rule), scatter on triggers and retriggers, no FEATURE COMPLETED sting (docs/reverse-engineering/LATER_TITLES_AUDIT.md)."
 
 [[category.item]]
 id = "animation-timing"
 name = "Animation and sequence timing"
-status = "not_started"
+status = "partial"
+note = "Trigger (its scatter clip + 0.12 s), retrigger, the wild win's hold and the counter burst measured frame by frame on two recordings and followed (docs/reverse-engineering/LATER_TITLES_AUDIT.md)."
 
 [[category.item]]
 id = "attract"
@@ -912,18 +914,19 @@ note = "Six free games; the medallions open onto one symbol, the woman and the c
 id = "art-ui"
 name = "Title artwork, UI layout and typography"
 status = "partial"
-note = "Plays in the cabinet from its own local pack (exported privately from the mobile build), through the same presentation as Golden Century; not compared side by side with Autumn Moon footage."
+note = "Compared side by side with its own club footage on 2026-10-20 and every difference verified by a second reader; fixed: purple chooser keys, the moon gate at 30 fps, revealed wilds standing tall, the tall woman in its own rect (docs/reverse-engineering/LATER_TITLES_AUDIT.md). The chooser splash and logo are not in the pack."
 
 [[category.item]]
 id = "audio"
 name = "Sound and music"
 status = "partial"
-note = "The pack's own clips play where Golden Century's do; the club cabinet's free-games music matches the mobile one on one recording. Placements not checked title by title."
+note = "Placements checked on club recordings with sound: wild takes, pictures (three or more in the free games), the scatter on triggers and retriggers, FEATURE COMPLETED's 3.0 s, no SND_EndMask at the moon gates (docs/reverse-engineering/LATER_TITLES_AUDIT.md). The faint sting at the moon gates is not settled."
 
 [[category.item]]
 id = "animation-timing"
 name = "Animation and sequence timing"
-status = "not_started"
+status = "partial"
+note = "The trigger, retrigger, stand and moon-gate timings measured frame by frame on its club footage and followed (docs/reverse-engineering/LATER_TITLES_AUDIT.md); the maths behind them synthetic."
 
 [[category.item]]
 id = "attract"
@@ -1002,18 +1005,19 @@ note = "Six free games; Khan wears an x2 badge and every one in a win doubles it
 id = "art-ui"
 name = "Title artwork, UI layout and typography"
 status = "partial"
-note = "Plays in the cabinet from its own local pack (exported privately from the mobile build), through Golden Century's presentation; not compared side by side with its own footage."
+note = "Compared side by side with its own club footage on 2026-10-20 and every difference verified by a second reader; fixed: the winning x2 wild's animation and badge, \"Line N wins A x M = B\", green chooser keys, gold START FEATURE lettering, the tall Khan in its own rect (docs/reverse-engineering/LATER_TITLES_AUDIT.md). The chooser splash is not in the pack."
 
 [[category.item]]
 id = "audio"
 name = "Sound and music"
 status = "partial"
-note = "The pack's own clips play where Golden Century's do, the x2 wild's own clip on its wins; placements not checked against its footage."
+note = "Placements checked on club recordings with sound: wild takes, SND_WildFG on x2 wins, scatter, FEATURE COMPLETED's own 2.2 s and FREE SPINS COMPLETED's 3.0 s (from Golden Century's pack) (docs/reverse-engineering/LATER_TITLES_AUDIT.md). Its other own clips (PendingFreeGames, HandS_*) were not heard."
 
 [[category.item]]
 id = "animation-timing"
 name = "Animation and sequence timing"
-status = "not_started"
+status = "partial"
+note = "The trigger's wave measured on ten triggers (its scatter clip + 0.12 s) and the x2 badge's 20 fps followed (docs/reverse-engineering/LATER_TITLES_AUDIT.md)."
 
 [[category.item]]
 id = "attract"
@@ -1093,18 +1097,19 @@ note = "Six free games with the monk filling its reel when it lands and their ow
 id = "art-ui"
 name = "Title artwork, UI layout and typography"
 status = "partial"
-note = "Plays in the cabinet from its own local pack (exported privately from the mobile build), through Golden Century's presentation; not compared side by side with its own footage."
+note = "Compared side by side with its own club footage on 2026-10-20 and every difference verified by a second reader; fixed: the monk growing into its reel (win and no-win sequences), live \"N LINES\" tabs on its tab-free frame, its symbols' sizes, green chooser keys, the tall monk in its own rect (docs/reverse-engineering/LATER_TITLES_AUDIT.md). The chooser splash is not in the pack."
 
 [[category.item]]
 id = "audio"
 name = "Sound and music"
 status = "partial"
-note = "The pack's own clips; the single wild clip stands in for Golden Century's five, the expansion clips play by whether the reel wins (pairing HYPOTHESIS)."
+note = "Placements checked on club recordings with sound: the expansion's one sound (SND_Wild in a win, SND_ExpandNoWin otherwise), FEATURE COMPLETED's own 2.0 s and FREE SPINS COMPLETED's SND_Fea_End__1 (docs/reverse-engineering/LATER_TITLES_AUDIT.md)."
 
 [[category.item]]
 id = "animation-timing"
 name = "Animation and sequence timing"
-status = "not_started"
+status = "partial"
+note = "The expansion measured frame by frame on twelve events (growth from rest + 0.33 s, lines at + 1.5 s, the count at + 2.45-2.60 s) and followed (docs/reverse-engineering/LATER_TITLES_AUDIT.md)."
 
 [[category.item]]
 id = "attract"
@@ -1178,24 +1183,25 @@ note = "Grand and Major linked progressives, Minor and Mini fixed by denominatio
 id = "free-games"
 name = "Free games feature"
 status = "partial"
-note = "Six free games with the sage's x2 wild (help, VERIFIED); whether royals stay is UNKNOWN (they do here); three more on a retrigger (HYPOTHESIS). Strips synthetic."
+note = "Six free games with the sage's x2 wild (help, VERIFIED); whether royals stay is UNKNOWN (they do here); six more on a retrigger (one club case, VERIFIED as displayed). Strips synthetic."
 
 [[category.item]]
 id = "art-ui"
 name = "Title artwork, UI layout and typography"
 status = "partial"
-note = "Plays in the cabinet from its own local pack (exported privately from the mobile build), through Golden Century's presentation; not compared side by side with its own footage."
+note = "Compared side by side with its own club footage on 2026-10-20 and every difference verified by a second reader; fixed: the tall sage in its own rect, the sage filling its cell, the x2 wild's animation and badge, x2 wording, green chooser keys, gold START FEATURE lettering, the gamble's dimmed orchard (docs/reverse-engineering/LATER_TITLES_AUDIT.md). Thick key-pattern dividers and the chooser splash are not in the pack."
 
 [[category.item]]
 id = "audio"
 name = "Sound and music"
 status = "partial"
-note = "The pack's own clips play where Golden Century's do; placements not checked against its footage."
+note = "Placements checked on club recordings with sound: the x2 wild silent, FEATURE COMPLETED's 2.0 s sting (from Golden Gong's pack), scatter on triggers and retriggers (docs/reverse-engineering/LATER_TITLES_AUDIT.md)."
 
 [[category.item]]
 id = "animation-timing"
 name = "Animation and sequence timing"
-status = "not_started"
+status = "partial"
+note = "Trigger, retrigger and stand timings measured on its club footage and followed (docs/reverse-engineering/LATER_TITLES_AUDIT.md)."
 
 [[category.item]]
 id = "attract"
@@ -1275,18 +1281,19 @@ note = "Six free games on a BIG 3x3 reel over reels 2-4; a BIG ingot pays the be
 id = "art-ui"
 name = "Title artwork, UI layout and typography"
 status = "partial"
-note = "Plays in the cabinet from its own local pack (exported privately from the mobile build), through Golden Century's presentation; not compared side by side with its own footage."
+note = "Compared side by side with its own club footage on 2026-10-20 and every difference verified by a second reader; fixed: the BIG reel spinning as one reel of BIG pictures, the free games' three-window panel, the BIG coin's size, digits, ring, burst and board, the BIG pictures' own animations, gold line frames over the BIG symbol, cyan-blue chooser keys (docs/reverse-engineering/LATER_TITLES_AUDIT.md). Passing BIG coins carry no prize yet; the chooser splash is not in the pack."
 
 [[category.item]]
 id = "audio"
 name = "Sound and music"
 status = "partial"
-note = "The pack's own clips play where Golden Century's do; the BIG symbols' own sounds and placements not checked."
+note = "Placements checked on club recordings with sound: SND_WindUp as the BIG wild lands, pictures, scatter on triggers and retriggers, no FEATURE COMPLETED sting (docs/reverse-engineering/LATER_TITLES_AUDIT.md)."
 
 [[category.item]]
 id = "animation-timing"
 name = "Animation and sequence timing"
-status = "not_started"
+status = "partial"
+note = "The BIG free games' pace (reel 1, the BIG reel and reel 5 at rest +1.27 / +3.14 / +3.84 s), the first free game's longer spin and the BIG wild's hold measured on 12 spins and followed (docs/reverse-engineering/LATER_TITLES_AUDIT.md)."
 
 [[category.item]]
 id = "attract"

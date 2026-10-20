@@ -509,3 +509,117 @@ confidence = "unknown"
 id = "math.jackpot-odds"
 statement = "What are the odds of each jackpot level, and how do progressive levels increment and reset?"
 confidence = "unknown"
+
+# ---------------------------------------------------------------------------
+# Side-by-side audit against the title's own club footage (2026-10-20)
+# ---------------------------------------------------------------------------
+
+[[claim]]
+id = "presentation.trigger-wave"
+statement = "On a free-games trigger the scatters wave for as long as the title's own SND_Scatter plays; the scatter win starts counting, with PRESS START FEATURE BUTTON, about 0.12 s after the clip ends."
+value = "the title's SND_Scatter + 0.12 s"
+confidence = "strong_evidence"
+source = "gameplay_recording"
+citation = "Public recordings, YouTube ids and times: Genghis Khan 3FEkN_FN2ik 7:09 and 8:38, Rlxgwa3neEg 3:01.8, 8V086h-IJ6I 30:50 (ten triggers on five recordings, each start placed by the clip in the soundtrack); Panda Magic 8V086h-IJ6I (two); Golden Gong DWBTkIVcHNM, 0ApUzEKj3X8, I2HtFMVzZK4 (three); Golden Century y8c8lEdPW8Y, 1bAevGz0K2k"
+accessed = "2026-10-20"
+scope = "cabinet-au, Queensland clubs"
+note = "Measured on four titles; the other titles take the same rule (HYPOTHESIS)."
+
+[[claim]]
+id = "free-games.retrigger-sequence"
+statement = "A retrigger inside the free games replays the base trigger's sequence without a press: \"N FREE GAMES WON!\" on the status line from the result, the bell, the scatters' wave with \"Scatter wins N\", then the banner's total counting up one game a step (5 video frames) from the old total where a base trigger would show its prompt, and the game's win counting after the last step."
+value = "the trigger sequence, counting the total up, no press"
+confidence = "verified"
+source = "gameplay_recording"
+citation = "Public recordings, YouTube ids and times: Autumn Moon nYM0NGR3px0, TsTj-sxJ6Yc 11:05; Happy & Prosperous uXp_uWK4OH8 3:50, DWBTkIVcHNM, WKjdoixnVjg; Panda Magic tg4nMylHxhI 4:10, 6b5UuR0po4g 5:22-6:22; Peace & Long Life jM1NDlBHZCs 0:54-1:03; Spring Festival EO7Q6xvcJMA 28:19-29:48"
+accessed = "2026-10-20"
+scope = "cabinet-au (Queensland clubs, one NSW hotel)"
+note = "Frame by frame on five titles; the bell and SND_Scatter heard on six titles. Side-by-side audit of 2026-10-20: found by one reader, then re-measured by a second (refute-first, other moments and recordings); private notes in the source root, research/side-audit-2026-10-20/."
+
+[[claim]]
+id = "presentation.wild-win-hold"
+statement = "A win through a wild shows its lines at once; only WIN's count waits, for the title's wild sound plus about 0.2 s from the first line."
+value = "the title's wild clip + 0.2 s"
+confidence = "strong_evidence"
+source = "gameplay_recording"
+citation = "Public recordings, YouTube ids and times: Panda Magic tg4nMylHxhI, 8V086h-IJ6I (3.33-3.43 s against a 3.19 s clip; three cases and a control); Autumn Moon TsTj-sxJ6Yc, cXHGn3T7eyg, nYM0NGR3px0 (3.57-3.67 s against 3.376 s); Golden Century y8c8lEdPW8Y 732-733 (lines during the stand)"
+accessed = "2026-10-20"
+scope = "cabinet-au, Queensland clubs"
+note = "Side-by-side audit of 2026-10-20: found by one reader, then re-measured by a second (refute-first, other moments and recordings); private notes in the source root, research/side-audit-2026-10-20/."
+
+[[claim]]
+id = "presentation.stand-on-winning-lines"
+statement = "Only a stack of wilds on a winning line stands as the tall figure; a stack on no winning run stays as heads."
+value = "winning stacks only"
+confidence = "strong_evidence"
+source = "gameplay_recording"
+citation = "Public recording, YouTube id and time: Genghis Khan 3ggOSOerdhc 2:22.5-2:26 (a 2-high stack on a win stands, a 3-high one on none does not); Golden Century's own rule (docs/reverse-engineering/GOLDEN_CENTURY_PRESENTATION.md)"
+accessed = "2026-10-20"
+scope = "cabinet-au, Queensland clubs"
+note = "Side-by-side audit of 2026-10-20: found by one reader, then re-measured by a second (refute-first, other moments and recordings); private notes in the source root, research/side-audit-2026-10-20/."
+
+[[claim]]
+id = "presentation.animation-rate"
+statement = "The symbols' win animations that are video textures play at 20 frames a second (their frames drawn over a 30 fps scene range two-thirds as long); image sequences at 30."
+value = "20 fps (videos), 30 fps (sequences)"
+confidence = "strong_evidence"
+source = "gameplay_recording"
+citation = "Official mobile app recording (Golden Century's warriors at 20 fps); public recordings: Golden Century club cabinet (warriors intro at 20.8 frames a second), Happy & Prosperous WKjdoixnVjg and DWBTkIVcHNM (the jade's 80-frame turn in 4.00 s), Genghis Khan GfJgVpPiNbw (the x2 badge's 40 frames every 1.97 s)"
+accessed = "2026-10-20"
+scope = "mobile and cabinet-au"
+note = "Side-by-side audit of 2026-10-20: found by one reader, then re-measured by a second (refute-first, other moments and recordings); private notes in the source root, research/side-audit-2026-10-20/."
+
+[[claim]]
+id = "presentation.coin-shower"
+statement = "A big win counts up under the coin shower from about 25 times the bet; a free game's big-win plaque then burns its WIN letters every 2.0 s."
+value = "from 25x the bet (between 22x and 31.6x)"
+confidence = "strong_evidence"
+source = "gameplay_recording"
+citation = "Public recordings, YouTube ids and times: Autumn Moon cXHGn3T7eyg 1059.1 (72x), TsTj-sxJ6Yc 681.2 (31.6x); Golden Century kVjwYtVwhkk 399.6 (40x) with the shower; Golden Century y8c8lEdPW8Y 1027.3 (20x) and f5sMl9a5jds 791.6 (22x) without"
+accessed = "2026-10-20"
+scope = "cabinet-au, Queensland clubs"
+note = "The threshold PARTIAL between 22x and 31.6x. Side-by-side audit of 2026-10-20: found by one reader, then re-measured by a second (refute-first, other moments and recordings); private notes in the source root, research/side-audit-2026-10-20/."
+
+[[claim]]
+id = "hold-and-spin.counter-burst"
+statement = "The Hold & Spin counter's burst plays every time the counter returns to 3, not only at the start."
+value = "every reset to 3"
+confidence = "verified"
+source = "gameplay_recording"
+citation = "Public recordings, YouTube ids and times: Panda Magic 8V086h-IJ6I (four resets), nYM0NGR3px0 (five); Golden Century y8c8lEdPW8Y 973.57, 977.43, 979.70"
+accessed = "2026-10-20"
+scope = "cabinet-au, Queensland clubs"
+note = "Side-by-side audit of 2026-10-20: found by one reader, then re-measured by a second (refute-first, other moments and recordings); private notes in the source root, research/side-audit-2026-10-20/."
+
+[[claim]]
+id = "sound.end-stings"
+statement = "FREE SPINS COMPLETED plays the family's 3.0 s sting on every title; FEATURE COMPLETED plays a title's own: Autumn Moon's 3.0 s, Genghis Khan's own 2.2 s, Golden Gong's own 2.0 s, the same 2.0 s on Happy & Prosperous and Peace & Long Life, none on Panda Magic and Spring Festival, and Genghis Khan's 2.2 s on Golden Century."
+value = "per title (see statement)"
+confidence = "verified"
+source = "gameplay_recording"
+citation = "Public recordings with sound (42 club recordings, each hit tied to the screen; the clips matched by cross-correlation with the other titles' clips as controls)"
+accessed = "2026-10-20"
+scope = "cabinet-au, Queensland clubs"
+note = "None on Panda Magic and Spring Festival, and Golden Century's, are STRONG (Golden Century one recording, tg4nMylHxhI; the official app plays its own 3.0 s). Side-by-side audit of 2026-10-20: found by one reader, then re-measured by a second (refute-first, other moments and recordings); private notes in the source root, research/side-audit-2026-10-20/."
+
+[[claim]]
+id = "sound.reveal-silent"
+statement = "The free games' doors and moon gates open without SND_EndMask on club cabinets."
+value = "no SND_EndMask"
+confidence = "strong_evidence"
+source = "gameplay_recording"
+citation = "Public recordings with sound: Autumn Moon (19 openings on two recordings); Golden Century tg4nMylHxhI (5 of 5)"
+accessed = "2026-10-20"
+scope = "cabinet-au, Queensland clubs"
+note = "A faint sting is heard instead (the opening of Golden Gong's 2.0 s on Autumn Moon; PARTIAL); which clip is not settled, so the app stays silent. Conflicts with the official app (SND_EndMask). Side-by-side audit of 2026-10-20: found by one reader, then re-measured by a second (refute-first, other moments and recordings); private notes in the source root, research/side-audit-2026-10-20/."
+
+[[claim]]
+id = "free-games.first-game"
+statement = "The first free game's reels stop later than a later free game's: Golden Century 1.79 s, Spring Festival 2.60 s."
+value = "Golden Century +1.79 s, Spring Festival +2.60 s"
+confidence = "verified"
+source = "gameplay_recording"
+citation = "Public recordings, YouTube ids and times: Golden Century 1bAevGz0K2k 329.10 and y8c8lEdPW8Y 950.33 (reels resting +2.73 / +3.63 / +4.53 s against +0.94 s); Spring Festival WKjdoixnVjg 261.1, ersE_-A41V8 426.5, WKjdoixnVjg 67.9"
+accessed = "2026-10-20"
+scope = "cabinet-au, Queensland clubs"
+note = "The other titles take Golden Century's value (HYPOTHESIS: not measured). Side-by-side audit of 2026-10-20: found by one reader, then re-measured by a second (refute-first, other moments and recordings); private notes in the source root, research/side-audit-2026-10-20/."

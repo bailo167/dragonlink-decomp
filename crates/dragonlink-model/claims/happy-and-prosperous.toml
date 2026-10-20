@@ -211,3 +211,40 @@ citation = "https://play.google.com/store/apps/details?id=com.productmadness.faf
 accessed = "2026-10-13"
 scope = "mobile"
 note = "From the store listing, read once; not checked in the app."
+
+# ---------------------------------------------------------------------------
+# Side-by-side audit against the title's own club footage (2026-10-20)
+# ---------------------------------------------------------------------------
+
+[[claim]]
+id = "presentation.layered-wild"
+statement = "A winning Buddha keeps its red lotus tile, with gold coins falling over it, under the moving figure; runs of Buddhas animate cell by cell (the title has no tall wild art)."
+value = "tile and coins under the figure"
+confidence = "strong_evidence"
+source = "gameplay_recording"
+citation = "Public recordings, YouTube ids and times: WKjdoixnVjg 606-633, DWBTkIVcHNM 765-772"
+accessed = "2026-10-20"
+scope = "cabinet-au, Queensland clubs"
+note = "Side-by-side audit of 2026-10-20: found by one reader, then re-measured by a second (refute-first, other moments and recordings); private notes in the source root, research/side-audit-2026-10-20/."
+
+[[claim]]
+id = "presentation.free-reel-runs"
+statement = "The free games' reels show runs of two or three of one picture on most reels."
+value = "picture runs of 2-3"
+confidence = "strong_evidence"
+source = "gameplay_recording"
+citation = "Public recordings, YouTube ids: WKjdoixnVjg, DWBTkIVcHNM, uXp_uWK4OH8"
+accessed = "2026-10-20"
+scope = "cabinet-au, Queensland clubs"
+note = "The look only: the strips themselves are unknown; ours are synthetic. Side-by-side audit of 2026-10-20: found by one reader, then re-measured by a second (refute-first, other moments and recordings); private notes in the source root, research/side-audit-2026-10-20/."
+
+[[claim]]
+id = "sound.feature-end"
+statement = "FEATURE COMPLETED plays a 2.0 s sting (the clip Golden Gong's pack calls SND_Fea_End; Happy & Prosperous's pack has none)."
+value = "2.0 s sting"
+confidence = "verified"
+source = "gameplay_recording"
+citation = "Public recordings with sound: three Happy & Prosperous recordings"
+accessed = "2026-10-20"
+scope = "cabinet-au, Queensland clubs"
+note = "Side-by-side audit of 2026-10-20: found by one reader, then re-measured by a second (refute-first, other moments and recordings); private notes in the source root, research/side-audit-2026-10-20/."

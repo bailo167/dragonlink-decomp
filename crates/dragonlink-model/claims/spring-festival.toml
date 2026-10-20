@@ -74,3 +74,51 @@ source = "gameplay_recording"
 citation = "Public recording EO7Q6xvcJMA about 28:30 (NSW hotel)"
 accessed = "2026-10-19"
 scope = "cabinet-au"
+
+# ---------------------------------------------------------------------------
+# Side-by-side audit against the title's own club footage (2026-10-20)
+# ---------------------------------------------------------------------------
+
+[[claim]]
+id = "free-games.big-reel-spin"
+statement = "The BIG reel spins as one reel over reels 2-4, scrolling whole BIG pictures one window apart (about 4.6 a second) and landing with the small reels' overshoot and slide; the first free game scrolls the base window's middle columns out below the first BIG picture."
+value = "one reel of BIG pictures"
+confidence = "verified"
+source = "gameplay_recording"
+citation = "Public recordings, YouTube ids: WKjdoixnVjg, ersE_-A41V8, EO7Q6xvcJMA (12 spins; two mosaics of the moving BIG window)"
+accessed = "2026-10-20"
+scope = "cabinet-au (Queensland clubs, one NSW hotel)"
+note = "Side-by-side audit of 2026-10-20: found by one reader, then re-measured by a second (refute-first, other moments and recordings); private notes in the source root, research/side-audit-2026-10-20/."
+
+[[claim]]
+id = "free-games.big-pace"
+statement = "A BIG free game spins at about 0.69 of the base game's speed; reel 1 rests about 1.27 s after the start, the BIG reel 3.14 s, reel 5 3.84 s; a BIG wild holds reel 5 about a second longer, to SND_WindUp."
+value = "rests +1.27 / +3.14 / +3.84 s"
+confidence = "verified"
+source = "gameplay_recording"
+citation = "Public recordings, YouTube ids: WKjdoixnVjg, ersE_-A41V8, EO7Q6xvcJMA (12 timed spins); SND_WindUp six hits on three recordings"
+accessed = "2026-10-20"
+scope = "cabinet-au (Queensland clubs, one NSW hotel)"
+note = "The wild's longer hold STRONG (three cases). Side-by-side audit of 2026-10-20: found by one reader, then re-measured by a second (refute-first, other moments and recordings); private notes in the source root, research/side-audit-2026-10-20/."
+
+[[claim]]
+id = "hold-and-spin.big-coin"
+statement = "A BIG coin's Hold & Spin shows one burst and one flame ring sized to it, its prize in the coins' digits about 3.3 times a single coin's height, on the free games' board with no lines behind it."
+value = "one burst, one ring, BIG digits"
+confidence = "verified"
+source = "gameplay_recording"
+citation = "Public recordings, YouTube ids and times: WKjdoixnVjg 277.5-282, 312.0, 128.0"
+accessed = "2026-10-20"
+scope = "cabinet-au, Queensland clubs"
+note = "Side-by-side audit of 2026-10-20: found by one reader, then re-measured by a second (refute-first, other moments and recordings); private notes in the source root, research/side-audit-2026-10-20/."
+
+[[claim]]
+id = "presentation.chooser-keys"
+statement = "The GAMES MENU's cent keys and YES / NO are cyan-blue, the $1 key yellow, the header gold."
+value = "cyan-blue cents"
+confidence = "verified"
+source = "gameplay_recording"
+citation = "Public recordings, YouTube ids and times: WKjdoixnVjg 0.5, 236, 238, 471; ersE_-A41V8 0, 6, 387"
+accessed = "2026-10-20"
+scope = "cabinet-au, Queensland clubs"
+note = "Shade PARTIAL. Side-by-side audit of 2026-10-20: found by one reader, then re-measured by a second (refute-first, other moments and recordings); private notes in the source root, research/side-audit-2026-10-20/."
