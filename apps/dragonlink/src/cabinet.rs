@@ -6987,6 +6987,18 @@ pub struct FeatureShow {
 }
 
 impl FeatureShow {
+    /// A copy of the state the status line reads, for tests.
+    #[cfg(test)]
+    fn clone_for_test(&self) -> FeatureShow {
+        FeatureShow {
+            stage: self.stage,
+            games_won: self.games_won,
+            retrigger: self.retrigger,
+            scatter_clip: self.scatter_clip,
+            ..FeatureShow::default()
+        }
+    }
+
     /// Follow an event as it is presented.
     pub fn on_event(&mut self, event: &Event) {
         match event {
@@ -17208,5 +17220,168 @@ mod tests {
         world.resource_mut::<GambleShow>().active = false;
         world.run_system_once(wild_talls).unwrap();
         assert_eq!(world.get::<Visibility>(tall), Some(&Visibility::Inherited));
+    }
+
+    /// The scatters wave for the title's own SND_Scatter and 0.12 s (club
+    /// cabinets: Genghis Khan 6.20-6.25 s against its 6.11 s clip); Golden
+    /// Century's 4.87 s without a pack.
+    #[test]
+    fn the_wave_lasts_the_titles_scatter_clip() {
+        let mut show = FeatureShow::default();
+        assert!((show.wave_seconds() - 4.87).abs() < 1e-4);
+        show.scatter_clip = 6.11;
+        assert!((show.wave_seconds() - 6.23).abs() < 1e-4);
+        show.scatter_clip = 3.715;
+        assert!(
+            (show.wave_seconds() - 3.835).abs() < 1e-4,
+            "Panda Magic 3.83 s"
+        );
+    }
+
+    /// A retrigger plays the trigger again inside the free games: "N FREE
+    /// GAMES WON!" from the result, the free game on its old total, 2.0 s
+    /// slots from the wave, the banner counting from the old total, the new
+    /// total one step after the last, and nothing more until two steps
+    /// after it (club cabinets, four titles).
+    #[test]
+    fn a_retrigger_counts_the_banner_up_from_the_old_total() {
+        let mut show = FeatureShow::default();
+        show.on_event(&Event::FreeGameStarted {
+            number: 3,
+            remaining: 3,
+        });
+        show.fg_count = None;
+        assert!(show.begin_retrigger(3, 6, 100));
+        assert!(!show.begin_retrigger(3, 6, 100), "once");
+        assert_eq!(show.retrigger, Some((6, 9)));
+        let caption = |show: &FeatureShow, t: f32| {
+            let mut s = FeatureShow {
+                fg_trigger: Some(t),
+                ..show.clone_for_test()
+            };
+            s.stage = show.stage;
+            s.caption()
+        };
+        assert_eq!(caption(&show, 0.5).as_deref(), Some("3 FREE GAMES WON!"));
+        assert_eq!(caption(&show, 3.0).as_deref(), Some("Free Game 3 of 6"));
+        assert_eq!(
+            caption(&show, FG_FLAGS + 2.5).as_deref(),
+            Some("3 FREE GAMES WON!")
+        );
+        assert_eq!(
+            caption(&show, FG_FLAGS + 4.5).as_deref(),
+            Some("Free Game 3 of 6")
+        );
+        show.fg_trigger = Some(0.5);
+        assert!(show.blocks());
+        let end = show.retrigger_ends_at().unwrap();
+        assert!((end - (show.fg_count_at() + 4.0 * FG_TICK)).abs() < 1e-4);
+        show.fg_trigger = Some(end + 0.01);
+        assert!(!show.blocks());
+        show.stage = Stage::FreeGames {
+            number: 3,
+            total: 9,
+        };
+        assert_eq!(show.caption().as_deref(), Some("Free Game 3 of 9"));
+        // The next free game ends the sequence.
+        show.on_event(&Event::FreeGameStarted {
+            number: 4,
+            remaining: 5,
+        });
+        assert_eq!(show.retrigger, None);
+        assert_eq!(show.fg_trigger, None);
+    }
+
+    /// A win through a wild shows its lines at once and holds only WIN's
+    /// count, for the title's wild clip and 0.2 s (club cabinets: Panda
+    /// Magic 3.33-3.43 s against its 3.19 s clip).
+    #[test]
+    fn a_wild_win_holds_only_the_count_for_its_clip() {
+        let mut show = FeatureShow {
+            wild_clip: 3.19,
+            ..FeatureShow::default()
+        };
+        show.begin_wild(false);
+        assert!(show.wild_sounded());
+        show.wild = Some(3.3);
+        assert!(show.wild_holds());
+        assert!(!show.blocks(), "the lines go on");
+        show.wild = Some(3.4);
+        assert!(!show.wild_holds());
+        // A free game's x2 wild with no sound of its own holds nothing.
+        let mut x2 = FeatureShow::default();
+        x2.begin_wild(true);
+        x2.wild = Some(0.01);
+        assert!(!x2.wild_holds());
+    }
+
+    /// After an expansion the lines wait for rest + 1.5 s and the count for
+    /// the expansion's sound + 0.25 s; the expansion is the game's wild
+    /// sound (Golden Gong club cabinets).
+    #[test]
+    fn an_expansion_holds_the_lines_then_the_count() {
+        let mut show = FeatureShow {
+            expand_clip: 2.3,
+            ..FeatureShow::default()
+        };
+        show.begin_expansion(true);
+        assert!(show.wild_sounded());
+        assert_eq!(show.cues, vec!["SND_Wild"]);
+        let line = Event::LineWin {
+            line: 0,
+            symbol: "monk".into(),
+            count: 3,
+            award: 10,
+        };
+        let credit = Event::CreditsChanged {
+            from: 0,
+            to: 10,
+            reason: CreditReason::Win,
+        };
+        show.expand = Some(1.0);
+        assert!(show.expansion_holds(Some(&line)));
+        show.expand = Some(1.6);
+        assert!(!show.expansion_holds(Some(&line)));
+        assert!(show.expansion_holds(Some(&credit)));
+        show.expand = Some(2.6);
+        assert!(!show.expansion_holds(Some(&credit)));
+        // A second filled reel adds no second sound.
+        show.begin_expansion(false);
+        assert_eq!(show.cues, vec!["SND_Wild"]);
+    }
+
+    /// Only a stack on a winning line stands; one on no winning run stays
+    /// as heads (Genghis Khan club cabinet; Golden Century's rule).
+    #[test]
+    fn only_stacks_on_a_winning_line_stand() {
+        let paylines = vec![
+            dragonlink_model::Payline(vec![1, 1, 1, 1, 1]),
+            dragonlink_model::Payline(vec![0, 0, 0, 0, 0]),
+        ];
+        let mut stacks = WildStacks {
+            landed: vec![(1, 0, 2), (3, 0, 3)],
+            ..WildStacks::default()
+        };
+        assert_eq!(
+            stacks.on_lines(&paylines, [(0u16, 3u8)].into_iter()),
+            Some(2)
+        );
+        stacks.stand(&paylines, [(0u16, 3u8)].into_iter(), 1.0);
+        assert_eq!(stacks.list, vec![(1, 0, 2, 1.0)]);
+    }
+
+    /// A BIG free game's stops fall on the cabinets' beat: reel 1, the BIG
+    /// reel and reel 5 deepest at +0.93, +2.82 and +3.55 s.
+    #[test]
+    fn a_big_free_game_stops_on_the_cabinets_beat() {
+        let (a, b, c) = big_free_delays();
+        assert!((a + RUN_ON_FREE - 0.93).abs() < 1e-4);
+        assert!((a + b + RUN_ON_BIG - 2.82).abs() < 1e-4);
+        assert!((a + b + c + RUN_ON_FREE - 3.55).abs() < 1e-4);
+        // The BIG coin stands on its window's foot.
+        let (dx, dy, w, h) = big_box("orb", 972.0, 699.0);
+        assert!((w - 0.87 * 972.0).abs() < 1e-3 && (dy + h - 699.0).abs() < 1e-3);
+        assert!((dx * 2.0 + w - 972.0).abs() < 1e-3);
+        assert_eq!(big_box("drum", 972.0, 699.0), (0.0, 0.0, 972.0, 699.0));
     }
 }

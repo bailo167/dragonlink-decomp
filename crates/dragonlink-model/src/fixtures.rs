@@ -969,14 +969,14 @@ fn family_pays(pictures: [&str; 4]) -> [(&str, [u32; 4]); 9] {
 }
 
 /// Identifier of [`happy_prosperous_synthetic`], written into trace headers.
-pub const HAPPY_PROSPEROUS_SYNTHETIC_ID: &str = "happy-prosperous-synthetic-2";
+pub const HAPPY_PROSPEROUS_SYNTHETIC_ID: &str = "happy-prosperous-synthetic-3";
 
 /// A **synthetic** Happy & Prosperous configuration (see
 /// [`golden_century_royal_free`]): the bell, jade bangle, coins and lotus as
 /// the pictures, the laughing Buddha as the wild (reels 2 to 5, one cell),
 /// the pot of gold as the scatter.
 pub fn happy_prosperous_synthetic() -> MathModel {
-    golden_century_royal_free(
+    let mut model = golden_century_royal_free(
         HAPPY_PROSPEROUS_SYNTHETIC_ID,
         "SYNTHETIC Happy & Prosperous: Golden Century's synthetic model in Happy & Prosperous's \
          symbols, without the mystery reveal, with royal-free free games (three more on a \
@@ -991,7 +991,37 @@ pub fn happy_prosperous_synthetic() -> MathModel {
             ("pennant", "pot"),
         ],
         family_pays(["bell", "jade", "coins", "lotus"]),
-    )
+    );
+    // Club cabinets' free reels show runs of two or three of one picture on
+    // most reels (WKjdoixnVjg, DWBTkIVcHNM, uXp_uWK4OH8; STRONG for the
+    // look): the same make-up dealt in runs. Synthetic; each reel's symbol
+    // counts, and so the line pays' return, are unchanged.
+    let id = |key: &str| id_of(&model, key).0;
+    let (bell, jade, coins, lotus) = (id("bell"), id("jade"), id("coins"), id("lotus"));
+    let (buddha, pot, orb) = (id("buddha"), id("pot"), id("orb"));
+    let strips: Vec<Vec<SymbolId>> = (0..5u8)
+        .map(|reel| {
+            let mut parts = vec![
+                (bell, 3),
+                (orb, 2),
+                (jade, 2),
+                (coins, 3),
+                (lotus, 3),
+                (pot, 1),
+                (jade, 2),
+                (coins, 2),
+                (lotus, 3),
+            ];
+            if reel > 0 {
+                parts.push((buddha, 3));
+            }
+            spread(&parts, &[bell, jade, coins, lotus, orb, buddha, pot])
+        })
+        .collect();
+    if let Some(fg) = model.free_games.as_mut() {
+        fg.free_reel_strips = strips;
+    }
+    model
 }
 
 /// Identifier of [`panda_magic_synthetic`], written into trace headers.
