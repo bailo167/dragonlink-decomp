@@ -17342,6 +17342,14 @@ mod tests {
             (show.wave_seconds() - 3.835).abs() < 1e-4,
             "Panda Magic 3.83 s"
         );
+        // The held win is let go an event interval early, so its count
+        // starts at the wave's end and not an interval later.
+        assert!(show.begin_free_games_trigger(6, 100));
+        let count = show.fg_count_at();
+        show.fg_trigger = Some(count - TIMING.event_interval - 0.001);
+        assert!(show.blocks());
+        show.fg_trigger = Some(count - TIMING.event_interval + 0.001);
+        assert!(!show.blocks());
     }
 
     /// A retrigger plays the trigger again inside the free games: "N FREE
