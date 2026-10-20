@@ -23,7 +23,8 @@ club footage frame by frame and on muted captures (labels in the titles' claim f
   as filmed; the latter is not followed.
 - **Golden Gong's monk.** A monk landing in the free games grows from the row it landed on with the
   scene's own expansion video, the win version going on into the burning tall monk's loop, the
-  no-win version holding the plain standing monk (VERIFIED, scene); the reel's other symbols stay
+  no-win version holding the plain standing monk (VERIFIED, scene; the cabinet's monks stand plain
+  without a win and burning in one, DWBTkIVcHNM); the reel's other symbols stay
   until the growing panel covers them; every monk of a game grows together, 0.35 s after the reels
   settle (DWBTkIVcHNM, two games; VERIFIED, one machine); the standing monk scrolls away whole as
   its reel spins again. The win waits for the expansion; no wild sound or stack follows it

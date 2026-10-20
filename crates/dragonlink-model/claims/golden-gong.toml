@@ -77,10 +77,10 @@ scope = "mobile"
 
 [[claim]]
 id = "free-games.expansion-timing"
-statement = "On a club machine every monk of a free game grows together, beginning 0.33 to 0.37 s after the last reel has settled, the growth lasting 0.33 s."
-value = "together; growth at rest + 0.35 s"
+statement = "On a club machine every monk of a free game grows together, beginning 0.33 to 0.37 s after the last reel has settled, the growth lasting 0.33 s; in a game without a win the monks then stand on the plain blue panel, in a winning game on the dark panel with burning gold characters."
+value = "together; growth at rest + 0.35 s; plain without a win, burning in a win"
 confidence = "verified"
 source = "gameplay_recording"
-citation = "Public recording DWBTkIVcHNM 92.70-93.37 s and 100.83-101.53 s, motion per reel measured frame by frame at 30 fps"
+citation = "Public recording DWBTkIVcHNM 92.70-93.37 s and 100.83-101.53 s, motion per reel measured frame by frame at 30 fps; 94.2 s (no win) and 102.6 s (a win)"
 accessed = "2026-10-20"
 scope = "cabinet-au, Queensland club, one session on one machine"
