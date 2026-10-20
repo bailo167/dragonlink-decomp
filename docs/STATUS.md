@@ -29,6 +29,29 @@ club footage frame by frame and on muted captures (labels in the titles' claim f
   its reel spins again. The win waits for the expansion; no wild sound or stack follows it
   (HYPOTHESIS).
 
+## Markets as data (2026-10-20)
+
+- **Markets.** The cabinet's market values are a table (`Market` in `apps/dragonlink/src/cabinet.rs`),
+  chosen by `DRAGONLINK_MARKET`: `qld-club` (the default; 1c-$1), `nsw-club` (with $2, which the
+  manufacturer lists for NSW and the ACT only) and `star` (The Star, Sydney: 5c 10c 25c 50c $1 $2,
+  "Bet Multiplier", 50 fixed lines; `DRAGONLINK_PRESENTATION=casino` still selects it). Each row
+  holds the denominations, every denomination's line configuration and deck keys, the
+  presentation and the gamble's limits; nothing asks which denomination it is. A machine starts at
+  its market's first denomination. The casino style used to play the probably US session's 1c-$2
+  with 50/25/5 lines; the $2 club deck now offers one credit a line, as Dragon Cash's does.
+- **Gamble limits.** The engine takes the gambles allowed in a row as configuration
+  (`GameConfig`); the app takes the money limit from the market and writes it in the system
+  messages. A limit that ends a won gamble keeps the win and shows "Gamble Completed - Gamble Limit
+  Reached" (the platform's wording, never filmed: HYPOTHESIS), checked on a muted capture of a
+  build allowing one gamble.
+- **The chooser's PLAY cycle.** Already shown on every chooser since the attract work; it now
+  steps through the market's denominations (checked on muted captures, The Star's six wrapping),
+  and the Minor and Mini stand clear of the plaque (it covered a Minor of $1,250.00 or more). The
+  brief's "about 3.5 s" a step was an early lower bound; the measured 4.0 s stays (conflict 15).
+- **Open.** The casino's own Mini and Minor are not modelled, so at The Star's largest bets the
+  synthetic return measured about 85% against 88-90% elsewhere; whether the club system message is
+  a market's is in conflict on NSW footage.
+
 ## Overnight report (2026-10-18 to 19, autonomous, owner-approved plan)
 
 The owner approved one plan for the night: Golden Century to our best-effort 100%, a machine

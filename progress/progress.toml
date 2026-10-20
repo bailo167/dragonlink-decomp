@@ -444,7 +444,7 @@ note = "Test instruments of ours. Models nothing about the original generator, w
 id = "state-machine"
 name = "State machine"
 status = "partial"
-note = "Idle, free-games and Hold & Spin phases and the gamble, with transactional commands; no attract or idle states."
+note = "Idle, free-games and Hold & Spin phases and the gamble, with transactional commands; the gambles allowed in a row are the machine's configuration passed in (GameConfig; five by default, the national standard's most), the engine saying when they are used up. No attract or idle states."
 
 [[category.item]]
 id = "credits"
@@ -457,7 +457,7 @@ id = "bet-selection"
 name = "Bet selection"
 status = "implemented"
 evidence = "crates/dragonlink-core/src/game.rs (SetBet/SetLines/SetStake tests); crates/dragonlink-model/src/fixtures.rs"
-note = "Credits per line and line counts (SetBet, SetLines, SetStake). The cabinet build holds the presentation as data: club (default) with credits keys that select and lines keys that set the lines and play, per-denomination ladders from footage; casino with fixed lines and bet keys that play (docs/reverse-engineering/GOLDEN_CENTURY_CABINET_DECK.md). The credits row at 5c and 10c is not legible on footage."
+note = "Credits per line and line counts (SetBet, SetLines, SetStake). The cabinet build holds each market as a row of data (Market): the Queensland clubs (default) and the NSW and ACT clubs with credits keys that select and lines keys that set the lines and play, per-denomination keys from footage; The Star's casino style with 50 fixed lines and bet keys that play; each market's gamble limits (docs/reverse-engineering/GOLDEN_CENTURY_CABINET_DECK.md, Markets). The credits row at 5c and 10c is not legible on footage."
 
 [[category.item]]
 id = "spin-lifecycle"
@@ -541,7 +541,7 @@ id = "ui"
 name = "UI"
 status = "implemented"
 evidence = "apps/dragonlink/src/cabinet.rs (spawn_meter_band, spawn_deck, gamble screen); apps/dragonlink/src/main.rs (menu_setup)"
-note = "The cabinet screen with the jackpot bar, CREDIT/BET/WIN meters (the club's dollars and credits alternation in PLAY ON, the gamble and after a denomination choice), the club's system messages (gamble notice, win limit, cash-in notice, a stand-in greeting), N LINES boxes, the GAMES MENU denomination chooser laid out as club footage measures it and the gamble screen (nothing of the base screen over it, the club's COLLECT and GAMES MENU kept); the Australian club deck as filmed (GAMBLE over TAKE WIN, credits and lines keys, all lit, the selected lines key light blue; the teardrop pointing up, dark but for START FEATURE, with PLAY/REPEAT BET/START FEATURE/SPIN; GOOD LUCK wiping in and out on every spin and respin, CHOOSE; the 1 Hz flash; the gamble's lattice keys and lattice teardrop), or the casino style; a four-title launcher. Not compared side by side throughout (docs/reverse-engineering/GOLDEN_CENTURY_CABINET_DECK.md)."
+note = "The cabinet screen with the jackpot bar, CREDIT/BET/WIN meters (the club's dollars and credits alternation in PLAY ON, the gamble and after a denomination choice), the club's system messages (gamble notice, win limit, cash-in notice, a stand-in greeting), N LINES boxes, the GAMES MENU denomination chooser laid out as club footage measures it and the gamble screen (nothing of the base screen over it, the club's COLLECT and GAMES MENU kept); the Australian club deck as filmed (GAMBLE over TAKE WIN, credits and lines keys, all lit, the selected lines key light blue; the teardrop pointing up, dark but for START FEATURE, with PLAY/REPEAT BET/START FEATURE/SPIN; GOOD LUCK wiping in and out on every spin and respin, CHOOSE; the 1 Hz flash; the gamble's lattice keys and lattice teardrop), or the casino style, each market's own (DRAGONLINK_MARKET); the gamble's endings including the limit's; a four-title launcher. Not compared side by side throughout (docs/reverse-engineering/GOLDEN_CENTURY_CABINET_DECK.md)."
 
 [[category.item]]
 id = "input"
@@ -593,7 +593,7 @@ note = "Sixteen pay-table entries read from win messages in one transcribed Aust
 id = "bets"
 name = "Denominations and bet options"
 status = "partial"
-note = "Two presentations read from footage: Australian club machines (1c-$1 on a chooser asking ARE YOU SURE?, credits keys that select and lines keys that play, ladders per denomination) and a casino style (Bet Multiplier, fixed lines, bet keys that play) seen at The Star and, mostly, on a US machine. The credits row at 5c and 10c and any Australian casino deck are not legible (docs/reverse-engineering/GOLDEN_CENTURY_CABINET_DECK.md)."
+note = "Two presentations read from footage: Australian club machines (a chooser asking ARE YOU SURE?, credits keys that select and lines keys that play, ladders per denomination) and a casino style (Bet Multiplier, fixed lines, bet keys that play) seen at The Star and, mostly, on a US machine. By market: Queensland clubs 1c-$1, NSW and ACT clubs with $2 (the manufacturer's listing and footage), The Star 5c 10c 25c 50c $1 $2 with 50 fixed lines (VERIFIED denominations; 50 lines STRONG at three of them); the app holds these as a table. The credits row at 5c and 10c, any Australian casino deck and Dragon Link's own gamble count are not legible (docs/reverse-engineering/GOLDEN_CENTURY_CABINET_DECK.md)."
 
 [[category.item]]
 id = "reel-strips"
@@ -643,7 +643,7 @@ id = "attract"
 name = "Attract / idle mode"
 status = "implemented"
 evidence = "apps/dragonlink/src/cabinet.rs (attract_timer, attract_bar, tests); docs/reverse-engineering/GOLDEN_CENTURY_CABINET_DECK.md (Attract and idle)"
-note = "At zero credit the GAMES MENU opens after 30 s idle (HYPOTHESIS: the framework default); its top-screen PLAY plaque steps through the denominations with their Minor and Mini as club footage shows (VERIFIED timing), fire round the boxes. Not compared side by side throughout."
+note = "At zero credit the GAMES MENU opens after 30 s idle (HYPOTHESIS: the framework default); on every chooser, attract's or a GAMES MENU touch's, its top-screen PLAY plaque steps through the market's denominations with their Minor and Mini as club footage shows (VERIFIED timing; the casino market's HYPOTHESIS), the values clear of the plaque, fire round the boxes. Not compared side by side throughout."
 
 [[category.item]]
 id = "imported-assets"

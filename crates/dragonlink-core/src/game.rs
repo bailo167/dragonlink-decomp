@@ -110,10 +110,22 @@ impl GamblePick {
     }
 }
 
-/// Gambles allowed in a row on one win: five, the most the Australian and
-/// New Zealand Gaming Machine National Standard allows. Dragon Link's own
-/// figure is not shown in any source found.
-pub const GAMBLE_LIMIT: u8 = 5;
+/// What the machine's configuration sets for play beyond the math model,
+/// passed in by whoever runs the game (a cabinet's market, a test).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GameConfig {
+    /// Gambles allowed in a row on one win; 0 offers no gamble.
+    pub gamble_limit: u8,
+}
+
+impl Default for GameConfig {
+    /// Five gambles in a row, the most the Australian and New Zealand Gaming
+    /// Machine National Standard allows. Dragon Link's own figure is not
+    /// shown in any source found.
+    fn default() -> GameConfig {
+        GameConfig { gamble_limit: 5 }
+    }
+}
 
 /// Why a command was refused. The state is unchanged.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
@@ -245,6 +257,7 @@ fn one_unit() -> u32 {
 pub struct Game {
     model: MathModel,
     state: GameState,
+    config: GameConfig,
 }
 
 fn add(a: u64, b: u64) -> Result<u64, GameError> {
@@ -393,11 +406,14 @@ fn jackpot_award(
 }
 
 impl Game {
-    /// A new game under `model` with `credits` play credits, idle, on the first bet option.
+    /// A new game under `model` with `credits` play credits, idle, on the
+    /// first bet option, under the default [`GameConfig`] (see
+    /// [`Game::with_config`]).
     pub fn new(model: MathModel, credits: u64) -> Result<Game, GameError> {
         model.validate()?;
         Ok(Game {
             model,
+            config: GameConfig::default(),
             state: GameState {
                 credits,
                 bet_index: 0,
@@ -448,7 +464,20 @@ impl Game {
                 "saved free games under a model without them",
             ));
         }
-        Ok(Game { model, state })
+        Ok(Game {
+            model,
+            state,
+            config: GameConfig::default(),
+        })
+    }
+
+    /// The same game under the machine's configuration `config`.
+    pub fn with_config(self, config: GameConfig) -> Game {
+        Game { config, ..self }
+    }
+
+    pub fn config(&self) -> GameConfig {
+        self.config
     }
 
     pub fn model(&self) -> &MathModel {
@@ -518,8 +547,8 @@ impl Game {
             }
             Command::Spin => self.spin(&mut next, rng, &mut events)?,
             Command::Advance => self.advance(&mut next, rng, &mut events)?,
-            Command::Gamble { pick } => Self::gamble(&mut next, pick, false, rng, &mut events)?,
-            Command::HalfGamble { pick } => Self::gamble(&mut next, pick, true, rng, &mut events)?,
+            Command::Gamble { pick } => self.gamble(&mut next, pick, false, rng, &mut events)?,
+            Command::HalfGamble { pick } => self.gamble(&mut next, pick, true, rng, &mut events)?,
             Command::TakeWin => {
                 if next.gamble_stake > 0 {
                     events.push(Event::WinTaken {
@@ -560,10 +589,19 @@ impl Game {
 
     /// Whether the last win can be gambled now.
     pub fn can_gamble(&self) -> bool {
-        self.is_idle() && self.state.gamble_stake > 0 && self.state.gambles < GAMBLE_LIMIT
+        self.is_idle()
+            && self.state.gamble_stake > 0
+            && self.state.gambles < self.config.gamble_limit
+    }
+
+    /// Whether the gambles allowed in a row on this win are used up: the
+    /// last one won and no more may follow.
+    pub fn gamble_limit_reached(&self) -> bool {
+        self.state.gamble_stake > 0 && self.state.gambles >= self.config.gamble_limit
     }
 
     fn gamble(
+        &self,
         next: &mut GameState,
         pick: GamblePick,
         half: bool,
@@ -579,7 +617,7 @@ impl Game {
         } else {
             next.gamble_stake
         };
-        if stake == 0 || next.gambles >= GAMBLE_LIMIT {
+        if stake == 0 || next.gambles >= self.config.gamble_limit {
             return Err(GameError::NothingToGamble);
         }
         let card = rng.below(52)? as u8;
@@ -612,10 +650,9 @@ impl Game {
         });
         next.credits = credits;
         next.gambles += 1;
+        // A loss leaves nothing; a win stays at stake, to be gambled again
+        // until the limit or taken.
         next.gamble_stake = to;
-        if !won || next.gambles >= GAMBLE_LIMIT {
-            next.gamble_stake = if won { to } else { 0 };
-        }
         Ok(())
     }
 
@@ -2730,8 +2767,10 @@ mod tests {
     #[test]
     fn the_gamble_stops_at_its_limit_and_take_win_keeps_the_win() {
         let mut game = Game::new(synthetic_dev_fixture(), 1000).unwrap();
+        assert_eq!(game.config().gamble_limit, 5);
         game.state.gamble_stake = 1;
-        for _ in 0..GAMBLE_LIMIT {
+        for _ in 0..game.config().gamble_limit {
+            assert!(!game.gamble_limit_reached());
             let mut rng = ScriptedRng::new(vec![d(52, 0)]);
             game.apply(
                 Command::Gamble {
@@ -2742,10 +2781,68 @@ mod tests {
             .unwrap();
         }
         assert!(!game.can_gamble());
+        assert!(game.gamble_limit_reached());
+        assert_eq!(game.state().gamble_stake, 32);
         let credits = game.credits();
         game.apply(Command::TakeWin, &mut ScriptedRng::new(vec![]))
             .unwrap();
         assert_eq!(game.credits(), credits);
         assert_eq!(game.state().gamble_stake, 0);
+    }
+
+    #[test]
+    fn the_gamble_limit_is_the_configurations() {
+        // Two in a row: the second win ends the gambling with the win kept.
+        let config = GameConfig { gamble_limit: 2 };
+        let mut game = Game::new(synthetic_dev_fixture(), 1000)
+            .unwrap()
+            .with_config(config);
+        assert_eq!(game.config(), config);
+        game.state.gamble_stake = 3;
+        for _ in 0..2 {
+            assert!(game.can_gamble());
+            let mut rng = ScriptedRng::new(vec![d(52, 0)]);
+            game.apply(
+                Command::Gamble {
+                    pick: GamblePick::Red,
+                },
+                &mut rng,
+            )
+            .unwrap();
+        }
+        assert!(!game.can_gamble());
+        assert!(game.gamble_limit_reached());
+        let before = game.clone();
+        let mut rng = ScriptedRng::new(vec![d(52, 0)]);
+        assert_eq!(
+            game.apply(
+                Command::Gamble {
+                    pick: GamblePick::Red
+                },
+                &mut rng
+            ),
+            Err(GameError::NothingToGamble)
+        );
+        assert_eq!(game, before);
+        // A loss is not the limit: nothing is left at stake.
+        let mut game = Game::new(synthetic_dev_fixture(), 1000)
+            .unwrap()
+            .with_config(GameConfig { gamble_limit: 1 });
+        game.state.gamble_stake = 3;
+        let mut rng = ScriptedRng::new(vec![d(52, 26)]);
+        game.apply(
+            Command::Gamble {
+                pick: GamblePick::Red,
+            },
+            &mut rng,
+        )
+        .unwrap();
+        assert!(!game.gamble_limit_reached());
+        // None at all: no gamble is offered.
+        let mut game = Game::new(synthetic_dev_fixture(), 1000)
+            .unwrap()
+            .with_config(GameConfig { gamble_limit: 0 });
+        game.state.gamble_stake = 3;
+        assert!(!game.can_gamble());
     }
 }
