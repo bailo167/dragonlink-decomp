@@ -12989,6 +12989,8 @@ pub const EXPAND_FULL: f32 = 14.0 / EXPAND_FPS;
 /// 0.25 s after the expansion's sound (rest + 2.45-2.60 s against the
 /// 2.3 s SND_ExpandWin; club cabinets, four events; STRONG / VERIFIED).
 pub const EXPAND_LINES_AFTER: f32 = 1.5;
+/// After an expansion the next free game spins no sooner than this.
+pub const EXPAND_NEXT_GAME: f32 = 2.4;
 pub const EXPAND_COUNT_LAG: f32 = 0.25;
 
 /// Seconds the win waits for a stack to stand: Golden Century's SND_Wild_N
@@ -13310,8 +13312,27 @@ pub fn big_line_boxes(
     }
 }
 
+/// The dark backing a landed BIG coin stands on (the pack's
+/// `mega_reel_background`, over the BIG window; club cabinets show flat
+/// dark round it, WKjdoixnVjg 277.5; VERIFIED).
+#[derive(Component)]
+pub struct BigBacking;
+
 /// The BIG symbol (hidden until one lands).
 pub fn spawn_big_art(c: &mut ChildSpawnerCommands) {
+    c.spawn((
+        BigBacking,
+        Node {
+            position_type: PositionType::Absolute,
+            ..default()
+        },
+        ImageNode {
+            image_mode: NodeImageMode::Stretch,
+            ..default()
+        },
+        GlobalZIndex(3),
+        Visibility::Hidden,
+    ));
     for reel in 0..5u8 {
         for row in 0..3u8 {
             let (cx, cy) = cell_center(reel, row);
@@ -13426,7 +13447,14 @@ pub fn big_art(
     sim: Res<Sim>,
     denom: Res<Denom>,
     labels: Query<(&CellLabel, &Text)>,
-    mut big: Query<(&mut Node, &mut ImageNode, &mut Visibility), (With<BigArt>, Without<BigValue>)>,
+    mut big: Query<
+        (&mut Node, &mut ImageNode, &mut Visibility),
+        (With<BigArt>, Without<BigValue>, Without<BigBacking>),
+    >,
+    mut backing: Query<
+        (&mut Node, &mut ImageNode, &mut Visibility),
+        (With<BigBacking>, Without<BigArt>, Without<BigValue>),
+    >,
     mut value: Query<(&BigValue, &mut Node, &mut ImageNode, &mut Visibility), Without<BigArt>>,
     gamble: Res<GambleShow>,
 ) {
@@ -13464,6 +13492,32 @@ pub fn big_art(
         };
         frame.or_else(|| art.symbols.get(&format!("big_{key}")).cloned())
     });
+    // A landed BIG coin's own dark backing over the whole BIG window.
+    let dark = shown
+        .filter(|(key, ..)| key == "orb")
+        .and_then(|_| art.ui.get("mega_reel_background"));
+    for (mut node, mut img, mut vis) in &mut backing {
+        match (shown, dark) {
+            (Some((_, first, width)), Some(handle)) => {
+                if img.image != *handle {
+                    img.image = handle.clone();
+                }
+                let (left, top) = cell_center(*first, 0);
+                node.left = Val::Px(left - PITCH.0 / 2.0);
+                node.top = Val::Px(top - PITCH.1 / 2.0);
+                node.width = Val::Px(f32::from(*width) * PITCH.0);
+                node.height = Val::Px(3.0 * PITCH.1);
+                if *vis != Visibility::Inherited {
+                    *vis = Visibility::Inherited;
+                }
+            }
+            _ => {
+                if *vis != Visibility::Hidden {
+                    *vis = Visibility::Hidden;
+                }
+            }
+        }
+    }
     for (mut node, mut img, mut vis) in &mut big {
         let (Some((key, first, width)), Some(handle)) = (shown, image.as_ref()) else {
             if *vis != Visibility::Hidden {
@@ -14411,6 +14465,11 @@ impl FeatureShow {
         match front {
             Some(Event::LineWin { .. }) => t < EXPAND_LINES_AFTER,
             Some(Event::CreditsChanged { .. }) => self.expand_won && t < clip + EXPAND_COUNT_LAG,
+            // The standing monk stays until the next free game spins at
+            // rest + 2.4-2.9 s (club cabinets, no-win expansions; STRONG).
+            Some(Event::FreeGameStarted { .. } | Event::FreeGamesCompleted { .. }) => {
+                t < EXPAND_NEXT_GAME
+            }
             _ => false,
         }
     }
@@ -17483,6 +17542,15 @@ mod tests {
         assert!(show.expansion_holds(Some(&credit)));
         show.expand = Some(2.6);
         assert!(!show.expansion_holds(Some(&credit)));
+        // The standing monk stays until the next free game, rest + 2.4 s.
+        let next = Event::FreeGameStarted {
+            number: 2,
+            remaining: 4,
+        };
+        show.expand = Some(2.3);
+        assert!(show.expansion_holds(Some(&next)));
+        show.expand = Some(2.41);
+        assert!(!show.expansion_holds(Some(&next)));
         // A second filled reel adds no second sound.
         show.begin_expansion(false);
         assert_eq!(show.cues, vec!["SND_Wild"]);

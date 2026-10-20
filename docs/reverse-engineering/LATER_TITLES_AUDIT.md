@@ -76,8 +76,8 @@ and model; the shared presentation names no title.
   the small reels' overshoot and slide, the first free game scrolling the base window's middle
   columns out (VERIFIED, 12 spins, two mosaics); the BIG free games' slower pace and stops
   (VERIFIED); SND_WindUp as a BIG wild lands, reel 5 held about a second (VERIFIED / STRONG); the
-  three-window panel; the BIG coin's size, burning rim, digits (3.3x), one ring, one burst and the
-  free games' board (VERIFIED); the BIG pictures' own animations; gold frames tracing the shown
+  three-window panel; the BIG coin's size, burning rim, digits (3.3x) and dark backing, one ring,
+  one burst and the free games' board (VERIFIED); passing BIG coins lettered (VERIFIED); the BIG pictures' own animations; gold frames tracing the shown
   line over a BIG symbol (VERIFIED; colours PARTIAL); cyan-blue keys; no FEATURE COMPLETED sting.
 
 ## Golden Century, changed by this pass
@@ -97,9 +97,12 @@ on Golden Century's own club footage or applied as the same framework's rule:
 ## Not done, or not known
 
 - Chooser splashes and logos: no title's pack holds the art (asset gap, not drawn).
-- Spring Festival: passing BIG coins carry no prize while they scroll (cabinet: they do,
-  VERIFIED); the first base spin after the feature scrolls nine small copies out where the cabinet
-  scrolls the BIG picture out whole.
+- Spring Festival: the first base spin after the feature scrolls nine small copies out where the
+  cabinet scrolls the BIG picture out whole; coins in the first free game's leaving block lose
+  their prizes as they scroll out; the line frames are about 6 canvas px against the cabinet's 8.5.
+- After a retrigger (Peace & Long Life, Spring Festival) the next free game starts about a second
+  later than the one filmed case of each; Golden Gong's "1 LINE" flash after a denomination change
+  is not drawn (no unattended run reaches it).
 - Peace & Long Life's thick key-pattern dividers (own art only); Genghis Khan's and Peace & Long
   Life's brush lettering (no face in the packs); Happy & Prosperous's still-wild draw order (low).
 - Golden Gong's and the later titles' base strips cannot land a full-reel stack (synthetic strips

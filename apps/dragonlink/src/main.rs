@@ -1249,6 +1249,8 @@ fn schedule_with(events: Vec<Event>, timing: &Timing) -> Vec<(f32, Event)> {
                 Event::ReelStopped { .. } => timing.reel_interval,
                 // Line wins are lit together, not one by one.
                 Event::OrbValueShown { .. } | Event::LineWin { .. } => 0.0,
+                // Every wild filling its reel grows at once (club cabinets).
+                Event::WildExpanded { .. } => 0.0,
                 // The free games' prompt comes with the scatter win's count
                 // (club cabinet); where a count or a feature must finish
                 // first, the presentation holds it.
