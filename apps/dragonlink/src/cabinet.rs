@@ -1616,16 +1616,23 @@ pub fn spawn(
             ));
 
             // Club: the "N LINES" panels either side, under the reel frame.
+            let look = crate::looks::title_look(&model.id);
             if profile == Profile::Club {
-                spawn_lines_panels(c, art);
+                spawn_lines_panels(c, art, &look);
             }
 
-            // The reel panel (with the lines tabs, where its art has them).
+            // The reel panel (with the lines tabs, where its art has them;
+            // a title's tab-free frame where it draws live tabs).
             let (gx, gy) = GRID_CENTER;
+            let panel = if art.ui.contains_key(look.reel_panel) {
+                look.reel_panel
+            } else {
+                "reel_background"
+            };
             c.spawn((
                 ReelPanel { fitted: false },
                 sprite(
-                    ui("reel_background"),
+                    ui(panel),
                     gx,
                     gy + 4.5 * PANEL_SCALE.1,
                     1240.0 * PANEL_SCALE.0,
@@ -1803,7 +1810,15 @@ pub fn spawn(
             // Through Hold & Spin, the collected-coin disc over the bar.
             spawn_hs_collected(c, art, fonts);
 
-            spawn_meter_band(c, fonts, art, gold, pale, profile);
+            spawn_meter_band(
+                c,
+                fonts,
+                art,
+                gold,
+                pale,
+                profile,
+                &crate::looks::title_look(&model.id),
+            );
 
             spawn_deck(c, art, &fonts.sans, &fonts.symbols);
             spawn_gamble_screen(c, art, fonts, profile, &crate::looks::title_look(&model.id));
@@ -2358,10 +2373,12 @@ fn lines_panel_crop(size: (f32, f32)) -> Rect {
 /// frame covers its inner edge as the cabinet's does. The rim colours are
 /// our frame art's gold (the camera shifts the cabinet's). A title whose
 /// reel art carries its own lines tabs has no `payline_tab`, and no panels.
-fn spawn_lines_panels(c: &mut ChildSpawnerCommands, art: &ArtPack) {
-    let Some(fill) = art.ui.get("payline_tab") else {
+fn spawn_lines_panels(c: &mut ChildSpawnerCommands, art: &ArtPack, look: &crate::looks::TitleLook) {
+    let fill = art.ui.get("payline_tab");
+    if fill.is_none() && look.tab_fill.is_none() {
         return;
-    };
+    }
+    let colour = look.tab_fill.map_or(Color::NONE, crate::looks::rgb);
     let crop = art.sizes.get("payline_tab").copied().map(lines_panel_crop);
     for (left, width) in LINES_PANELS {
         c.spawn((
@@ -2390,19 +2407,27 @@ fn spawn_lines_panels(c: &mut ChildSpawnerCommands, art: &ArtPack) {
                 BorderColor::all(Color::srgb_u8(170, 105, 20)),
             ))
             .with_children(|f| {
-                f.spawn((
-                    Node {
-                        width: Val::Percent(100.0),
-                        height: Val::Percent(100.0),
-                        ..default()
-                    },
-                    ImageNode {
-                        image: fill.clone(),
-                        rect: crop,
-                        image_mode: NodeImageMode::Stretch,
-                        ..default()
-                    },
-                ));
+                let node = Node {
+                    width: Val::Percent(100.0),
+                    height: Val::Percent(100.0),
+                    ..default()
+                };
+                match fill {
+                    Some(fill) => {
+                        f.spawn((
+                            node,
+                            ImageNode {
+                                image: fill.clone(),
+                                rect: crop,
+                                image_mode: NodeImageMode::Stretch,
+                                ..default()
+                            },
+                        ));
+                    }
+                    None => {
+                        f.spawn((node, BackgroundColor(colour)));
+                    }
+                }
             });
         });
     }
@@ -2540,6 +2565,7 @@ fn spawn_meter_band(
     gold: Color,
     pale: Color,
     profile: Profile,
+    look: &crate::looks::TitleLook,
 ) {
     let font = &fonts.meter;
     let club = profile == Profile::Club;
@@ -3017,10 +3043,10 @@ fn spawn_meter_band(
         ),
     ));
 
-    // "N LINES" either side of the reels. A title whose reel art carries
-    // its own lines tabs (no `payline_tab`: Golden Gong's, "50 LINES" in its
-    // art) has neither box nor text of ours.
-    if !art.ui.contains_key("payline_tab") {
+    // "N LINES" either side of the reels, on our panels: a title whose pack
+    // has no `payline_tab` fills them with its own colour (Golden Gong,
+    // whose reel art carries a fixed "50 LINES": its tab-free frame instead).
+    if !art.ui.contains_key("payline_tab") && look.tab_fill.is_none() {
         return;
     }
     if club {
@@ -5873,6 +5899,10 @@ pub struct StripGhost {
 // Sound
 // ---------------------------------------------------------------------------
 
+/// The two end stings, by cue: each title's own clip (crate::looks).
+pub const CUE_FEATURE_END: &str = "CUE_FeatureEnd";
+pub const CUE_SPINS_END: &str = "CUE_SpinsEnd";
+
 /// The game's own sound clips from the pack (`audio/<name>.ogg`), by name,
 /// with each clip's length.
 #[derive(Resource, Default)]
@@ -5919,6 +5949,41 @@ impl Sounds {
             }
         }
         Sounds { clips, ..default() }
+    }
+
+    /// Name a cue after a clip: the title's own (`pack` empty or the
+    /// title's), or one from a sibling title's pack in the same folder of
+    /// packs (a sting the title's pack lacks); none if it is not there.
+    pub fn alias(&mut self, asset_server: &AssetServer, dir: &str, cue: &str, src: (&str, &str)) {
+        let (pack, clip) = src;
+        let own = Path::new(dir).file_name().and_then(|n| n.to_str()) == Some(pack);
+        if pack.is_empty() || own {
+            if let Some(found) = self.clips.get(clip).cloned() {
+                self.clips.insert(cue.to_string(), found);
+            }
+            return;
+        }
+        let Some(path) = Path::new(dir)
+            .parent()
+            .map(|p| p.join(pack).join("audio").join(format!("{clip}.ogg")))
+        else {
+            return;
+        };
+        match std::fs::read(&path) {
+            Ok(bytes) => {
+                let seconds = ogg_seconds(&bytes).unwrap_or(1.0);
+                let handle = asset_server.add(AudioSource {
+                    bytes: bytes.into(),
+                });
+                self.clips.insert(cue.to_string(), (handle, seconds));
+            }
+            // A pack on its own: the title's clip of that name, if any.
+            Err(_) => {
+                if let Some(found) = self.clips.get(clip).cloned() {
+                    self.clips.insert(cue.to_string(), found);
+                }
+            }
+        }
     }
 
     /// The clip for `name`, or the title's own stand-in for it: a title with
@@ -7068,9 +7133,9 @@ impl FeatureShow {
                     self.fg_return = None;
                 }
                 self.resuming = false;
-                // Real game: "FEATURE COMPLETED" with SND_Fea_End, the music
-                // cut at the same moment.
-                self.cues.push("SND_Fea_End");
+                // "FEATURE COMPLETED" with the title's own sting (its look's
+                // `feature_end`), the music cut at the same moment.
+                self.cues.push(CUE_FEATURE_END);
                 self.stage = Stage::FreeGamesDone;
             }
             Event::HoldAndSpinStarted { respins, .. } => {
@@ -7122,9 +7187,10 @@ impl FeatureShow {
                 }
             }
             Event::HoldAndSpinCompleted { .. } => {
-                // Footage: SND_Fea_End with "FREE SPINS COMPLETED"; the music
-                // stops at the same moment.
-                self.cues.push("SND_Fea_End");
+                // Footage: the 3.0 s sting with "FREE SPINS COMPLETED" (every
+                // title; its look's `spins_end`); the music stops at the same
+                // moment.
+                self.cues.push(CUE_SPINS_END);
                 self.awaiting = None;
                 self.stage = Stage::HoldSpinDone;
                 self.completed_wait = Some(0.0);

@@ -1264,6 +1264,27 @@ fn schedule_with(events: Vec<Event>, timing: &Timing) -> Vec<(f32, Event)> {
         .collect()
 }
 
+/// How many of a winning run's positions show `symbol` itself (not a wild).
+fn own_cells(
+    model: &MathModel,
+    labels: &Query<(&CellLabel, &mut Text)>,
+    line: u16,
+    count: u8,
+    symbol: &str,
+) -> usize {
+    model.paylines.get(line as usize).map_or(0, |rows| {
+        (0..count)
+            .filter(|&reel| {
+                rows.0.get(reel as usize).is_some_and(|&row| {
+                    labels
+                        .iter()
+                        .any(|(l, t)| l.reel == reel && l.row == row && t.0 == symbol)
+                })
+            })
+            .count()
+    })
+}
+
 /// Events presented while the reels are moving: the spin's start, its bet,
 /// and the reels' stops (with their coin values). Everything else waits for
 /// the reels to come to rest.
@@ -1361,6 +1382,15 @@ fn setup(
         let cab_fonts = cabinet::load_fonts(&mut fonts);
         if let Some(dir) = &pack.0 {
             *sounds = cabinet::Sounds::load(&asset_server, dir);
+            // The title's own end stings (crate::looks).
+            for (cue, src) in [
+                (cabinet::CUE_FEATURE_END, look.feature_end),
+                (cabinet::CUE_SPINS_END, look.spins_end),
+            ] {
+                if let Some(src) = src {
+                    sounds.alias(&asset_server, dir, cue, src);
+                }
+            }
             // The title's own clips time its scatters' wave and its stacks'
             // stand (muted or not).
             show.scatter_clip = sounds.seconds("SND_Scatter").unwrap_or(0.0);
@@ -2040,10 +2070,15 @@ fn present(
     mut rollup: ResMut<cabinet::Rollup>,
     mut stacks: ResMut<cabinet::WildStacks>,
     art: Res<ArtPack>,
+    look: Res<looks::TitleLook>,
     mut cells: Query<(&Cell, &mut BackgroundColor)>,
     mut labels: Query<(&CellLabel, &mut Text)>,
 ) {
     let reels = sim.game.model().grid.reels as usize;
+    // In a title's free games a picture's own sound can take the wild's
+    // place (crate::looks `fg_picture_sounds`).
+    let free_game = matches!(feature.stage, cabinet::Stage::FreeGames { .. });
+    let picture_rule = fidelity.0 && free_game && look.fg_picture_sounds;
     if reels_spin.spinning.len() != reels {
         reels_spin.spinning = vec![false; reels];
     }
@@ -2144,10 +2179,26 @@ fn present(
             };
             let emperor = wild_on_wins(true);
             let x2 = wild_on_wins(false);
+            // A free game's picture win sounding its own clip has no wild
+            // sound (club cabinets; `fg_picture_sounds`).
+            let picture_sounds = picture_rule
+                && presentation.queue.iter().any(|(_, e)| match e {
+                    Event::LineWin {
+                        line,
+                        symbol,
+                        count,
+                        ..
+                    } => {
+                        *count >= 3
+                            && art.pictures.contains(symbol)
+                            && own_cells(model, &labels, *line, *count, symbol) >= 2
+                    }
+                    _ => false,
+                });
             // A BIG wild's sound is its wind-up as it lands: none at its win
             // (club cabinets).
             let big_wild = feature.big.as_ref().is_some_and(|(key, ..)| key == wild);
-            if (stack || emperor || x2) && !big_wild {
+            if (stack || emperor || x2) && !big_wild && !picture_sounds {
                 feature.begin_wild(x2 && !emperor);
                 if stack {
                     stacks.stand(paylines, wins.iter().copied(), time.elapsed_secs());
@@ -2294,8 +2345,15 @@ fn present(
                 award,
             } => {
                 // Four or five of a picture with no wild on the line: the
-                // picture's own sound.
-                if fidelity.0
+                // picture's own sound; in a title's free games three or more,
+                // wilds allowed, with two of the picture itself.
+                let free_picture = picture_rule
+                    && *count >= 3
+                    && own_cells(model, &labels, *line, *count, symbol) >= 2;
+                if free_picture && let Some(picture) = art.pictures.iter().position(|p| p == symbol)
+                {
+                    feature.picture_win(picture);
+                } else if fidelity.0
                     && *count >= 4
                     && let Some(picture) = art.pictures.iter().position(|p| p == symbol)
                 {

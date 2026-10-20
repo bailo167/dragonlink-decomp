@@ -76,6 +76,35 @@ pub struct TitleLook {
     /// Festival +2.60 s (three cases, two machines; VERIFIED). The other
     /// titles take Golden Century's (HYPOTHESIS: not measured).
     pub first_free_extra: f32,
+    /// FEATURE COMPLETED's sting and FREE SPINS COMPLETED's, as (pack, clip):
+    /// the pack the title's own when empty, a sibling title's where its own
+    /// pack lacks the clip; `None` for none. Club cabinets with sound (the
+    /// side audit's 42 recordings, each hit tied to the screen; VERIFIED
+    /// unless said): FREE SPINS COMPLETED plays the family's 3.0 s sting on
+    /// every title (SND_Fea_End in most packs, Golden Gong's SND_Fea_End__1,
+    /// none in Genghis Khan's); FEATURE COMPLETED plays Autumn Moon's 3.0 s,
+    /// Genghis Khan's own 2.2 s, Golden Gong's own 2.0 s, the 2.0 s on Happy
+    /// & Prosperous and Peace & Long Life (only Golden Gong's pack has it),
+    /// none on Panda Magic and Spring Festival (STRONG), and on Golden
+    /// Century Genghis Khan's 2.2 s (STRONG, one recording; the official app
+    /// plays its own 3.0 s).
+    pub feature_end: Option<(&'static str, &'static str)>,
+    pub spins_end: Option<(&'static str, &'static str)>,
+    /// In the free games a picture win of three or more sounds the
+    /// picture's own clip, wilds allowed with two of the picture itself, and
+    /// takes the wild sound's place (club cabinets with sound: Panda Magic
+    /// VERIFIED, Autumn Moon and Happy & Prosperous STRONG; the two-of-its-own
+    /// rule fits all twelve cases, HYPOTHESIS). The base game keeps four or
+    /// five with no wild (VERIFIED on six titles).
+    pub fg_picture_sounds: bool,
+    /// The reel panel's art: the pack's `reel_background`, or a tab-free
+    /// frame where its art carries fixed tabs (Golden Gong: "50 LINES" in its
+    /// reel art, while club cabinets show the live count, 25 at 5c and 10c,
+    /// 5 or 3 at $1; VERIFIED on two recordings).
+    pub reel_panel: &'static str,
+    /// Our "N LINES" panels' fill where the pack has no `payline_tab`: the
+    /// title's own tab colour (Golden Gong's baked tabs (47,0,0)).
+    pub tab_fill: Option<[u8; 3]>,
 }
 
 /// Golden Century's look: the shared presentation's own values.
@@ -95,6 +124,11 @@ pub const GOLDEN_CENTURY: TitleLook = TitleLook {
     symbol_fit: &[],
     anim_fit: &[],
     first_free_extra: 1.79,
+    feature_end: Some(("genghis-khan", "SND_Fea_End")),
+    spins_end: Some(("", "SND_Fea_End")),
+    fg_picture_sounds: false,
+    reel_panel: "reel_background",
+    tab_fill: None,
 };
 
 impl Default for TitleLook {
@@ -116,10 +150,20 @@ const GOLD_HEADER: [u8; 3] = [240, 220, 100];
 /// (235,195,90) on ten Genghis Khan triggers; PARTIAL as a colour).
 const GOLD_PROMPT: [u8; 3] = [235, 195, 90];
 
-/// Each title's look, by its model's slug. Golden Century and Happy &
-/// Prosperous share the shared presentation's (red cent keys, yellow $1:
-/// DWBTkIVcHNM 681.5, WKjdoixnVjg 752).
-const LOOKS: [(&str, TitleLook); 6] = [
+/// Each title's look, by its model's slug. Golden Century's is the shared
+/// presentation's; Happy & Prosperous keeps its red cent keys and yellow $1
+/// (DWBTkIVcHNM 681.5, WKjdoixnVjg 752).
+const LOOKS: [(&str, TitleLook); 7] = [
+    // Happy & Prosperous: Golden Century's look, but FEATURE COMPLETED's
+    // 2.0 s sting (three recordings), a clip of Golden Gong's pack.
+    (
+        "happy-prosperous",
+        TitleLook {
+            feature_end: Some(("golden-gong", "SND_Fea_End")),
+            fg_picture_sounds: true,
+            ..GOLDEN_CENTURY
+        },
+    ),
     // Purple cent keys (nYM0NGR3px0 0:02, face median (112,40,207);
     // AWJciGGOUEk storyboard); cream header as Golden Century's.
     (
@@ -129,6 +173,8 @@ const LOOKS: [(&str, TitleLook); 6] = [
             tall3: (1.5975, 3.6903, -0.0136),
             tall2: (1.5975, 2.6801, -0.0182, -0.0089),
             reveal_fps: 30.0,
+            feature_end: Some(("", "SND_Fea_End")),
+            fg_picture_sounds: true,
             ..GOLDEN_CENTURY
         },
     ),
@@ -140,6 +186,8 @@ const LOOKS: [(&str, TitleLook); 6] = [
             chooser_header: Some(GOLD_HEADER),
             counter: (0.6648, 0.8020),
             dollar_key: Some([227, 204, 8]),
+            feature_end: None,
+            fg_picture_sounds: true,
             ..GOLDEN_CENTURY
         },
     ),
@@ -152,6 +200,8 @@ const LOOKS: [(&str, TitleLook); 6] = [
             x2_badge: Some((0.1473, 0.1533, 0.595, 0.670)),
             tall3: (1.4680, 3.7230, -0.0135),
             tall2: (1.4680, 2.6665, -0.0173, -0.0080),
+            feature_end: Some(("", "SND_Fea_End")),
+            spins_end: Some(("golden-century", "SND_Fea_End")),
             ..GOLDEN_CENTURY
         },
     ),
@@ -177,6 +227,10 @@ const LOOKS: [(&str, TitleLook); 6] = [
             // A winning monk grows past its still (its scene's box, 1.18;
             // STRONG on the cabinet: ours shrank).
             anim_fit: &[("monk", 1.18, 1.18)],
+            feature_end: Some(("", "SND_Fea_End")),
+            spins_end: Some(("", "SND_Fea_End__1")),
+            reel_panel: "reel_frame",
+            tab_fill: Some([47, 0, 0]),
             ..GOLDEN_CENTURY
         },
     ),
@@ -200,6 +254,7 @@ const LOOKS: [(&str, TitleLook); 6] = [
                 ("sage", 1.12, 1.10, -0.2015),
                 ("sage_x2", 1.12, 1.10, -0.2015),
             ],
+            feature_end: Some(("golden-gong", "SND_Fea_End")),
             ..GOLDEN_CENTURY
         },
     ),
@@ -211,6 +266,7 @@ const LOOKS: [(&str, TitleLook); 6] = [
             cents_key: Some([26, 205, 240]),
             chooser_header: Some(GOLD_HEADER),
             first_free_extra: 2.60,
+            feature_end: None,
             tall3: (1.5975, 3.6883, -0.0136),
             tall2: (1.5975, 2.6791, -0.0182, -0.0089),
             ..GOLDEN_CENTURY
