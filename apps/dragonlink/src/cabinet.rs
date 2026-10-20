@@ -5745,7 +5745,7 @@ fn big_box(key: &str, w: f32, h: f32) -> (f32, f32, f32, f32) {
 /// Draw the BIG reel while it moves: whole BIG pictures one window apart,
 /// and on the first free game the base window's covered columns scrolling
 /// out below the first BIG picture (club cabinet WKjdoixnVjg 261.15-261.32).
-#[allow(clippy::type_complexity)]
+#[allow(clippy::type_complexity, clippy::too_many_arguments)]
 pub fn big_strip_draw(
     fidelity: Res<Fidelity>,
     reels: Res<Reels>,
