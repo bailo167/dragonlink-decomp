@@ -33,7 +33,9 @@ pub struct TitleLook {
     /// the number right-aligned to OF and the total left-aligned after it,
     /// "10 OF 12" growing away from OF; VERIFIED on one recording each).
     /// From each pack's banner_free_game.png alpha: every pack's OF sits as
-    /// Golden Century's except Panda Magic's, 23 px to the right.
+    /// Golden Century's except Panda Magic's, 23 px to the right. The anchors
+    /// sit 8 and 6 canvas px inside the measured ones: the digit images
+    /// carry their own shadow margin (checked on muted captures).
     pub counter: (f32, f32),
     /// The chooser's $1 key face, or `None` for Golden Century's amber.
     pub dollar_key: Option<[u8; 3]>,
@@ -113,7 +115,7 @@ pub const GOLDEN_CENTURY: TitleLook = TitleLook {
     chooser_header: None,
     prompt: None,
     x2_badge: None,
-    counter: (0.6378, 0.7738),
+    counter: (0.6483, 0.7659),
     dollar_key: None,
     tall3: (1.6117, 3.6610, 0.0),
     tall2: (1.6117, 2.6442, -0.0085, -0.0085),
@@ -184,7 +186,7 @@ const LOOKS: [(&str, TitleLook); 7] = [
         TitleLook {
             cents_key: Some(GREEN_KEYS),
             chooser_header: Some(GOLD_HEADER),
-            counter: (0.6648, 0.8020),
+            counter: (0.6753, 0.7941),
             dollar_key: Some([227, 204, 8]),
             feature_end: None,
             fg_picture_sounds: true,

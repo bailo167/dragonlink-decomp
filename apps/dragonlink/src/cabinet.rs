@@ -7081,6 +7081,9 @@ pub struct FeatureShow {
     /// title's SND_ExpandWin length.
     pub expand: Option<f32>,
     pub expand_clip: f32,
+    /// The winning lines of a trigger's game show this far into the wave
+    /// (`win_t` counts from it): none before it, "Scatter wins N" first.
+    lines_from: f32,
     /// A retrigger in the free games while its sequence plays (the totals
     /// before and after it): the base game's trigger again, with no START
     /// FEATURE, the banner's total counting up from the old total.
@@ -7117,6 +7120,7 @@ impl FeatureShow {
                 self.flares_at = None;
                 self.wild = None;
                 self.wild_sounded = false;
+                self.lines_from = 0.0;
                 self.expand = None;
                 self.expand_won = false;
                 self.fg_trigger = None;
@@ -7215,6 +7219,7 @@ impl FeatureShow {
                 // Each free game is a game of its own for the wild.
                 self.wild = None;
                 self.wild_sounded = false;
+                self.lines_from = 0.0;
                 self.expand = None;
                 self.expand_won = false;
                 self.game_won = false;
@@ -12760,15 +12765,20 @@ pub fn win_lines(
         return;
     }
     show.win_t += smoke.dt(&time);
+    // A trigger's lines wait for its wave and show 1.4 s into it, after
+    // "Scatter wins N" (`lines_from`).
+    let lt = show.win_t - show.lines_from;
     // Nothing moves from START FEATURE to the first free game (club cabinet).
     let showing = !show.win_lines.is_empty()
         && !gamble.active
         && show.awaiting.is_none()
         && show.fg_cut.is_none()
         && !show.hold_and_spin()
-        && show.reveal.is_none();
+        && show.reveal.is_none()
+        && !show.trigger_holds_lines()
+        && lt >= 0.0;
     let current = showing.then(|| {
-        let i = (show.win_t / WIN_LINE_SECONDS) as usize % show.win_lines.len();
+        let i = (lt / WIN_LINE_SECONDS) as usize % show.win_lines.len();
         show.win_lines[i]
     });
     show.win_current = current.map(|(line, count, _)| (line, count));
@@ -12783,12 +12793,13 @@ pub fn win_lines(
     // The cabinet always gives a line win in credits, in plain digits
     // ("Line 13 wins 20", "Line 4 wins 100": y8c8lEdPW8Y, 306 messages at
     // every denomination, none in dollars), while WIN counts in dollars.
-    let free_game = matches!(show.stage, Stage::FreeGames { .. });
+    // The free games' wording holds through FEATURE COMPLETED.
+    let free_game = matches!(show.stage, Stage::FreeGames { .. } | Stage::FreeGamesDone);
     show.win_note = current.map(|(line, count, award)| {
         let m = line_multiplier(sim.game.model(), free_game, &cell_labels, line, count);
         line_win_note_times(line, award, m)
     });
-    let lit = current.filter(|_| in_spans(show.win_t % WIN_LINE_SECONDS, &WIN_LINE_LIT));
+    let lit = current.filter(|_| in_spans(lt.max(0.0) % WIN_LINE_SECONDS, &WIN_LINE_LIT));
     let rows = lit.and_then(|(line, _, _)| sim.game.model().paylines.get(line as usize));
     let set = |vis: &mut Visibility, on: bool| {
         let want = if on {
@@ -14258,6 +14269,8 @@ pub fn coin_shower(
 /// 0.17 s after the last reel is still): the bell, the flags and their sound,
 /// and the win's count.
 const FG_BELL: f32 = 0.045;
+/// A trigger's winning lines show this long into the scatters' wave.
+const TRIGGER_LINES_AFTER: f32 = 1.4;
 const FG_FLAGS: f32 = FG_BELL + 2.6;
 pub const FG_COUNT: f32 = FG_FLAGS + 4.87;
 /// The scatter win counts this long after the title's SND_Scatter ends:
@@ -14445,6 +14458,16 @@ impl FeatureShow {
         true
     }
 
+    /// A trigger's game holds its lines until the scatters' wave: the
+    /// message row blank from the result, "Scatter wins N" from the wave,
+    /// the lines 1.4 s into it (club cabinets: Panda Magic 8V086h-IJ6I 160.733
+    /// and 162.0, 6b5UuR0po4g 344.25; Happy & Prosperous WKjdoixnVjg 610.77 and
+    /// 612.2; STRONG).
+    fn trigger_holds_lines(&self) -> bool {
+        (matches!(self.stage, Stage::Base) || self.retrigger.is_some())
+            && self.fg_trigger.is_some_and(|t| t < FG_FLAGS)
+    }
+
     /// The trigger clock at which a retrigger's sequence lets the game's win
     /// count: two steps after the banner's last (0.33-0.37 s measured).
     fn retrigger_ends_at(&self) -> Option<f32> {
@@ -14502,6 +14525,7 @@ pub fn free_games_trigger(
             sounds.play(&mut commands, "SND_Scatter");
             show.fg_flags = true;
             show.win_t = 0.0;
+            show.lines_from = TRIGGER_LINES_AFTER;
         }
         // A retrigger: one step before the moment a base trigger asks for
         // START FEATURE, the banner's total starts counting from the old
