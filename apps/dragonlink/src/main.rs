@@ -46,6 +46,7 @@ use dragonlink_model::fixtures::{
 use dragonlink_model::{JackpotTier, OrbValue, SymbolKind};
 
 mod cabinet;
+mod looks;
 
 /// Testing only (`DRAGONLINK_FEATURE_TEST`): one orb inserted after every this
 /// many stops of each base reel, and one scatter after every this many, so a
@@ -1091,6 +1092,10 @@ struct ArtPack {
     pictures: Vec<String>,
     /// The game's animations, as frame sequences (`anim/<name>/NNNN.png`).
     anims: std::collections::HashMap<String, Vec<Handle<Image>>>,
+    /// An animation's play rate where the pack records it
+    /// (`anim/<name>/fps.txt`: a video texture over its scene range, an
+    /// image sequence at 30).
+    anim_fps: std::collections::HashMap<String, f32>,
     /// Whether the pack has been read (loading happens once, on first use).
     loaded: bool,
 }
@@ -1254,6 +1259,7 @@ fn setup(
     fidelity: Res<cabinet::Fidelity>,
     mut fonts: ResMut<Assets<Font>>,
     mut sounds: ResMut<cabinet::Sounds>,
+    mut show: ResMut<cabinet::FeatureShow>,
     profile: Res<cabinet::Profile>,
     pack: Res<PackDir>,
     machines: Res<cabinet::MachineMenu>,
@@ -1264,6 +1270,7 @@ fn setup(
     load_art(&asset_server, &mut art, pack.0.as_deref());
     let model = sim.game.model();
     art.roles = cabinet::Roles::from_model(model);
+    commands.insert_resource(looks::title_look(&model.id));
     if fidelity.0 {
         // The club tall pill's icon: our own drawing, not the pack's.
         if !art.ui.contains_key(cabinet::PILL_ICON_KEY) {
@@ -1273,6 +1280,12 @@ fn setup(
         let cab_fonts = cabinet::load_fonts(&mut fonts);
         if let Some(dir) = &pack.0 {
             *sounds = cabinet::Sounds::load(&asset_server, dir);
+            // The title's own clips time its scatters' wave and its stacks'
+            // stand (muted or not).
+            show.scatter_clip = sounds.seconds("SND_Scatter").unwrap_or(0.0);
+            show.wild_clip = sounds.seconds("SND_Wild_1").unwrap_or(0.0);
+            show.wild_fg_clip = sounds.seconds("SND_WildFG").unwrap_or(0.0);
+            show.expand_clip = sounds.seconds("SND_ExpandWin").unwrap_or(0.0);
         }
         cabinet::spawn(&mut commands, model, &art, &cab_fonts, *profile);
         cabinet::spawn_machine_menu(&mut commands, &cab_fonts, &machines);
@@ -1974,6 +1987,22 @@ fn present(
             }) {
                 feature.begin_free_games_trigger(games, award);
             }
+            // A free game's scatters that add games play the trigger again
+            // (club cabinets).
+            let retrigger = presentation
+                .queue
+                .iter()
+                .map_while(|(_, e)| match e {
+                    Event::FreeGameStarted { .. } | Event::SpinStarted { .. } => None,
+                    e => Some(e),
+                })
+                .find_map(|e| match e {
+                    Event::FreeGamesRetriggered { added, remaining } => Some((*added, *remaining)),
+                    _ => None,
+                });
+            if let Some((added, remaining)) = retrigger {
+                feature.begin_retrigger(added, remaining, award);
+            }
         }
         // A feature's start waits for the win's count, except the free
         // games' own prompt, which shows as the scatter win starts counting
@@ -2035,8 +2064,38 @@ fn present(
             let emperor = wild_on_wins(true);
             let x2 = wild_on_wins(false);
             if stack || emperor || x2 {
-                feature.begin_wild(stack, x2 && !emperor);
+                feature.begin_wild(x2 && !emperor);
+                if stack {
+                    stacks.stand(paylines, wins.iter().copied(), time.elapsed_secs());
+                }
             }
+        }
+        // A reel the wild fills: its positions take the wild once the
+        // figure covers them.
+        for (reel, key) in stacks.due_relabels(time.elapsed_secs()) {
+            for (l, mut t) in &mut labels {
+                if l.reel == reel {
+                    t.0.clone_from(&key);
+                }
+            }
+        }
+        // After an expansion the lines wait a little and the count for its
+        // sound (club cabinets).
+        if fidelity.0 && feature.expansion_holds(presentation.queue.front().map(|(_, e)| e)) {
+            presentation.wait = 0.0;
+            break;
+        }
+        // A win through a wild shows its lines at once; its count (and what
+        // follows it) waits for the wild's sound (club cabinets).
+        if fidelity.0
+            && feature.wild_holds()
+            && matches!(
+                presentation.queue.front(),
+                Some((_, Event::CreditsChanged { .. }))
+            )
+        {
+            presentation.wait = 0.0;
+            break;
         }
         // A respin spinning or the coins being counted hold what follows.
         if fidelity.0 && feature.blocks() {
@@ -2055,7 +2114,7 @@ fn present(
             _ => cabinet::RESULT_AFTER_REST,
         };
         if fidelity.0
-            && reels_motion.rested_for() < after_rest
+            && (reels_motion.any_moving() || reels_motion.rested_for() < after_rest)
             && presentation
                 .queue
                 .front()
@@ -2232,31 +2291,28 @@ fn present(
                 presentation.status = format!("FREE GAME {number}  ({remaining} to come)");
             }
             Event::WildExpanded { reel } => {
-                // The wild fills its reel: every position shows it, and the
-                // stacks are found again (a winning full reel stands tall).
-                let wild_key = labels
+                // The wild fills its reel: every position takes it, and the
+                // stacks are found again. On the cabinet the landed wild
+                // grows into the reel's standing figure, the other positions
+                // showing their own symbols until it covers them (the title's
+                // own sequences, when its pack has them).
+                let is_wild = |k: &str| {
+                    model
+                        .symbols
+                        .iter()
+                        .any(|s| s.key == k && s.kind == SymbolKind::Wild)
+                };
+                let landed: Vec<(u8, String)> = labels
                     .iter()
-                    .filter(|(l, _)| l.reel == *reel)
-                    .map(|(_, t)| t.0.clone())
-                    .find(|k| {
-                        model
-                            .symbols
-                            .iter()
-                            .any(|s| &s.key == k && s.kind == SymbolKind::Wild)
-                    });
-                if let Some(key) = wild_key {
-                    for (l, mut t) in &mut labels {
-                        if l.reel == *reel {
-                            t.0.clone_from(&key);
-                        }
-                    }
-                    for (c, mut background) in &mut cells {
-                        if c.reel == *reel {
-                            background.0 = cell_color(Some(SymbolKind::Wild), &key);
-                        }
-                    }
-                }
-                stacks.refind();
+                    .filter(|(l, t)| l.reel == *reel && l.row < 3 && is_wild(&t.0))
+                    .map(|(l, t)| (l.row, t.0.clone()))
+                    .collect();
+                // The middle one when several landed (UNKNOWN on the cabinet).
+                let first = landed
+                    .iter()
+                    .find(|(row, _)| *row == 1)
+                    .or_else(|| landed.iter().min_by_key(|(row, _)| *row))
+                    .cloned();
                 // In a win when a line's run reaches past this reel.
                 let win = presentation
                     .queue
@@ -2266,8 +2322,33 @@ fn present(
                         e => Some(e),
                     })
                     .any(|e| matches!(e, Event::LineWin { count, .. } if count > reel));
+                let grows = fidelity.0 && art.anims.contains_key("wild3_expand_middle");
+                if let Some((row, key)) = first {
+                    if grows {
+                        stacks.expand(cabinet::Expansion {
+                            reel: *reel,
+                            row,
+                            win,
+                            key,
+                            t0: time.elapsed_secs() - cabinet::EXPAND_LEAD,
+                            relabelled: false,
+                        });
+                    } else {
+                        for (l, mut t) in &mut labels {
+                            if l.reel == *reel {
+                                t.0.clone_from(&key);
+                            }
+                        }
+                        for (c, mut background) in &mut cells {
+                            if c.reel == *reel {
+                                background.0 = cell_color(Some(SymbolKind::Wild), &key);
+                            }
+                        }
+                    }
+                }
+                stacks.refind();
                 if fidelity.0 {
-                    feature.expand_sound(win);
+                    feature.begin_expansion(win);
                 }
                 presentation.status = format!("Wild fills reel {}", reel + 1);
             }
@@ -2628,10 +2709,33 @@ fn load_anims(asset_server: &AssetServer, dir: &std::path::Path, pack: &mut ArtP
             })
             .collect();
         stems.sort();
+        // A loop must not end on a near-empty frame (an export's blank last
+        // frame blanks its cell once a loop: Genghis Khan's khan_loop and
+        // woman_loop): drop trailing frames under a tenth of the size of the
+        // frame before them. Effects that fade out keep theirs.
+        if name.ends_with("_loop") {
+            let size = |stem: &String| {
+                std::fs::metadata(entry.path().join(format!("{stem}.png"))).map_or(0, |m| m.len())
+            };
+            while stems.len() > 2 {
+                let n = stems.len();
+                if size(&stems[n - 1]) * 10 >= size(&stems[n - 2]) {
+                    break;
+                }
+                stems.pop();
+            }
+        }
         let frames = stems
             .iter()
             .map(|stem| asset_server.load(format!("anim/{name}/{stem}.png")))
             .collect();
+        if let Some(fps) = std::fs::read_to_string(entry.path().join("fps.txt"))
+            .ok()
+            .and_then(|t| t.trim().parse::<f32>().ok())
+            .filter(|fps| (1.0..=120.0).contains(fps))
+        {
+            pack.anim_fps.insert(name.clone(), fps);
+        }
         pack.anims.insert(name, frames);
     }
 }
@@ -3008,6 +3112,7 @@ fn main() -> AppExit {
     .insert_resource(cabinet::Sounds::default())
     .insert_resource(cabinet::Rollup::default())
     .insert_resource(cabinet::FeatureShow::default())
+    .insert_resource(looks::TitleLook::default())
     .init_resource::<cabinet::BannerBurstFrames>()
     .insert_resource(cabinet::GambleShow::with_history(cli.seed))
     .insert_resource(cabinet::GamesMenu::default())

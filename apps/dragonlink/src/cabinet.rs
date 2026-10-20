@@ -1710,7 +1710,13 @@ pub fn spawn(
             spawn_strips(c, model.grid.reels);
             spawn_wild_talls(c, model.grid.reels);
             spawn_big_art(c, &fonts.meter);
-            spawn_feature_layer(c, art, &fonts.meter, &fonts.heavy);
+            spawn_feature_layer(
+                c,
+                art,
+                &fonts.meter,
+                &fonts.heavy,
+                &crate::looks::title_look(&model.id),
+            );
             spawn_hs_overlays(c, &fonts.meter);
             spawn_win_lines(c, &fonts.sans);
             spawn_coin_shower(c);
@@ -1788,7 +1794,14 @@ pub fn spawn(
 
             spawn_deck(c, art, &fonts.sans, &fonts.symbols);
             spawn_gamble_screen(c, art, fonts, profile);
-            spawn_games_menu(c, art, fonts, profile, title_name(&model.id));
+            spawn_games_menu(
+                c,
+                art,
+                fonts,
+                profile,
+                title_name(&model.id),
+                &crate::looks::title_look(&model.id),
+            );
 
             // The shared presentation systems still expect these; unused here.
             c.spawn((
@@ -5429,8 +5442,10 @@ impl Sounds {
     /// `SND_Wild`) plays it where Golden Century plays one of its five.
     fn clip(&self, name: &str) -> Option<&(Handle<AudioSource>, f32)> {
         self.clips.get(name).or_else(|| {
-            // Peace & Long Life's x2 wild has no sound of its own: the wild's.
-            name.starts_with("SND_Wild")
+            // The free games' own wild sound (SND_WildFG) has no stand-in:
+            // Peace & Long Life's x2 wild is silent on club cabinets (two
+            // recordings, seven rounds; STRONG).
+            (name.starts_with("SND_Wild") && name != "SND_WildFG")
                 .then(|| {
                     self.clips
                         .get("SND_Wild")
@@ -6387,6 +6402,27 @@ pub struct FeatureShow {
     /// Starting on FREE GAMES is our choice (one recording opens on each);
     /// a denomination change leaves it as it is.
     pub prompt: u8,
+    /// The title's own clips' lengths in seconds (0 until the pack's sounds
+    /// are known: Golden Century's then): SND_Scatter, which the scatters'
+    /// wave lasts, and its wild sound, which a standing stack holds the win
+    /// for (see [`FeatureShow::wave_seconds`]).
+    pub scatter_clip: f32,
+    pub wild_clip: f32,
+    /// The free games' own wild sound (Genghis Khan's x2 wild, SND_WildFG),
+    /// 0 if the title has none.
+    pub wild_fg_clip: f32,
+    /// How long this game's wild win holds the count (the clip that played).
+    wild_for: f32,
+    /// A filled reel of this game's expansions is in a win.
+    expand_won: bool,
+    /// Seconds since this game's wilds began to fill their reels, and the
+    /// title's SND_ExpandWin length.
+    pub expand: Option<f32>,
+    pub expand_clip: f32,
+    /// A retrigger in the free games while its sequence plays (the totals
+    /// before and after it): the base game's trigger again, with no START
+    /// FEATURE, the banner's total counting up from the old total.
+    retrigger: Option<(u32, u32)>,
 }
 
 impl FeatureShow {
@@ -6407,6 +6443,8 @@ impl FeatureShow {
                 self.flares_at = None;
                 self.wild = None;
                 self.wild_sounded = false;
+                self.expand = None;
+                self.expand_won = false;
                 self.fg_trigger = None;
                 self.fg_flags = false;
                 self.fg_cut = None;
@@ -6491,10 +6529,18 @@ impl FeatureShow {
                 self.scatter_paid = true;
             }
             Event::FreeGameStarted { number, remaining } => {
+                // A retrigger's sequence ends with the next free game (the
+                // base trigger's clock runs on through the free games).
+                if self.retrigger.take().is_some() {
+                    self.fg_trigger = None;
+                    self.fg_flags = false;
+                }
                 self.pic_sounded = false;
                 // Each free game is a game of its own for the wild.
                 self.wild = None;
                 self.wild_sounded = false;
+                self.expand = None;
+                self.expand_won = false;
                 self.game_won = false;
                 self.win_lines.clear();
                 self.resuming = false;
@@ -6722,6 +6768,39 @@ impl FeatureShow {
                 return Some(format!("{} FREE GAMES WON!", self.games_won));
             }
         }
+        // A retrigger: "N FREE GAMES WON!" from the result for 2.0 s, then the
+        // free game on its old total; from the scatters' wave the two take
+        // 2.0 s slots (WON at the wave + 2.0 s); the free game on its old
+        // total while the banner counts; one step after the last its new
+        // total, the slots starting again from it (club cabinets: Autumn Moon
+        // nYM0NGR3px0 and TsTj-sxJ6Yc, Happy & Prosperous uXp_uWK4OH8, Panda
+        // Magic tg4nMylHxhI, frame by frame; VERIFIED).
+        if let (Some((old, new)), Stage::FreeGames { number, .. }, Some(t)) =
+            (self.retrigger, self.stage, self.fg_trigger)
+        {
+            let won = format!("{} FREE GAMES WON!", self.games_won);
+            let game = |total: u32| format!("Free Game {number} of {total}");
+            let first = self.fg_count_at();
+            let done = first + new.saturating_sub(old) as f32 * FG_TICK;
+            let slot = |from: f32| ((t - from) / PROMPT_TURN) as u32;
+            return Some(if t < PROMPT_TURN {
+                won
+            } else if t < FG_FLAGS + PROMPT_TURN {
+                game(old)
+            } else if t < first {
+                if slot(FG_FLAGS) % 2 == 1 {
+                    won
+                } else {
+                    game(old)
+                }
+            } else if t < done {
+                game(old)
+            } else if slot(done) % 2 == 0 {
+                game(new)
+            } else {
+                won
+            });
+        }
         // While START FEATURE is awaited, the status alternates in 2.0 s
         // slots from the prompt's start, "Press START FEATURE button" first
         // (club cabinets: y8c8lEdPW8Y 791.67-793.70 and 946.10-948.08,
@@ -6860,7 +6939,46 @@ impl FeatureShow {
     /// asks for START FEATURE as the win counts (y8c8lEdPW8Y 946.07,
     /// 1bAevGz0K2k 326.77-326.80; VERIFIED).
     pub fn trigger_counting(&self) -> bool {
-        self.fg_trigger.is_some_and(|t| t >= FG_COUNT) && matches!(self.stage, Stage::Base)
+        self.fg_trigger.is_some_and(|t| t >= self.fg_count_at())
+            && matches!(self.stage, Stage::Base)
+    }
+
+    /// How long the scatters wave before the scatter win counts: as long as
+    /// the title's own SND_Scatter plays, and `WAVE_AFTER_CLIP` (club
+    /// cabinets: Genghis Khan, Peace & Long Life, Golden Century, Happy &
+    /// Prosperous, Panda Magic and Golden Gong measured; STRONG).
+    pub fn wave_seconds(&self) -> f32 {
+        if self.scatter_clip > 0.0 {
+            self.scatter_clip + WAVE_AFTER_CLIP
+        } else {
+            FG_COUNT - FG_FLAGS
+        }
+    }
+
+    /// Seconds into the trigger sequence at which the scatter win counts.
+    fn fg_count_at(&self) -> f32 {
+        FG_FLAGS + self.wave_seconds()
+    }
+
+    /// How long a win through a wild holds WIN's count, from its first line:
+    /// the title's wild sound (Golden Century's 2.5 s), and `WILD_COUNT_LAG`.
+    pub fn wild_hold(&self) -> f32 {
+        let clip = if self.wild_clip > 0.0 {
+            self.wild_clip
+        } else {
+            WILD_HOLD
+        };
+        clip + WILD_COUNT_LAG
+    }
+
+    /// A win through a wild is holding WIN's count: the lines show, the
+    /// count waits for the wild's sound (club cabinets: Panda Magic 3.33-3.43 s
+    /// from the first line on three cases against its 3.19 s clip, a win
+    /// with no panda counting 0.20 s after its line; Golden Century's
+    /// standing emperor showing its lines while WIN waits, y8c8lEdPW8Y
+    /// 732-733; STRONG).
+    pub fn wild_holds(&self) -> bool {
+        self.wild.is_some_and(|t| t < self.wild_for)
     }
 
     /// Whether `front`, the next event to show, waits for a win's count to
@@ -7015,8 +7133,7 @@ const BANNER_SIZE: (f32, f32) = (760.0, 96.0);
 /// overlap (separate screens); the official app's banner sits wholly below
 /// its bar (VERIFIED, official mobile app).
 const BANNER_Y: f32 = GRID_CENTER.1 - 1.5 * PITCH.1 + 16.0;
-/// Where the counter's two numbers sit across the banner, and their height.
-const COUNTER_X: [f32; 2] = [0.59, 0.795];
+/// The counter's digits' height.
 const COUNTER_DIGIT_H: f32 = 52.0;
 
 /// The start prompt's lettering: PRESS START FEATURE BUTTON, drawn by us
@@ -7067,7 +7184,11 @@ pub fn spawn_feature_layer(
     art: &ArtPack,
     font: &Handle<Font>,
     heavy: &Handle<Font>,
+    look: &crate::looks::TitleLook,
 ) {
+    // The prompt's lettering: cream, or the title's own (Genghis Khan's and
+    // Peace & Long Life's gold).
+    let lettering = look.prompt.map_or(PROMPT_CREAM, crate::looks::rgb);
     let ui = |k: &str| art.ui.get(k).cloned().unwrap_or_default();
     let (gx, gy) = GRID_CENTER;
     c.spawn((
@@ -7165,7 +7286,7 @@ pub fn spawn_feature_layer(
                 PromptLettering,
                 Text::new("PRESS  "),
                 face(PROMPT_SMALL),
-                TextColor(PROMPT_CREAM),
+                TextColor(lettering),
                 TextShadow {
                     offset: Vec2::new(2.0, 2.0),
                     color: Color::srgba(0.02, 0.02, 0.06, 0.85),
@@ -7181,24 +7302,34 @@ pub fn spawn_feature_layer(
                 t.spawn((
                     TextSpan::new("START  FEATURE  "),
                     face(PROMPT_LARGE),
-                    TextColor(PROMPT_CREAM),
+                    TextColor(lettering),
                 ));
                 t.spawn((
                     TextSpan::new("BUTTON"),
                     face(PROMPT_SMALL),
-                    TextColor(PROMPT_CREAM),
+                    TextColor(lettering),
                 ));
             });
         });
+        // The game number ends a little before OF and the total starts a
+        // little after it, so two-digit numbers grow away from OF (club
+        // cabinets; the anchors from each pack's own banner lettering:
+        // crate::looks).
+        let (number_end, total_start) = look.counter;
         for number in 0..2u8 {
+            let (left, justify) = if number == 0 {
+                (bw * number_end - 120.0, JustifyContent::FlexEnd)
+            } else {
+                (bw * total_start, JustifyContent::FlexStart)
+            };
             b.spawn(Node {
                 position_type: PositionType::Absolute,
-                left: Val::Px(bw * COUNTER_X[number as usize] - 60.0),
+                left: Val::Px(left),
                 top: Val::Px(0.0),
                 width: Val::Px(120.0),
                 height: Val::Px(bh),
                 flex_direction: FlexDirection::Row,
-                justify_content: JustifyContent::Center,
+                justify_content: justify,
                 align_items: AlignItems::Center,
                 ..default()
             })
@@ -9026,8 +9157,10 @@ impl FeatureShow {
     /// the counter, a respin or the count is playing.
     pub fn blocks(&self) -> bool {
         self.intro.is_some()
-            || self.fg_trigger.is_some_and(|t| t < FG_COUNT)
-            || self.wild.is_some_and(|t| t < WILD_HOLD)
+            || self.fg_trigger.is_some_and(|t| t < self.fg_count_at())
+            || self
+                .retrigger_ends_at()
+                .is_some_and(|end| self.fg_trigger.is_some_and(|t| t < end))
             || self.fg_cut.is_some_and(|t| t < FG_CUT)
             || self.completed_wait.is_some()
             || self.pay.is_some()
@@ -9211,6 +9344,12 @@ pub fn hold_and_spin_motion(
         anim.sounds.retain(|s| s.0 > now);
         if anim.resets.iter().any(|&r| r <= now) {
             anim.resets.retain(|&r| r > now);
+            // The counter's burst plays on every return to 3 (club cabinets:
+            // Panda Magic 8V086h-IJ6I four resets and nYM0NGR3px0 five,
+            // Golden Century y8c8lEdPW8Y 973.57, 977.43, 979.70; VERIFIED).
+            if show.pending_left > show.counter {
+                show.banner_burst = Some(clock);
+            }
             show.counter = show.counter.max(show.pending_left);
         }
         let due: Vec<(u8, u8)> = anim
@@ -9237,6 +9376,9 @@ pub fn hold_and_spin_motion(
         }
     }
     if finished {
+        if show.pending_left > show.counter {
+            show.banner_burst = Some(show.clock);
+        }
         show.counter = show.pending_left;
         // The grid full: the Grand's bell about 3.5 s after the fifteenth
         // coin lands (a Happy & Prosperous cabinet, VERIFIED there; the clip
@@ -9823,10 +9965,10 @@ const REVEAL_WINS: f32 = 1.2;
 /// The doors' reveal is presented this long after the last reel is still
 /// (club cabinets: 0.22-0.37 s, three of four reveals about 0.30 s).
 pub const REVEAL_AFTER_REST: f32 = 0.30;
-/// A wild filling its reel (Golden Gong's monk) is presented this long after
-/// the last reel is still: the official app's door delay, kept for it (its
-/// cabinet timing was never measured).
-pub const EXPAND_AFTER_REST: f32 = 3.0 / 30.0;
+/// A wild filling its reel (Golden Gong's monk) is presented as the last
+/// reel is still: its sound and its sequence start then (club cabinets,
+/// twelve expansions; VERIFIED).
+pub const EXPAND_AFTER_REST: f32 = 0.0;
 
 /// The doors opening on one position.
 #[derive(Component)]
@@ -10150,14 +10292,22 @@ enum ChooserFace {
 }
 
 impl ChooserFace {
-    fn colours(self) -> (Color, Color, Color, Color) {
+    /// Its colours in a title's look: the title's own cent keys where it
+    /// has them (crate::looks), Golden Century's otherwise.
+    fn colours(self, look: &crate::looks::TitleLook) -> (Color, Color, Color, Color) {
         match self {
+            ChooserFace::Cents if look.cents_key.is_some() => {
+                crate::looks::key_shades(look.cents_key.unwrap_or_default())
+            }
             ChooserFace::Cents => (
                 Color::srgb_u8(245, 95, 45),
                 Color::srgb_u8(252, 140, 92),
                 Color::srgb_u8(247, 104, 54),
                 Color::srgb_u8(120, 35, 15),
             ),
+            ChooserFace::Dollars if look.dollar_key.is_some() => {
+                crate::looks::key_shades(look.dollar_key.unwrap_or_default())
+            }
             ChooserFace::Dollars => (
                 Color::srgb_u8(246, 205, 75),
                 Color::srgb_u8(252, 230, 140),
@@ -10203,8 +10353,9 @@ fn chooser_key<'a>(
     w: f32,
     h: f32,
     face: ChooserFace,
+    look: &crate::looks::TitleLook,
 ) -> EntityCommands<'a> {
-    let (base, light, low, rim) = face.colours();
+    let (base, light, low, rim) = face.colours(look);
     let mut key = row.spawn((
         Node {
             width: Val::Px(w),
@@ -10296,7 +10447,11 @@ fn spawn_games_menu(
     fonts: &CabFonts,
     profile: Profile,
     title: &str,
+    look: &crate::looks::TitleLook,
 ) {
+    let header = look
+        .chooser_header
+        .map_or(CHOOSER_HEADER_COLOUR, crate::looks::rgb);
     let top = JACKPOT_BAR_TOP + JACKPOT_BAR_W * 104.0 / 1225.0 + 4.0;
     c.spawn((
         ChooserRoot,
@@ -10400,7 +10555,7 @@ fn spawn_games_menu(
                     font_size: FontSize::Px(header_size),
                     ..default()
                 },
-                TextColor(CHOOSER_HEADER_COLOUR),
+                TextColor(header),
                 TextLayout::justify(Justify::Center),
                 Node {
                     position_type: PositionType::Absolute,
@@ -10428,7 +10583,7 @@ fn spawn_games_menu(
                     } else {
                         ChooserFace::Cents
                     };
-                    chooser_key(row, kw, kh, face)
+                    chooser_key(row, kw, kh, face, look)
                         .with_children(|b| {
                             spawn_key_figure(b, &fonts.meter, 56.0, chooser_figure(cents));
                         })
@@ -10502,7 +10657,7 @@ fn spawn_games_menu(
             .with_children(|row| {
                 for yes in [true, false] {
                     let word = if yes { "YES" } else { "NO" };
-                    chooser_key(row, aw, ah, ChooserFace::Cents)
+                    chooser_key(row, aw, ah, ChooserFace::Cents, look)
                         .with_children(|b| {
                             spawn_key_figure(b, &fonts.sans, 30.0, (word.to_string(), None));
                         })
@@ -11788,6 +11943,59 @@ fn line_win_note(line: u16, award: u64) -> String {
     format!("Line {} wins {award}", u32::from(line) + 1)
 }
 
+/// A line win multiplied by its wilds (a free game's x2 wilds: two make x4)
+/// gives the line's own pay, the multiplier and the award: "Line 8 wins
+/// 50 x 2 = 100", "Line 4 wins 50 x 4 = 200" (Genghis Khan club cabinets,
+/// four recordings; VERIFIED as displayed).
+fn line_win_note_times(line: u16, award: u64, multiplier: u64) -> String {
+    if multiplier <= 1 || award % multiplier != 0 {
+        return line_win_note(line, award);
+    }
+    format!(
+        "Line {} wins {} x {multiplier} = {award}",
+        u32::from(line) + 1,
+        award / multiplier
+    )
+}
+
+/// What a free game's wilds multiply a line win by: the model's wild
+/// multiplier once for each wild in the line's run (1 outside the free
+/// games, or with no multiplier).
+fn line_multiplier(
+    model: &MathModel,
+    free_game: bool,
+    labels: &Query<(&CellLabel, &Text), Without<LineBadgeNumber>>,
+    line: u16,
+    count: u8,
+) -> u64 {
+    let Some(m) = model
+        .free_games
+        .as_ref()
+        .and_then(|fg| fg.wild_multiplier)
+        .filter(|m| free_game && *m > 1)
+    else {
+        return 1;
+    };
+    let Some(rows) = model.paylines.get(line as usize) else {
+        return 1;
+    };
+    let wilds = (0..count)
+        .filter(|&reel| {
+            rows.0.get(reel as usize).is_some_and(|&row| {
+                labels.iter().any(|(l, t)| {
+                    l.reel == reel
+                        && l.row == row
+                        && model
+                            .symbols
+                            .iter()
+                            .any(|s| s.key == label_symbol(&t.0).0 && s.kind == SymbolKind::Wild)
+                })
+            })
+        })
+        .count();
+    u64::from(m).saturating_pow(wilds as u32)
+}
+
 /// Show the winning lines in turn, and their message.
 #[allow(clippy::too_many_arguments, clippy::type_complexity)]
 pub fn win_lines(
@@ -11818,6 +12026,7 @@ pub fn win_lines(
         ),
         (Without<LineBadge>, Without<LineStub>),
     >,
+    cell_labels: Query<(&CellLabel, &Text), Without<LineBadgeNumber>>,
 ) {
     if !fidelity.0 {
         return;
@@ -11846,7 +12055,11 @@ pub fn win_lines(
     // The cabinet always gives a line win in credits, in plain digits
     // ("Line 13 wins 20", "Line 4 wins 100": y8c8lEdPW8Y, 306 messages at
     // every denomination, none in dollars), while WIN counts in dollars.
-    show.win_note = current.map(|(line, _, award)| line_win_note(line, award));
+    let free_game = matches!(show.stage, Stage::FreeGames { .. });
+    show.win_note = current.map(|(line, count, award)| {
+        let m = line_multiplier(sim.game.model(), free_game, &cell_labels, line, count);
+        line_win_note_times(line, award, m)
+    });
     let lit = current.filter(|_| in_spans(show.win_t % WIN_LINE_SECONDS, &WIN_LINE_LIT));
     let rows = lit.and_then(|(line, _, _)| sim.game.model().paylines.get(line as usize));
     let set = |vis: &mut Visibility, on: bool| {
@@ -11986,11 +12199,8 @@ pub fn win_lines(
 // SND_Wild_3 (the stack's height; 2.5 s) and the win waits for it. A stack on
 // no winning line stays as heads.
 
-/// The tiles of the game's stack animations: each 130 x 118 frame pixels,
-/// the first at (43, 39).
-const WILD_TILE: (f32, f32) = (130.0, 118.0);
-const WILD_TILE_AT: (f32, f32) = (43.0, 39.0);
-/// Frames per second of the stack animations.
+/// Frames per second of the stack animations (their frames' size and
+/// place: each title's `tall3` / `tall2`, crate::looks).
 const WILD_FPS: f32 = 20.0;
 
 /// Emperor stacks: those standing tall (reel, top row, height, since when in
@@ -12001,15 +12211,87 @@ pub struct WildStacks {
     landed: Vec<(u8, u8, u8)>,
     /// The stacks of this spin have been found.
     found: bool,
+    /// Wilds filling their reels this game (Golden Gong's monk), until the
+    /// next spin.
+    expanded: Vec<Expansion>,
 }
 
-/// Seconds the win waits for a stack to stand (the length of SND_Wild_N).
+/// A wild filling its reel: the landed wild grows into the reel's standing
+/// figure, the title's own sequence for the row it landed on, its win
+/// version when the reel is in a win (then the standing loop), its no-win
+/// version held on its last frame otherwise.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Expansion {
+    pub reel: u8,
+    /// The row the wild landed on (0 top).
+    pub row: u8,
+    pub win: bool,
+    /// The wild's key, which every position of the reel takes once the
+    /// figure covers it.
+    pub key: String,
+    /// When the sequence began (seconds of `Time`).
+    pub t0: f32,
+    /// The reel's positions show the wild now.
+    pub relabelled: bool,
+}
+
+/// A wild filling its reel plays its sequence at 20 frames a second from the
+/// moment the reels are still, two frames in (Golden Gong club cabinets: the
+/// figure visibly grows from rest + 0.33-0.37 s and fills the reel at rest +
+/// 0.67-0.70 s on twelve expansions in three recordings, the pack's
+/// sequences showing the landed head for frames 0-7 and growing over 8-13;
+/// VERIFIED).
+pub const EXPAND_FPS: f32 = 20.0;
+pub const EXPAND_LEAD: f32 = 2.0 / EXPAND_FPS;
+/// The reel's positions take the wild once the figure covers them (frame
+/// 14 of the sequence).
+pub const EXPAND_FULL: f32 = 14.0 / EXPAND_FPS;
+/// After an expansion the first line shows at rest + 1.5 s and WIN counts
+/// 0.25 s after the expansion's sound (rest + 2.45-2.60 s against the
+/// 2.3 s SND_ExpandWin; club cabinets, four events; STRONG / VERIFIED).
+pub const EXPAND_LINES_AFTER: f32 = 1.5;
+pub const EXPAND_COUNT_LAG: f32 = 0.25;
+
+/// Seconds the win waits for a stack to stand: Golden Century's SND_Wild_N
+/// (a title with its own wild sound holds for its length instead).
 pub const WILD_HOLD: f32 = 2.5;
+/// WIN counts this long after the wild's sound ends, as a win with no wild
+/// counts 0.20 s after its first line (Panda Magic club cabinets; STRONG).
+pub const WILD_COUNT_LAG: f32 = 0.2;
 
 impl WildStacks {
-    /// Look for the stacks again (a wild has filled its reel).
+    /// Look for the stacks again (a wild has filled its reel); the reels
+    /// filling stay.
     pub fn refind(&mut self) {
-        *self = WildStacks::default();
+        let expanded = std::mem::take(&mut self.expanded);
+        *self = WildStacks {
+            expanded,
+            ..WildStacks::default()
+        };
+    }
+
+    /// A wild begins to fill its reel.
+    pub fn expand(&mut self, expansion: Expansion) {
+        self.expanded.retain(|e| e.reel != expansion.reel);
+        self.expanded.push(expansion);
+    }
+
+    /// The reels filling whose positions should take the wild now (`now` in
+    /// seconds of `Time`): marked as done.
+    pub fn due_relabels(&mut self, now: f32) -> Vec<(u8, String)> {
+        let mut due = Vec::new();
+        for e in &mut self.expanded {
+            if !e.relabelled && now - e.t0 >= EXPAND_FULL {
+                e.relabelled = true;
+                due.push((e.reel, e.key.clone()));
+            }
+        }
+        due
+    }
+
+    /// Whether `reel` is filling (or filled) with a wild this game.
+    pub fn expanding(&self, reel: u8) -> bool {
+        self.expanded.iter().any(|e| e.reel == reel)
     }
 
     /// This spin's stacks have been found.
@@ -12022,26 +12304,49 @@ impl WildStacks {
     pub fn on_lines(
         &self,
         paylines: &[dragonlink_model::Payline],
-        wins: impl Iterator<Item = (u16, u8)>,
+        wins: impl Iterator<Item = (u16, u8)> + Clone,
     ) -> Option<u8> {
-        let mut tallest = None;
-        for (line, count) in wins {
-            let Some(rows) = paylines.get(line as usize) else {
-                continue;
-            };
-            for &(reel, top, height) in &self.landed {
-                let on = reel < count
-                    && rows
-                        .0
-                        .get(reel as usize)
-                        .is_some_and(|&row| row >= top && row < top + height);
-                if on {
-                    tallest = tallest.max(Some(height));
-                }
-            }
-        }
-        tallest
+        self.landed
+            .iter()
+            .filter(|&&stack| stack_on_lines(stack, paylines, wins.clone()))
+            .map(|&(_, _, height)| height)
+            .max()
     }
+
+    /// Stand the landed stacks that are on a winning line, from `now`
+    /// (seconds of `Time`); a stack on no winning line stays as heads
+    /// (Golden Century's rule; Genghis Khan club cabinet 3ggOSOerdhc
+    /// 2:22.5-2:26, a 2-high stack on a win standing beside a 3-high one on
+    /// none; STRONG).
+    pub fn stand(
+        &mut self,
+        paylines: &[dragonlink_model::Payline],
+        wins: impl Iterator<Item = (u16, u8)> + Clone,
+        now: f32,
+    ) {
+        self.list = self
+            .landed
+            .iter()
+            .filter(|&&stack| stack_on_lines(stack, paylines, wins.clone()))
+            .map(|&(reel, top, height)| (reel, top, height, now))
+            .collect();
+    }
+}
+
+/// Whether a landed stack (reel, top row, height) is in the run of one of
+/// these winning lines.
+fn stack_on_lines(
+    (reel, top, height): (u8, u8, u8),
+    paylines: &[dragonlink_model::Payline],
+    mut wins: impl Iterator<Item = (u16, u8)>,
+) -> bool {
+    wins.any(|(line, count)| {
+        reel < count
+            && paylines
+                .get(line as usize)
+                .and_then(|rows| rows.0.get(reel as usize))
+                .is_some_and(|&row| row >= top && row < top + height)
+    })
 }
 
 /// The tall emperor drawn over one reel's stack.
@@ -12184,7 +12489,6 @@ pub fn big_art(
 /// Find emperor stacks as reels land; forget them as reels spin.
 pub fn wild_stacks(
     fidelity: Res<Fidelity>,
-    time: Res<Time>,
     reels: Res<Reels>,
     show: Res<FeatureShow>,
     art: Res<ArtPack>,
@@ -12215,19 +12519,15 @@ pub fn wild_stacks(
     if show.reveal.is_some() {
         return;
     }
-    let now = time.elapsed_secs();
-    if show.wild.is_some() && stacks.list.is_empty() {
-        stacks.list = stacks
-            .landed
-            .iter()
-            .map(|&(reel, top, height)| (reel, top, height, now))
-            .collect();
-    }
     if stacks.found {
         return;
     }
     stacks.found = true;
     for reel in 0..reels.states.len() as u8 {
+        // A reel the wild fills stands as its own figure, not as a stack.
+        if stacks.expanding(reel) {
+            continue;
+        }
         let mut column = [false; 3];
         for (l, text) in &labels {
             if l.reel == reel && (l.row as usize) < 3 {
@@ -12245,18 +12545,26 @@ pub fn wild_stacks(
             while row < 3 && column[row] {
                 row += 1;
             }
-            if row - start >= 2 {
-                stacks.landed.push((reel, start as u8, (row - start) as u8));
+            // A run is a stack only where the title has tall art for it:
+            // Panda Magic's and Happy & Prosperous's stacked wilds each
+            // animate in their own cell (club cabinets: tg4nMylHxhI,
+            // 8V086h-IJ6I, every panda of a stack; VERIFIED).
+            let height = row - start;
+            if height >= 2 && art.anims.contains_key(&format!("wild{height}_intro")) {
+                stacks.landed.push((reel, start as u8, height as u8));
             }
         }
     }
 }
 
 /// Draw the tall emperors: the wipe, then the burning figure.
+#[allow(clippy::too_many_arguments)]
 pub fn wild_talls(
     fidelity: Res<Fidelity>,
     time: Res<Time>,
     art: Res<ArtPack>,
+    look: Res<crate::looks::TitleLook>,
+    images: Res<Assets<Image>>,
     stacks: Res<WildStacks>,
     show: Res<FeatureShow>,
     gamble: Res<GambleShow>,
@@ -12275,33 +12583,80 @@ pub fn wild_talls(
         }
         return;
     }
-    // Each tile of the animation fills one reel cell.
-    let (sx, sy) = (PITCH.0 * 0.97 / WILD_TILE.0, PITCH.1 / WILD_TILE.1);
+    let now = time.elapsed_secs();
     for (tall, mut node, mut image, mut vis) in &mut talls {
-        let stack = stacks.list.iter().find(|s| s.0 == tall.reel);
-        let frame = stack.and_then(|&(_, _, len, t0)| {
-            let n = ((time.elapsed_secs() - t0) * WILD_FPS) as usize;
+        // A reel the wild fills: its sequence for the landed row, then the
+        // standing loop (in a win) or its last frame (no win).
+        let filling = stacks
+            .expanded
+            .iter()
+            .find(|e| e.reel == tall.reel)
+            .and_then(|e| {
+                let row = ["top", "middle", "bottom"].get(e.row as usize)?;
+                let name = if e.win {
+                    format!("wild3_expand_{row}")
+                } else {
+                    format!("wild3_expand_{row}_nowin")
+                };
+                let frames = art.anims.get(&name).filter(|f| !f.is_empty())?;
+                let n = ((now - e.t0).max(0.0) * EXPAND_FPS) as usize;
+                let frame = if n < frames.len() {
+                    frames[n].clone()
+                } else if e.win {
+                    let lp = art.anims.get("wild3_loop").filter(|f| !f.is_empty())?;
+                    lp[(n - frames.len()) % lp.len()].clone()
+                } else {
+                    frames[frames.len() - 1].clone()
+                };
+                Some((e.reel, 0u8, 3u8, frame, None))
+            });
+        // A stack standing on a winning line: its intro, then its loop.
+        let standing = || {
+            let &(reel, top, len, t0) = stacks.list.iter().find(|s| s.0 == tall.reel)?;
+            let n = ((now - t0) * WILD_FPS) as usize;
             let intro = art.anims.get(&format!("wild{len}_intro"))?;
-            if n < intro.len() {
-                return intro.get(n).cloned();
-            }
-            let lp = art.anims.get(&format!("wild{len}_loop"))?;
-            lp.get((n - intro.len()) % lp.len().max(1)).cloned()
-        });
-        let want = match (stack, frame) {
-            (Some(&(reel, top, len, _)), Some(h)) => {
+            let frame = if n < intro.len() {
+                intro.get(n).cloned()
+            } else {
+                let lp = art.anims.get(&format!("wild{len}_loop"))?;
+                lp.get((n - intro.len()) % lp.len().max(1)).cloned()
+            }?;
+            let (w, h, dy) = if len >= 3 {
+                look.tall3
+            } else if top == 0 {
+                (look.tall2.0, look.tall2.1, look.tall2.2)
+            } else {
+                (look.tall2.0, look.tall2.1, look.tall2.3)
+            };
+            Some((reel, top, len, frame, Some((w, h, dy))))
+        };
+        let want = match filling.or_else(standing) {
+            Some((reel, top, len, h, rect)) => {
+                // A stack's figure in its title's own rect; a filling reel's
+                // frames at its title's frame pixels a cell (crate::looks).
+                let size = images.get(&h).map(|i| i.size_f32());
                 if image.image != h {
                     image.image = h;
                 }
+                let (w, hh, dy) = match rect {
+                    Some((w, h, dy)) => (w * PITCH.0, h * PITCH.1, dy),
+                    None => {
+                        let (px_x, px_y) = look.expand_px;
+                        let (w, h) = size.map_or((PITCH.0, f32::from(len) * PITCH.1), |s| {
+                            (s.x / px_x * PITCH.0, s.y / px_y * PITCH.1)
+                        });
+                        (w, h, look.expand_dy)
+                    }
+                };
                 let (cx, cy) = cell_center(reel, top);
-                let frame_h = if len == 3 { 432.0 } else { 312.0 };
-                node.left = Val::Px(cx - (WILD_TILE_AT.0 + WILD_TILE.0 / 2.0) * sx);
-                node.top = Val::Px(cy - (WILD_TILE_AT.1 + WILD_TILE.1 / 2.0) * sy);
-                node.width = Val::Px(216.0 * sx);
-                node.height = Val::Px(frame_h * sy);
+                let cy = cy + (f32::from(len) - 1.0) / 2.0 * PITCH.1 + dy * PITCH.1;
+                node.left = Val::Px(cx - w / 2.0);
+                node.top = Val::Px(cy - hh / 2.0);
+                node.width = Val::Px(w);
+                node.height = Val::Px(hh);
                 Visibility::Inherited
             }
-            _ => Visibility::Hidden,
+            None => Visibility::Hidden,
         };
         if *vis != want {
             *vis = want;
@@ -12324,11 +12679,26 @@ pub struct SymbolFx {
     row: u8,
 }
 
-/// Frames per second of the symbol win animations.
-const SYMBOL_FX_FPS: f32 = 30.0;
+/// Frames per second of a symbol win animation the pack gives no rate for:
+/// a video texture's 20 (Golden Century's warriors 120 frames over a 180-frame
+/// range, the official app and the club cabinet both at 20 fps; Happy &
+/// Prosperous's jade turning in 4.00 s on two recordings; STRONG).
+const SYMBOL_FX_FPS: f32 = 20.0;
 
 /// The win animation over one cell (hidden until it wins).
 pub fn spawn_symbol_fx(cell: &mut ChildSpawnerCommands, reel: u8, row: u8) {
+    cell.spawn((
+        SymbolUnder { reel, row },
+        Node {
+            position_type: PositionType::Absolute,
+            ..default()
+        },
+        ImageNode {
+            image_mode: NodeImageMode::Stretch,
+            ..default()
+        },
+        Visibility::Hidden,
+    ));
     cell.spawn((
         SymbolFx { reel, row },
         Node {
@@ -12341,6 +12711,53 @@ pub fn spawn_symbol_fx(cell: &mut ChildSpawnerCommands, reel: u8, row: u8) {
         },
         Visibility::Hidden,
     ));
+    cell.spawn((
+        SymbolBadge { reel, row },
+        Node {
+            position_type: PositionType::Absolute,
+            ..default()
+        },
+        ImageNode {
+            image_mode: NodeImageMode::Stretch,
+            ..default()
+        },
+        Visibility::Hidden,
+    ));
+}
+
+/// A free game's x2 badge pulsing over a winning x2 wild's animation.
+#[derive(Component)]
+pub struct SymbolBadge {
+    reel: u8,
+    row: u8,
+}
+
+/// A layered wild's back layer under its figure's animation (Happy &
+/// Prosperous: the red lotus tile with gold coins falling, `wild_bg_*`, under
+/// the Buddha, `buddha_*`; its mobile scene's WildBG and WildFG sprites, one
+/// rect; club cabinets show the tile and the coins through every win, STRONG).
+#[derive(Component)]
+pub struct SymbolUnder {
+    reel: u8,
+    row: u8,
+}
+
+/// The wild's win animation (and a free game's x2 badge) runs at 20 frames a
+/// second: the badge's 40 frames pulse every 1.97 s on Genghis Khan club
+/// cabinets (GfJgVpPiNbw 27:29-27:35, 1mhLqnuUGTw 9:52; STRONG), as Golden
+/// Century's tall emperor does (VERIFIED).
+const WILD_FX_FPS: f32 = 20.0;
+
+/// The frame of a symbol's win animation `n` frames in: its intro once, then
+/// its loop.
+fn fx_frame(art: &ArtPack, key: &str, n: usize) -> Option<Handle<Image>> {
+    let intro = art.anims.get(&format!("{key}_intro"));
+    let lp = art.anims.get(&format!("{key}_loop"))?;
+    match intro {
+        Some(i) if n < i.len() => i.get(n).cloned(),
+        Some(i) => lp.get((n - i.len()) % lp.len().max(1)).cloned(),
+        None => lp.get(n % lp.len().max(1)).cloned(),
+    }
 }
 
 /// Animate the symbols of the winning line being shown.
@@ -12350,43 +12767,104 @@ pub fn symbol_fx(
     show: Res<FeatureShow>,
     sim: Res<Sim>,
     art: Res<ArtPack>,
+    look: Res<crate::looks::TitleLook>,
     stacks: Res<WildStacks>,
     gamble: Res<GambleShow>,
     labels: Query<(&CellLabel, &Text)>,
-    mut fx: Query<(&SymbolFx, &mut Node, &mut ImageNode, &mut Visibility), Without<CellImage>>,
-    mut images: Query<(&CellImage, &mut Visibility), Without<SymbolFx>>,
+    mut fx: Query<
+        (&SymbolFx, &mut Node, &mut ImageNode, &mut Visibility),
+        (
+            Without<CellImage>,
+            Without<SymbolBadge>,
+            Without<SymbolUnder>,
+        ),
+    >,
+    mut badges: Query<
+        (&SymbolBadge, &mut Node, &mut ImageNode, &mut Visibility),
+        (Without<CellImage>, Without<SymbolFx>, Without<SymbolUnder>),
+    >,
+    mut unders: Query<
+        (&SymbolUnder, &mut Node, &mut ImageNode, &mut Visibility),
+        (Without<CellImage>, Without<SymbolFx>, Without<SymbolBadge>),
+    >,
+    mut images: Query<
+        (&CellImage, &mut Visibility),
+        (
+            Without<SymbolFx>,
+            Without<SymbolBadge>,
+            Without<SymbolUnder>,
+        ),
+    >,
 ) {
     if !fidelity.0 {
         return;
     }
+    let hide = |vis: &mut Visibility| {
+        if *vis != Visibility::Hidden {
+            *vis = Visibility::Hidden;
+        }
+    };
     // Over the gamble no symbol shows, still or animated: the tall ones
     // overhang the gamble screen's top (see `feature_screen`); they come back
     // with the last line win after a loss.
     if gamble.active {
         for (_, _, _, mut vis) in &mut fx {
-            if *vis != Visibility::Hidden {
-                *vis = Visibility::Hidden;
-            }
+            hide(&mut vis);
+        }
+        for (_, _, _, mut vis) in &mut badges {
+            hide(&mut vis);
+        }
+        for (_, _, _, mut vis) in &mut unders {
+            hide(&mut vis);
         }
         for (_, mut vis) in &mut images {
-            if *vis != Visibility::Hidden {
-                *vis = Visibility::Hidden;
-            }
+            hide(&mut vis);
         }
         return;
     }
-    // The positions animating now.
-    let mut cells: Vec<(u8, u8)> = Vec::new();
-    if let Some((line, count)) = show.win_current
-        && let Some(rows) = sim.game.model().paylines.get(line as usize)
-    {
-        for reel in 0..count {
-            if let Some(&row) = rows.0.get(reel as usize) {
-                cells.push((reel, row));
+    let model = sim.game.model();
+    let is_wild = |key: &str| {
+        model
+            .symbols
+            .iter()
+            .any(|s| s.key == key && s.kind == SymbolKind::Wild)
+    };
+    let key_at = |reel: u8, row: u8| {
+        labels
+            .iter()
+            .find(|(l, _)| l.reel == reel && l.row == row)
+            .map(|(_, t)| label_symbol(&t.0).0.to_string())
+            .unwrap_or_default()
+    };
+    let run = |line: u16, count: u8| -> Vec<(u8, u8)> {
+        model
+            .paylines
+            .get(line as usize)
+            .map(|rows| {
+                (0..count)
+                    .filter_map(|reel| rows.0.get(reel as usize).map(|&row| (reel, row)))
+                    .collect()
+            })
+            .unwrap_or_default()
+    };
+    // The positions animating now: the shown line's symbols, and every wild
+    // in any of the game's wins, which start together with the first line
+    // and keep on through all of them (club cabinets: Genghis Khan GfJgVpPiNbw
+    // 27:29-27:35 and 1mhLqnuUGTw 9:52, Panda Magic tg4nMylHxhI; STRONG).
+    let line_cells = show
+        .win_current
+        .map(|(line, count)| run(line, count))
+        .unwrap_or_default();
+    let mut cells = line_cells.clone();
+    if show.win_current.is_some() {
+        for &(line, count, _) in &show.win_lines {
+            for (reel, row) in run(line, count) {
+                if is_wild(&key_at(reel, row)) && !cells.contains(&(reel, row)) {
+                    cells.push((reel, row));
+                }
             }
         }
     }
-    let line_cells = cells.clone();
     if show.scatter_shown {
         for (l, t) in &labels {
             if t.0 == art.roles.scatter {
@@ -12396,30 +12874,43 @@ pub fn symbol_fx(
     }
     let t = show.win_t;
     let (cw, ch) = cell_size();
+    // A free game's x2 badge: its frames and its place over the wild's box.
+    let badge_frames = look
+        .x2_badge
+        .and_then(|place| art.anims.get("wild_x2").map(|f| (place, f)));
+    let mut badge_at: Vec<((u8, u8), Handle<Image>, (f32, f32, f32, f32))> = Vec::new();
+    let mut under_at: Vec<((u8, u8), Handle<Image>, (f32, f32, f32, f32))> = Vec::new();
+    let under_fps = art
+        .anim_fps
+        .get("wild_bg_loop")
+        .copied()
+        .unwrap_or(SYMBOL_FX_FPS);
     for (f, mut node, mut image, mut vis) in &mut fx {
-        let on = cells.contains(&(f.reel, f.row)) && !stacks.list.iter().any(|s| s.0 == f.reel);
-        let key = labels
-            .iter()
-            .find(|(l, _)| l.reel == f.reel && l.row == f.row)
-            .map(|(_, t)| label_symbol(&t.0).0.to_string())
-            .unwrap_or_default();
+        let on = cells.contains(&(f.reel, f.row))
+            && !stacks.list.iter().any(|s| s.0 == f.reel)
+            && !stacks.expanding(f.reel);
+        let key = key_at(f.reel, f.row);
+        let wild = is_wild(&key);
+        // A free game's own wild (an x2 wild) has no animation of its own:
+        // it plays the wild's, with its badge over it (the title's mobile
+        // scene, WildFG).
+        let own = art.anims.contains_key(&format!("{key}_loop"));
+        let anim_key = if !own && wild {
+            art.roles.wild.clone()
+        } else {
+            key.clone()
+        };
+        // Each animation at its own rate where the pack records it (most
+        // are video textures drawn at 20 frames a second: the official app's
+        // and club cabinets' pictures, flags and wilds; image sequences 30),
+        // a video's 20 otherwise.
+        let fps = art
+            .anim_fps
+            .get(&format!("{anim_key}_loop"))
+            .copied()
+            .unwrap_or(SYMBOL_FX_FPS);
         let frame = on
-            .then(|| {
-                // The flags wave at 20 frames a second (real game).
-                let fps = if key == art.roles.scatter {
-                    20.0
-                } else {
-                    SYMBOL_FX_FPS
-                };
-                let n = (t * fps) as usize;
-                let intro = art.anims.get(&format!("{key}_intro"));
-                let lp = art.anims.get(&format!("{key}_loop"))?;
-                match intro {
-                    Some(i) if n < i.len() => i.get(n).cloned(),
-                    Some(i) => lp.get((n - i.len()) % lp.len().max(1)).cloned(),
-                    None => lp.get(n % lp.len().max(1)).cloned(),
-                }
-            })
+            .then(|| fx_frame(&art, &anim_key, (t * fps) as usize))
             .flatten();
         let want = match frame {
             Some(h) => {
@@ -12434,6 +12925,26 @@ pub fn symbol_fx(
                 node.top = Val::Px((ch - hh) / 2.0);
                 node.width = Val::Px(w);
                 node.height = Val::Px(hh);
+                if wild && let Some(bg) = fx_frame(&art, "wild_bg", (t * under_fps) as usize) {
+                    under_at.push((
+                        (f.reel, f.row),
+                        bg,
+                        ((cw - w) / 2.0, (ch - hh) / 2.0, w, hh),
+                    ));
+                }
+                if anim_key != key
+                    && let Some(((dx, dy, bw, bh), frames)) = badge_frames
+                    && !frames.is_empty()
+                {
+                    let n = (t * WILD_FX_FPS) as usize % frames.len();
+                    let (bw, bh) = (bw * w, bh * hh);
+                    let (cx, cy) = (cw / 2.0 + dx * w, ch / 2.0 + dy * hh);
+                    badge_at.push((
+                        (f.reel, f.row),
+                        frames[n].clone(),
+                        (cx - bw / 2.0, cy - bh / 2.0, bw, bh),
+                    ));
+                }
                 Visibility::Inherited
             }
             None => Visibility::Hidden,
@@ -12449,10 +12960,44 @@ pub fn symbol_fx(
             && in_spans(show.win_t % WIN_LINE_SECONDS, &WIN_LINE_BLINK);
         if playing || blink {
             for (ci, mut v) in &mut images {
-                if ci.reel == f.reel && ci.row == f.row && *v != Visibility::Hidden {
-                    *v = Visibility::Hidden;
+                if ci.reel == f.reel && ci.row == f.row {
+                    hide(&mut v);
                 }
             }
+        }
+    }
+    for (u, mut node, mut image, mut vis) in &mut unders {
+        match under_at.iter().find(|(at, ..)| *at == (u.reel, u.row)) {
+            Some((_, frame, (left, top, w, h))) => {
+                if image.image != *frame {
+                    image.image = frame.clone();
+                }
+                node.left = Val::Px(*left);
+                node.top = Val::Px(*top);
+                node.width = Val::Px(*w);
+                node.height = Val::Px(*h);
+                if *vis != Visibility::Inherited {
+                    *vis = Visibility::Inherited;
+                }
+            }
+            None => hide(&mut vis),
+        }
+    }
+    for (b, mut node, mut image, mut vis) in &mut badges {
+        match badge_at.iter().find(|(at, ..)| *at == (b.reel, b.row)) {
+            Some((_, frame, (left, top, w, h))) => {
+                if image.image != *frame {
+                    image.image = frame.clone();
+                }
+                node.left = Val::Px(*left);
+                node.top = Val::Px(*top);
+                node.width = Val::Px(*w);
+                node.height = Val::Px(*h);
+                if *vis != Visibility::Inherited {
+                    *vis = Visibility::Inherited;
+                }
+            }
+            None => hide(&mut vis),
         }
     }
 }
@@ -12644,7 +13189,13 @@ pub fn coin_shower(
 /// and the win's count.
 const FG_BELL: f32 = 0.045;
 const FG_FLAGS: f32 = FG_BELL + 2.6;
-pub const FG_COUNT: f32 = FG_FLAGS + 4.76;
+pub const FG_COUNT: f32 = FG_FLAGS + 4.87;
+/// The scatter win counts this long after the title's SND_Scatter ends:
+/// Genghis Khan 6.20-6.25 s on ten triggers (five recordings, each start
+/// placed by the clip itself) against its 6.11 s clip, Peace & Long Life
+/// 4.15-4.18 s against 4.005 s, Golden Century's club audit 4.87 s against
+/// 4.746 s (STRONG; the other titles HYPOTHESIS, by the same rule).
+const WAVE_AFTER_CLIP: f32 = 0.12;
 /// Seconds from the START FEATURE press (the frame its prompt goes) to the
 /// first free game's reels moving: club cabinets 0.53 s (y8c8lEdPW8Y
 /// 949.80-950.33) and 0.50 s (1bAevGz0K2k 328.60-329.10), VERIFIED; the
@@ -12660,6 +13211,7 @@ const FG_CUT: f32 = FG_FIRST_SPIN - TIMING.event_interval;
 /// 329.167-330.333, 5 video frames a step on both; VERIFIED). The official
 /// app counts from 1, 4 frames a step.
 const FG_TICK: f32 = 5.0 / 30.0;
+
 /// From the WIN plaque going to the next free game, after a Hold & Spin
 /// inside the free games: 0.37-0.43 s on a club cabinet (y8c8lEdPW8Y
 /// 1019.93-1020.37, 2562.93-2563.37, 3046.57-3046.93; VERIFIED, one
@@ -12702,26 +13254,34 @@ impl FeatureShow {
         self.intro.is_some_and(|t| t >= INTRO_BURST + after)
     }
 
-    /// A win through an emperor sounds one of the wild sounds, once a game;
-    /// a stack of emperors on the winning line also stands, and the win
-    /// waits for it (real game: a stack held the win for the sound's 2.5 s).
+    /// A win through an emperor sounds one of the wild sounds, once a game,
+    /// and WIN's count waits for it while the lines show (`wild_holds`); a
+    /// stack of emperors on the winning line also stands (real game: a stack
+    /// held the win for the sound's 2.5 s).
     /// On recordings the variant changes from win to win, the same stack
     /// sounding different ones; it is not the stack's height. Here the five
     /// take turns in a scrambled order.
     /// A free game's x2 wild (Genghis Khan, Peace & Long Life) sounds its own
     /// clip, SND_WildFG, where the title has one (names only; HYPOTHESIS).
-    pub fn begin_wild(&mut self, stack: bool, x2: bool) {
+    pub fn begin_wild(&mut self, x2: bool) {
         if self.wild_sounded {
             return;
         }
         self.wild_sounded = true;
+        self.wild = Some(0.0);
         if x2 {
             self.cues.push("SND_WildFG");
-            if stack {
-                self.wild = Some(0.0);
-            }
+            // A title with no free-games wild sound plays none and holds
+            // nothing (Peace & Long Life's x2 wild is silent on club
+            // cabinets).
+            self.wild_for = if self.wild_fg_clip > 0.0 {
+                self.wild_fg_clip + WILD_COUNT_LAG
+            } else {
+                0.0
+            };
             return;
         }
+        self.wild_for = self.wild_hold();
         const WILD_SOUNDS: [&str; 5] = [
             "SND_Wild_1",
             "SND_Wild_2",
@@ -12732,20 +13292,45 @@ impl FeatureShow {
         self.cues
             .push(WILD_SOUNDS[(self.wild_turn * 3 + 2) % WILD_SOUNDS.len()]);
         self.wild_turn += 1;
-        if stack {
-            self.wild = Some(0.0);
-        }
     }
 
-    /// A wild filling its reel: Golden Gong's expansion sound, the win
-    /// version when the reel is in a win (names only; the pairing is
-    /// HYPOTHESIS).
-    pub fn expand_sound(&mut self, win: bool) {
+    /// Wilds fill their reels: Golden Gong's expansion sound, once a game,
+    /// with the sequence (the win version when a filled reel is in a win;
+    /// the pairing HYPOTHESIS, the two clips nearly alike), which is the
+    /// game's wild sound: no SND_Wild follows (club cabinets; STRONG).
+    pub fn begin_expansion(&mut self, win: bool) {
+        if self.expand.is_some() {
+            if win {
+                self.expand_won = true;
+            }
+            return;
+        }
+        self.expand = Some(0.0);
+        self.expand_won = win;
+        self.wild_sounded = true;
         self.cues.push(if win {
             "SND_ExpandWin"
         } else {
             "SND_ExpandNoWin"
         });
+    }
+
+    /// Whether this game's expansion holds `front`: the lines until rest +
+    /// 1.5 s, WIN's count until 0.25 s after the expansion's sound.
+    pub fn expansion_holds(&self, front: Option<&Event>) -> bool {
+        let Some(t) = self.expand else {
+            return false;
+        };
+        let clip = if self.expand_clip > 0.0 {
+            self.expand_clip
+        } else {
+            2.3
+        };
+        match front {
+            Some(Event::LineWin { .. }) => t < EXPAND_LINES_AFTER,
+            Some(Event::CreditsChanged { .. }) => self.expand_won && t < clip + EXPAND_COUNT_LAG,
+            _ => false,
+        }
     }
 
     /// Whether a wild sound has played this game (the presenter asks once).
@@ -12765,6 +13350,37 @@ impl FeatureShow {
         self.games_won = games;
         self.scatter_award = scatter;
         true
+    }
+
+    /// Begin a retrigger's sequence, if a free game's scatters have added
+    /// games (`added`, `remaining` after them) and it has not begun; true
+    /// when it begins. As club cabinets show it (Panda Magic tg4nMylHxhI and
+    /// 6b5UuR0po4g, three retriggers frame by frame; Autumn Moon, Happy &
+    /// Prosperous and Peace & Long Life the same; VERIFIED): "N FREE GAMES
+    /// WON!" on the status line from the result, the bell, the scatters'
+    /// wave with SND_Scatter and "Scatter wins N" as on a base trigger; where
+    /// a base trigger would ask for START FEATURE, the banner's total counts
+    /// up from the old total, one `FG_TICK` a step; the game's win counts two
+    /// steps after the last; no press.
+    pub fn begin_retrigger(&mut self, added: u8, remaining: u32, scatter: u64) -> bool {
+        let Stage::FreeGames { number, total } = self.stage else {
+            return false;
+        };
+        if self.retrigger.is_some() {
+            return false;
+        }
+        self.fg_trigger = Some(0.0);
+        self.games_won = added;
+        self.scatter_award = scatter;
+        self.retrigger = Some((total, (number + remaining).max(total)));
+        true
+    }
+
+    /// The trigger clock at which a retrigger's sequence lets the game's win
+    /// count: two steps after the banner's last (0.33-0.37 s measured).
+    fn retrigger_ends_at(&self) -> Option<f32> {
+        self.retrigger
+            .map(|(old, new)| self.fg_count_at() + (new.saturating_sub(old) + 1) as f32 * FG_TICK)
     }
 
     /// The free games' total as the banner shows it (counting up after the
@@ -12804,6 +13420,9 @@ pub fn free_games_trigger(
     if let Some(t) = show.wild {
         show.wild = Some(t + dt);
     }
+    if let Some(t) = show.expand {
+        show.expand = Some(t + dt);
+    }
     if let Some(t0) = show.fg_trigger {
         let t = t0 + dt;
         show.fg_trigger = Some(t);
@@ -12814,6 +13433,16 @@ pub fn free_games_trigger(
             sounds.play(&mut commands, "SND_Scatter");
             show.fg_flags = true;
             show.win_t = 0.0;
+        }
+        // A retrigger: one step before the moment a base trigger asks for
+        // START FEATURE, the banner's total starts counting from the old
+        // total (its first step comes one tick later, at that moment).
+        if let (Some((old, new)), Stage::FreeGames { number, .. }) = (show.retrigger, show.stage) {
+            let arm = show.fg_count_at() - FG_TICK;
+            if crossed(t0, t, arm) {
+                show.stage = Stage::FreeGames { number, total: new };
+                show.fg_count = Some((old as f32 * FG_TICK + (t - arm), old));
+            }
         }
     }
     if show.advance_cut(dt) {
@@ -13783,6 +14412,11 @@ mod tests {
         assert_eq!(line_win_note(12, 20), "Line 13 wins 20");
         assert_eq!(line_win_note(3, 100), "Line 4 wins 100");
         assert_eq!(line_win_note(0, 1000), "Line 1 wins 1000");
+        // A free game's x2 wilds (Genghis Khan club cabinets).
+        assert_eq!(line_win_note_times(7, 100, 2), "Line 8 wins 50 x 2 = 100");
+        assert_eq!(line_win_note_times(3, 200, 4), "Line 4 wins 50 x 4 = 200");
+        assert_eq!(line_win_note_times(18, 20, 4), "Line 19 wins 5 x 4 = 20");
+        assert_eq!(line_win_note_times(0, 40, 1), "Line 1 wins 40");
     }
 
     /// The line pieces follow the denomination's line configuration (50 at
@@ -15580,6 +16214,8 @@ mod tests {
         world.insert_resource(Fidelity(true));
         world.insert_resource(Time::<()>::default());
         world.insert_resource(FeatureShow::default());
+        world.insert_resource(crate::looks::TitleLook::default());
+        world.insert_resource(Assets::<Image>::default());
         world.insert_resource(WildStacks {
             list: vec![(1, 0, 3, 0.0)],
             ..WildStacks::default()
