@@ -5,6 +5,30 @@ meaningful increment. Item-level state is in `progress/progress.toml`; this page
 
 **Last updated: 2026-10-20.**
 
+## Later titles' free games (2026-10-20)
+
+The two free-games presentations the overnight report left open are done, each checked against
+club footage frame by frame and on muted captures (labels in the titles' claim files):
+
+- **Spring Festival's BIG reel.** In the free games reels 2 to 4 spin and land as one reel of BIG
+  symbols, BIG coins passing with prizes, on the title's own free-games reel panel (one wide panel
+  between the outer reels, through FEATURE COMPLETED); at the first free game the base window
+  scrolls out in its own symbols under the BIG strip, and a landed BIG symbol leaves whole. The
+  stops follow a Queensland club machine to the frame (WKjdoixnVjg, four free games): reel 1 rests
+  0.30 s later than in a base game, the BIG reel 1.87 s after it, reel 5 0.70 s after that
+  (VERIFIED, one machine); the BIG reel runs on to a whole BIG symbol (HYPOTHESIS for how). The BIG
+  pictures, wild and ingot play the scene's own win animations at the scene's lengths; a BIG royal
+  stays through its win (footage), a BIG coin sits on a dark block (the scene's
+  MegaReelBackground). The base window scrolling out and the first free game's longer spin are
+  as filmed; the latter is not followed.
+- **Golden Gong's monk.** A monk landing in the free games grows from the row it landed on with the
+  scene's own expansion video, the win version going on into the burning tall monk's loop, the
+  no-win version holding the plain standing monk (VERIFIED, scene); the reel's other symbols stay
+  until the growing panel covers them; every monk of a game grows together, 0.35 s after the reels
+  settle (DWBTkIVcHNM, two games; VERIFIED, one machine); the standing monk scrolls away whole as
+  its reel spins again. The win waits for the expansion; no wild sound or stack follows it
+  (HYPOTHESIS).
+
 ## Markets as data (2026-10-20)
 
 - **Markets.** The cabinet's market values are a table (`Market` in `apps/dragonlink/src/cabinet.rs`),
@@ -48,8 +72,7 @@ owner; docs/DECISIONS.md). Every run muted. Progress, newest last:
 - Correction: recording y8c8lEdPW8Y is a public Queensland club recording, not the owner's own
   session; an earlier note called it the owner's, and the docs say so now.
 - Open, not blockers (ordinary work): the later titles' sound placements are not checked against
-  recordings with sound; Spring Festival's BIG reel spins as three columns and lands as one;
-  Golden Gong's expansion animation is not played; retrigger counts for three later titles are
+  recordings with sound; retrigger counts for three later titles are
   unknown (three used, labelled); the club help pages of every title were never filmed, so GAME
   RULES shows the mobile pages. No new external blocker (docs/BLOCKERS.md unchanged).
 

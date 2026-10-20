@@ -1087,7 +1087,7 @@ note = "Grand and Major linked progressives, Minor and Mini fixed by denominatio
 id = "free-games"
 name = "Free games feature"
 status = "partial"
-note = "Six free games with the monk filling its reel when it lands and their own pay table (help, VERIFIED; footage, STRONG); three more on a retrigger (HYPOTHESIS, never filmed). Strips synthetic."
+note = "Six free games with the monk filling its reel when it lands and their own pay table (help, VERIFIED; footage, STRONG); three more on a retrigger (HYPOTHESIS, never filmed). Strips synthetic. The monk grows from the row it landed on with the scene's own expansion (win version into the burning tall monk's loop, no-win version holding the plain one; VERIFIED, scene), every monk of a game together, growing 0.35 s after the reels settle (club footage, VERIFIED one machine), and leaves whole as its reel spins again; checked on muted captures."
 
 [[category.item]]
 id = "art-ui"
@@ -1269,7 +1269,7 @@ note = "Grand and Major linked progressives, Minor and Mini fixed by denominatio
 id = "free-games"
 name = "Free games feature"
 status = "partial"
-note = "Six free games on a BIG 3x3 reel over reels 2-4; a BIG ingot pays the bet and adds three games; the ingot and coin come only BIG (help pages, VERIFIED; footage 1 of 6 to 3 of 9, STRONG). The BIG reel's strip synthetic; the big reel spins as three columns, not one."
+note = "Six free games on a BIG 3x3 reel over reels 2-4; a BIG ingot pays the bet and adds three games; the ingot and coin come only BIG (help pages, VERIFIED; footage 1 of 6 to 3 of 9, STRONG). The BIG reel spins and lands as one reel of BIG symbols on the free games' wide reel panel, stopping 1.87 s after reel 1 with reel 5 0.70 s after it, and the BIG pictures, wild and ingot play their own win animations (club footage and scene, VERIFIED one machine); checked on muted captures. The BIG reel's strip synthetic."
 
 [[category.item]]
 id = "art-ui"
@@ -1286,7 +1286,8 @@ note = "The pack's own clips play where Golden Century's do; the BIG symbols' ow
 [[category.item]]
 id = "animation-timing"
 name = "Animation and sequence timing"
-status = "not_started"
+status = "partial"
+note = "The free games' reel stops (reel 1 0.30 s later than a base game's, the BIG reel 1.87 s after it, reel 5 0.70 s after that) and the BIG win animations' lengths follow club footage and the scene (VERIFIED, one machine); the BIG reel's run-on HYPOTHESIS; the first free game's longer spin and every other sequence not measured."
 
 [[category.item]]
 id = "attract"
