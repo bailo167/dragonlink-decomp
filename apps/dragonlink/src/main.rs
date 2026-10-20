@@ -1000,6 +1000,9 @@ struct ReelAnim {
     phase: usize,
     /// The spin under way is a free game (its reels scroll the free strips).
     free: bool,
+    /// The reels a free game's BIG reel covers (first, width): they spin as
+    /// one.
+    big: Option<(u8, u8)>,
     /// Each reel's window this spin will land on, known when it starts.
     coming: Vec<Vec<String>>,
 }
@@ -1124,6 +1127,12 @@ struct Timing {
     lead_in: f32,
     reel_interval: f32,
     event_interval: f32,
+    /// A free game with a BIG reel: the first reel's stop this much later,
+    /// the BIG reel's this long after the reel before it, and the next
+    /// reel's this long after the BIG reel's.
+    big_lead_in: f32,
+    big_stop: f32,
+    after_big: f32,
 }
 
 impl Default for Timing {
@@ -1132,6 +1141,9 @@ impl Default for Timing {
             lead_in: SPIN_LEAD_IN,
             reel_interval: REEL_STOP_INTERVAL,
             event_interval: EVENT_INTERVAL,
+            big_lead_in: 0.0,
+            big_stop: REEL_STOP_INTERVAL,
+            after_big: REEL_STOP_INTERVAL,
         }
     }
 }
@@ -1144,9 +1156,13 @@ fn schedule_with(events: Vec<Event>, timing: &Timing) -> Vec<(f32, Event)> {
     // meter would count the whole total again.
     let mut after_hold_and_spin = false;
     // The reels under a free game's BIG symbol are one reel: they stop
-    // together, with the first of them.
+    // together, with the first of them, at the BIG reel's own time.
     let mut together = vec![false; events.len()];
+    let mut big_game = vec![None; events.len()];
     let mut big: Option<(u8, u8)> = None;
+    // A free game's wilds fill their reels together (club footage: heads on
+    // three reels, three standing monks two seconds later).
+    let mut expanded = false;
     for (i, e) in events.iter().enumerate().rev() {
         match e {
             Event::BigSymbol { first, width, .. } => big = Some((*first, *width)),
@@ -1154,6 +1170,7 @@ fn schedule_with(events: Vec<Event>, timing: &Timing) -> Vec<(f32, Event)> {
             Event::ReelStopped { reel, .. } => {
                 together[i] =
                     big.is_some_and(|(first, width)| *reel > first && *reel < first + width);
+                big_game[i] = big.map(|span| (*reel, span));
             }
             _ => {}
         }
@@ -1165,8 +1182,11 @@ fn schedule_with(events: Vec<Event>, timing: &Timing) -> Vec<(f32, Event)> {
             if matches!(event, Event::HoldAndSpinCompleted { .. }) {
                 after_hold_and_spin = true;
             }
+            let was_expanded = expanded;
+            expanded = matches!(event, Event::WildExpanded { .. });
             let delay = match &event {
                 Event::ReelStopped { .. } if together[i] => 0.0,
+                Event::WildExpanded { .. } if was_expanded => 0.0,
                 Event::FreeGamesStarted { .. } if after_hold_and_spin => timing.event_interval,
                 Event::BetPlaced { .. } | Event::SpinStarted { .. } | Event::BetChanged { .. } => {
                     0.0
@@ -1178,9 +1198,13 @@ fn schedule_with(events: Vec<Event>, timing: &Timing) -> Vec<(f32, Event)> {
                 } => 0.0,
                 Event::ReelStopped { .. } if first_reel => {
                     first_reel = false;
-                    timing.lead_in
+                    timing.lead_in + big_game[i].map_or(0.0, |_| timing.big_lead_in)
                 }
-                Event::ReelStopped { .. } => timing.reel_interval,
+                Event::ReelStopped { .. } => match big_game[i] {
+                    Some((reel, (first, _))) if reel == first => timing.big_stop,
+                    Some((reel, (first, width))) if reel == first + width => timing.after_big,
+                    _ => timing.reel_interval,
+                },
                 // Line wins are lit together, not one by one.
                 Event::OrbValueShown { .. } | Event::LineWin { .. } => 0.0,
                 // The free games' prompt comes with the scatter win's count
@@ -2038,8 +2062,15 @@ fn present(
                 feature.begin_wild(stack, x2 && !emperor);
             }
         }
-        // A respin spinning or the coins being counted hold what follows.
-        if fidelity.0 && feature.blocks() {
+        // A respin spinning or the coins being counted hold what follows;
+        // the wilds filling their reels fill them together.
+        if fidelity.0
+            && feature.blocks()
+            && !matches!(
+                presentation.queue.front(),
+                Some((_, Event::WildExpanded { .. }))
+            )
+        {
             presentation.wait = 0.0;
             break;
         }
@@ -2096,6 +2127,7 @@ fn present(
                     *s = true;
                 }
                 reels_spin.free = false;
+                reels_spin.big = None;
                 reels_spin.coming = coming_windows(&presentation.queue, reels);
                 // A new base spin clears any lingering feature banner.
                 presentation.banner.clear();
@@ -2229,11 +2261,16 @@ fn present(
                         } => Some((symbol.clone(), *first, *width)),
                         _ => None,
                     });
+                reels_spin.big = feature
+                    .big
+                    .as_ref()
+                    .map(|(_, first, width)| (*first, *width));
                 presentation.status = format!("FREE GAME {number}  ({remaining} to come)");
             }
             Event::WildExpanded { reel } => {
-                // The wild fills its reel: every position shows it, and the
-                // stacks are found again (a winning full reel stands tall).
+                // The wild fills its reel: every position shows it (the
+                // cabinet plays its expansion from the row its head landed
+                // on), and the stacks are found again.
                 let wild_key = labels
                     .iter()
                     .filter(|(l, _)| l.reel == *reel)
@@ -2244,15 +2281,22 @@ fn present(
                             .iter()
                             .any(|s| &s.key == k && s.kind == SymbolKind::Wild)
                     });
-                if let Some(key) = wild_key {
+                let landed: Vec<u8> = labels
+                    .iter()
+                    .filter(|(l, t)| l.reel == *reel && wild_key.as_ref() == Some(&t.0))
+                    .map(|(l, _)| l.row)
+                    .collect();
+                // The cabinet fills the reel as its expansion ends (see
+                // `cabinet::wild_expand`); the placeholder at once.
+                if let Some(key) = wild_key.as_ref().filter(|_| !fidelity.0) {
                     for (l, mut t) in &mut labels {
                         if l.reel == *reel {
-                            t.0.clone_from(&key);
+                            t.0.clone_from(key);
                         }
                     }
                     for (c, mut background) in &mut cells {
                         if c.reel == *reel {
-                            background.0 = cell_color(Some(SymbolKind::Wild), &key);
+                            background.0 = cell_color(Some(SymbolKind::Wild), key);
                         }
                     }
                 }
@@ -2266,8 +2310,10 @@ fn present(
                         e => Some(e),
                     })
                     .any(|e| matches!(e, Event::LineWin { count, .. } if count > reel));
-                if fidelity.0 {
-                    feature.expand_sound(win);
+                if fidelity.0
+                    && let Some(key) = &wild_key
+                {
+                    feature.begin_expand(*reel, cabinet::expansion_row(&landed), win, key);
                 }
                 presentation.status = format!("Wild fills reel {}", reel + 1);
             }
@@ -2685,7 +2731,11 @@ fn render_symbols(
     }
     let (cw, ch) = cabinet::cell_size();
     for (cell, mut image, mut visibility, mut node) in &mut images {
-        if fidelity.0 && (reels.moving(cell.reel) || show.big_covers(cell.reel)) {
+        if fidelity.0
+            && (reels.moving(cell.reel)
+                || show.big_covers(cell.reel)
+                || show.expansion_hides(cell.reel, cell.row))
+        {
             *visibility = Visibility::Hidden;
             continue;
         }
@@ -3099,8 +3149,8 @@ fn main() -> AppExit {
                 cabinet::door_draw,
                 cabinet::win_lines,
                 cabinet::wild_stacks,
-                cabinet::wild_talls,
-                cabinet::big_art,
+                (cabinet::wild_talls, cabinet::wild_expand),
+                (cabinet::big_art, cabinet::big_column),
                 cabinet::feature_music,
                 cabinet::feature_cues,
                 cabinet::coin_shower,
@@ -3121,7 +3171,7 @@ fn main() -> AppExit {
                 cabinet::system_message,
                 cabinet::fit_jackpots,
                 cabinet::roll_jackpots,
-                cabinet::fit_reel_panel,
+                (cabinet::feature_reel_panel, cabinet::fit_reel_panel),
                 cabinet::lines_digits,
                 cabinet::attract_bar,
                 (cabinet::additive_fire, cabinet::prepare_feature_art),
@@ -3836,6 +3886,68 @@ mod tests {
                 _ => {}
             }
         }
+    }
+
+    /// A free game's BIG reel stops once, with the first reel it covers
+    /// (its other reels' stops come with it), and the wilds of one free game
+    /// fill their reels together.
+    #[test]
+    fn a_big_reel_stops_as_one_and_wilds_fill_their_reels_together() {
+        let stop = |reel: u8| Event::ReelStopped {
+            reel,
+            stop: Some(0),
+            symbols: vec!["K".into(); 3],
+        };
+        let mut events = vec![Event::FreeGameStarted {
+            number: 1,
+            remaining: 5,
+        }];
+        events.extend((0..5).map(stop));
+        events.push(Event::BigSymbol {
+            symbol: "K".into(),
+            first: 1,
+            width: 3,
+        });
+        events.push(Event::WildExpanded { reel: 1 });
+        events.push(Event::WildExpanded { reel: 4 });
+        // On the cabinet the BIG reel rests 1.87 s after reel 1 and reel 5
+        // 0.70 s after it, reel 1 0.30 s later than in a base game
+        // (WKjdoixnVjg): a stop's rest follows it by its run-on, a BIG
+        // reel's a little longer.
+        let cab: Vec<f32> = schedule_with(events.clone(), &cabinet::TIMING)
+            .iter()
+            .filter(|(_, e)| matches!(e, Event::ReelStopped { .. }))
+            .map(|(d, _)| *d)
+            .collect();
+        let t = cabinet::TIMING;
+        assert!((cab[0] - (t.lead_in + 0.30)).abs() < 1e-6);
+        assert_eq!(&cab[2..4], [0.0, 0.0]);
+        let extra = cabinet::big_run_on_extra();
+        assert!(extra > 0.0 && extra < 0.1);
+        assert!((cab[1] + extra - 1.87).abs() < 1e-5, "{cab:?}");
+        assert!((cab[4] - extra - 0.70).abs() < 1e-5, "{cab:?}");
+        let scheduled = schedule(events);
+        let delays: Vec<f32> = scheduled
+            .iter()
+            .filter(|(_, e)| matches!(e, Event::ReelStopped { .. }))
+            .map(|(d, _)| *d)
+            .collect();
+        assert_eq!(
+            delays,
+            [
+                SPIN_LEAD_IN,
+                REEL_STOP_INTERVAL,
+                0.0,
+                0.0,
+                REEL_STOP_INTERVAL
+            ]
+        );
+        let expand: Vec<f32> = scheduled
+            .iter()
+            .filter(|(_, e)| matches!(e, Event::WildExpanded { .. }))
+            .map(|(d, _)| *d)
+            .collect();
+        assert_eq!(expand, [EVENT_INTERVAL, 0.0]);
     }
 
     #[test]

@@ -64,3 +64,23 @@ source = "gameplay_recording"
 citation = "Public recordings HEbwBOTh0S0, I2HtFMVzZK4 (Queensland clubs)"
 accessed = "2026-10-19"
 scope = "cabinet-au"
+
+[[claim]]
+id = "free-games.expansion-sequence"
+statement = "A monk filling its reel plays one of three expansion sequences by the row its head landed on (top, middle, bottom), each centred on the reel's middle position: a win version (30 frames at 30 a second) ending in the burning standing monk, whose 6 s loop follows, and a no-win version (45 frames) ending on the plain standing monk."
+value = "row's expansion; win 1.0 s then loop, no win 1.5 s"
+confidence = "verified"
+source = "official_mobile"
+citation = "Official mobile build, main scene Custom_Animation nodes 2H/3H/4H and the videos they play"
+accessed = "2026-10-20"
+scope = "mobile"
+
+[[claim]]
+id = "free-games.expansion-timing"
+statement = "On a club machine every monk of a free game grows together, beginning 0.33 to 0.37 s after the last reel has settled, the growth lasting 0.33 s."
+value = "together; growth at rest + 0.35 s"
+confidence = "verified"
+source = "gameplay_recording"
+citation = "Public recording DWBTkIVcHNM 92.70-93.37 s and 100.83-101.53 s, motion per reel measured frame by frame at 30 fps"
+accessed = "2026-10-20"
+scope = "cabinet-au, Queensland club, one session on one machine"
