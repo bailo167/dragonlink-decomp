@@ -22,7 +22,7 @@ use bevy::text::{LetterSpacing, LineHeight};
 use bevy::ui::widget::NodeImageMode;
 use bevy::window::{MonitorSelection, PrimaryWindow, WindowMode};
 
-use dragonlink_core::{Feature, GamblePick};
+use dragonlink_core::{Feature, GamblePick, GameConfig};
 
 use super::*;
 
@@ -52,25 +52,6 @@ const REEL_BOTTOM: f32 = GRID_CENTER.1 + 1.5 * PITCH.1;
 const SCREEN_BOTTOM: f32 = REEL_BOTTOM + 248.0;
 /// The button deck under the screen's bezel.
 const DECK_TOP: f32 = SCREEN_BOTTOM + 14.0;
-
-/// The denominations the GAMES MENU offers, in cents, in its order (cabinet
-/// footage of Golden Century's casino presentation: 1c 2c 5c 10c $1 $2,
-/// docs/reverse-engineering/GOLDEN_CENTURY_CABINET_DECK.md).
-pub const MENU_DENOMS: [u64; 6] = [1, 2, 5, 10, 100, 200];
-/// The bet multipliers of the deck's top row, after GAMBLE (cabinet footage:
-/// BET x 1, x 2, x 3, x 5, x 10).
-pub const DECK_BETS: [u32; 5] = [1, 2, 3, 5, 10];
-
-/// The lines a denomination plays. In the casino presentation lines are not
-/// chosen: 50 at 1c and 2c, 25 at 10c, 5 at $1 (footage); 25 at 5c and 5 at
-/// $2 follow the club machines' maximums.
-pub fn lines_for(cents: u64) -> u16 {
-    match cents {
-        0..=2 => 50,
-        3..=10 => 25,
-        _ => 5,
-    }
-}
 
 /// The clip a bet key sounds and its volume (footage: x1 G3, x2 C4, x5 G4,
 /// x10 C5, the first two the game's own reduced beeps, the others the app's
@@ -872,6 +853,36 @@ pub struct PlayPlaqueFlare;
 #[derive(Component)]
 pub struct AttractFire;
 
+/// The PLAY plaque's centre in the bar image's pixels (the seam between the
+/// Minor and Mini boxes) and its size on the canvas.
+const PLAY_PLAQUE: (f32, (f32, f32)) = (968.0, (118.0, 76.0));
+/// Canvas pixels kept between the plaque and a value beside it.
+const PLAY_PLAQUE_GAP: f32 = 4.0;
+
+/// Where a Minor or Mini value stands, as its node's left edge and width on
+/// the canvas: across its whole box, and while the chooser shows in the part
+/// the PLAY plaque leaves clear (the cabinet's top screen lays the two boxes
+/// out with a gap for its PLAY box, closing it after a choice).
+#[derive(Component, Clone, Copy, Debug, PartialEq)]
+pub struct PlaqueClear {
+    pub wide: (f32, f32),
+    pub clear: (f32, f32),
+}
+
+/// The part of the box `(l, r)` (bar image pixels) the plaque leaves clear,
+/// for a bar scaled by `k` whose left edge is at canvas `left`: the Minor's
+/// left of the plaque, the Mini's right of it; `None` for another tier.
+fn plaque_clear(tier: JackpotTier, (l, r): (f32, f32), left: f32, k: f32) -> Option<(f32, f32)> {
+    let (centre, (pw, _)) = PLAY_PLAQUE;
+    let cx = left + centre * k;
+    let (from, to) = match tier {
+        JackpotTier::Minor => (left + l * k, cx - pw / 2.0 - PLAY_PLAQUE_GAP),
+        JackpotTier::Mini => (cx + pw / 2.0 + PLAY_PLAQUE_GAP, left + r * k),
+        _ => return None,
+    };
+    Some((from, to - from))
+}
+
 /// Spawn the chooser's additions to the jackpot bar, hidden.
 fn spawn_attract_bar(c: &mut ChildSpawnerCommands, font: &Handle<Font>, bar_top: f32, k: f32) {
     let left = 960.0 - JACKPOT_BAR_W / 2.0;
@@ -902,8 +913,8 @@ fn spawn_attract_bar(c: &mut ChildSpawnerCommands, font: &Handle<Font>, bar_top:
         ));
     }
     // The plaque, centred on the seam between the Minor and Mini boxes.
-    let (pw, ph) = (118.0, 76.0);
-    let cx = left + 968.0 * k;
+    let (centre, (pw, ph)) = PLAY_PLAQUE;
+    let cx = left + centre * k;
     let cy = bar_top + 62.0 * k;
     c.spawn((
         PlayPlaque,
@@ -1039,11 +1050,23 @@ pub fn attract_bar(
     mut denom_text: Query<&mut Text, (With<PlayPlaqueDenom>, Without<JackpotMeter>)>,
     mut flare: Query<&mut BackgroundColor, With<PlayPlaqueFlare>>,
     mut fire: Query<(&mut ImageNode, &mut Visibility), (With<AttractFire>, Without<PlayPlaque>)>,
+    mut places: Query<(&PlaqueClear, &mut Node, &mut JackpotFit)>,
 ) {
     if !fidelity.0 {
         return;
     }
     let open = menu.open;
+    // The Minor and Mini stand clear of the plaque while it shows.
+    for (place, mut node, mut fit) in &mut places {
+        let (x, w) = if open { place.clear } else { place.wide };
+        if node.left != Val::Px(x) || node.width != Val::Px(w) {
+            node.left = Val::Px(x);
+            node.width = Val::Px(w);
+        }
+        if fit.width != w {
+            fit.width = w;
+        }
+    }
     let want = if open {
         Visibility::Inherited
     } else {
@@ -1087,13 +1110,14 @@ pub fn attract_bar(
     if !open {
         return;
     }
-    let denoms = deck.profile.denoms();
-    if denoms.is_empty() {
-        return;
-    }
+    // The market's denominations, in the chooser's order.
     let t = menu.since();
-    let label = denoms[attract_step(t, ATTRACT_LABEL_LAG) % denoms.len()];
-    let shown = denoms[attract_step(t, ATTRACT_VALUE_LAG) % denoms.len()];
+    let (Some(label), Some(shown)) = (
+        deck.market.cents_at(attract_step(t, ATTRACT_LABEL_LAG)),
+        deck.market.cents_at(attract_step(t, ATTRACT_VALUE_LAG)),
+    ) else {
+        return;
+    };
     for mut text in &mut denom_text {
         let want = denom_text_short(label);
         if text.0 != want {
@@ -1236,10 +1260,15 @@ fn jackpot_value_size(text: &str, width: f32, max: f32) -> f32 {
     max.min(width * JACKPOT_VALUE_FILL / ems)
 }
 
-/// Set each jackpot value small enough to stay inside its box.
+/// Set each jackpot value small enough to stay inside its box (again when
+/// the box changes, as the Minor and Mini make room for the PLAY plaque).
+#[allow(clippy::type_complexity)]
 pub fn fit_jackpots(
     fidelity: Res<Fidelity>,
-    mut values: Query<(&JackpotFit, &Text, &mut TextFont, &mut Node), Changed<Text>>,
+    mut values: Query<
+        (&JackpotFit, &Text, &mut TextFont, &mut Node),
+        Or<(Changed<Text>, Changed<JackpotFit>)>,
+    >,
 ) {
     if !fidelity.0 {
         return;
@@ -1583,8 +1612,9 @@ pub fn spawn(
     model: &MathModel,
     art: &ArtPack,
     fonts: &CabFonts,
-    profile: Profile,
+    market: Market,
 ) {
+    let profile = market.profile;
     let ui = |k: &str| art.ui.get(k).cloned().unwrap_or_default();
     let gold = Color::srgb(1.0, 0.86, 0.12);
     let pale = Color::srgb(0.86, 0.9, 1.0);
@@ -1762,6 +1792,13 @@ pub fn spawn(
                         color: Color::srgba(0.03, 0.03, 0.05, 0.9),
                     },
                 ));
+                // The Minor and Mini make room for the chooser's PLAY plaque.
+                if let Some(clear) = plaque_clear(tier, (left, right), 960.0 - bar_w / 2.0, k) {
+                    value.insert(PlaqueClear {
+                        wide: (cx - width / 2.0, width),
+                        clear,
+                    });
+                }
                 // A running meter's figures roll as they change (drawn by
                 // `roll_jackpots` over its hidden text).
                 if is_progressive(model, tier) {
@@ -1788,7 +1825,7 @@ pub fn spawn(
 
             spawn_deck(c, art, &fonts.sans, &fonts.symbols);
             spawn_gamble_screen(c, art, fonts, profile);
-            spawn_games_menu(c, art, fonts, profile, title_name(&model.id));
+            spawn_games_menu(c, art, fonts, market, title_name(&model.id));
 
             // The shared presentation systems still expect these; unused here.
             c.spawn((
@@ -3162,17 +3199,17 @@ pub enum SystemText {
 }
 
 impl SystemText {
-    /// The message as the slot writes it.
-    pub fn text(self) -> String {
+    /// The message as the slot writes it, under the market's gamble
+    /// `limits`.
+    pub fn text(self, limits: &GambleLimits) -> String {
         match self {
             SystemText::GambleNotice => format!(
                 "Gamble not offered if gamble win will exceed {}",
-                plain_dollars(GAMBLE_WIN_LIMIT_CENTS)
+                plain_dollars(limits.win_cents)
             ),
-            SystemText::WinLimit => format!(
-                "Gamble win limit is {}",
-                plain_dollars(GAMBLE_WIN_LIMIT_CENTS)
-            ),
+            SystemText::WinLimit => {
+                format!("Gamble win limit is {}", plain_dollars(limits.win_cents))
+            }
             SystemText::CashIn => format!(
                 "Credit reached {}, cash-in disabled",
                 plain_dollars(CASH_IN_LIMIT_CENTS)
@@ -3330,7 +3367,7 @@ pub fn system_message(
     fidelity: Res<Fidelity>,
     time: Res<Time>,
     smoke: Res<Smoke>,
-    profile: Res<Profile>,
+    market: Res<Market>,
     sim: Res<Sim>,
     presentation: Res<Presentation>,
     denom: Res<Denom>,
@@ -3346,7 +3383,7 @@ pub fn system_message(
     if !fidelity.0 {
         return;
     }
-    let want = if *profile == Profile::Club {
+    let want = if market.profile == Profile::Club {
         let cents = denom.cents();
         let credit = credit_shown(&sim, &presentation, &rollup, &show, &gamble)
             .saturating_mul(cents)
@@ -3377,7 +3414,7 @@ pub fn system_message(
         });
         // A Grand calls the attendant from its award until the next game.
         show.grand_call(cents)
-            .unwrap_or_else(|| slot.showing().text())
+            .unwrap_or_else(|| slot.showing().text(&market.gamble))
     } else {
         String::new()
     };
@@ -3544,13 +3581,11 @@ fn legend(role: Role, lines: u16, bet: u32) -> Vec<(String, f32)> {
 /// Lines a key's legend may have.
 const LEGEND_LINES: u8 = 4;
 
-/// How the cabinet presents the game, held as data: as on the Australian club
-/// machines (the owner's recorded cabinet, and the only Golden Century deck
-/// legible on footage), or in the casino style ("Bet Multiplier", fixed
-/// lines), which rests mostly on a recording from a US casino. Chosen at
-/// start: `DRAGONLINK_PRESENTATION=casino`, club otherwise
-/// (docs/reverse-engineering/GOLDEN_CENTURY_CABINET_DECK.md).
-#[derive(Resource, Clone, Copy, PartialEq, Eq, Debug, Default)]
+/// How the cabinet presents the game: as on the Australian club machines
+/// (credits per line and lines keys, ARE YOU SURE?, the meters switching to
+/// credits), or in the casino style ("Bet Multiplier", fixed lines, dollars
+/// only). Each [`Market`] names its own.
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
 pub enum Profile {
     #[default]
     Club,
@@ -3558,60 +3593,240 @@ pub enum Profile {
 }
 
 impl Profile {
-    /// The profile the environment asks for.
-    pub fn from_env() -> Profile {
-        match std::env::var("DRAGONLINK_PRESENTATION").as_deref() {
-            Ok("casino") => Profile::Casino,
-            _ => Profile::Club,
-        }
-    }
-
-    /// The denominations the GAMES MENU offers: the Queensland clubs' five,
-    /// or the casino session's six.
-    pub fn denoms(self) -> &'static [u64] {
-        match self {
-            Profile::Club => &MENU_DENOMS[..5],
-            Profile::Casino => &MENU_DENOMS,
-        }
-    }
-
-    /// Whether a denomination asks "ARE YOU SURE?" before it is taken.
+    /// Whether a denomination asks "ARE YOU SURE?" before it is taken (club
+    /// footage; a casino machine at The Star went straight to the game,
+    /// VYUB_FdOLWE 6:08.96-6:09.32).
     pub fn confirms(self) -> bool {
         self == Profile::Club
     }
+}
 
-    /// The lines a denomination starts on: one line on the club machines,
-    /// its fixed count in the casino style.
-    pub fn lines_on_change(self, cents: u64) -> u16 {
-        match self {
-            Profile::Club => 1,
-            Profile::Casino => lines_for(cents),
+/// A denomination as a market's machines offer it.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct DenomRow {
+    /// Cents per credit.
+    pub cents: u64,
+    /// Its line configuration: the most lines a club machine offers there,
+    /// the lines a casino machine always plays. The win line pieces follow
+    /// it.
+    pub lines: u16,
+    /// The deck's keys after GAMBLE and TAKE WIN.
+    pub keys: DeckKeys,
+}
+
+impl DenomRow {
+    /// The lines a game starts on after a change to this denomination: the
+    /// first lines key on the club machines (one line, footage), the fixed
+    /// count in the casino style.
+    pub fn lines_on_change(&self) -> u16 {
+        match self.keys {
+            DeckKeys::Club { lines, .. } => lines[0],
+            DeckKeys::Casino { .. } => self.lines,
         }
     }
 }
 
-/// Club: the five lines keys at a denomination (footage: 1/5/10/30/50 at 1c
-/// and 2c, 1/5/10/20/25 at 10c, 1 to 5 at $1; 5c is not seen and takes
-/// 10c's).
-pub fn line_keys(cents: u64) -> [u16; 5] {
-    match cents {
-        0..=2 => [1, 5, 10, 30, 50],
-        3..=10 => [1, 5, 10, 20, 25],
-        _ => [1, 2, 3, 4, 5],
+/// The deck's two rows after GAMBLE and TAKE WIN at a denomination.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum DeckKeys {
+    /// Club: credits per line along the top, which only select (0 where a
+    /// key is not offered and stays blank); lines along the bottom, which
+    /// set the lines and play.
+    Club { credits: [u32; 5], lines: [u16; 5] },
+    /// Casino: bet multipliers along the top, which set the bet and play;
+    /// PLAY keys along the bottom.
+    Casino { bets: [u32; 5] },
+}
+
+/// The limits a market sets on the gamble.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct GambleLimits {
+    /// Gambles in a row on one win (the engine's
+    /// [`dragonlink_core::GameConfig::gamble_limit`]).
+    pub rounds: u8,
+    /// The most a gamble may win, in cents ("Gamble win limit is
+    /// $10000.00").
+    pub win_cents: u64,
+}
+
+/// A market's configuration of the machine, held as data: what the GAMES
+/// MENU offers, each denomination's lines and deck, the gamble's limits and
+/// the presentation. Chosen at start by `DRAGONLINK_MARKET` (one of
+/// [`MARKETS`]' ids); `DRAGONLINK_PRESENTATION=casino` still selects the
+/// casino market; otherwise the Queensland clubs'
+/// (docs/reverse-engineering/GOLDEN_CENTURY_CABINET_DECK.md, "Markets").
+#[derive(Resource, Clone, Copy, PartialEq, Eq, Debug)]
+pub struct Market {
+    /// Its name for `DRAGONLINK_MARKET`.
+    pub id: &'static str,
+    pub profile: Profile,
+    /// The denominations the GAMES MENU offers, in its order.
+    pub denoms: &'static [DenomRow],
+    pub gamble: GambleLimits,
+}
+
+impl Default for Market {
+    fn default() -> Market {
+        QLD_CLUB
     }
 }
 
-/// Club: the five credits-per-line keys at a denomination, 0 where a key
-/// is not offered and stays blank (footage: 1/2/3/5/10 at 1c, 1 to 5 at 2c,
-/// 1 and 2 at $1 with three blank; 5c and 10c are not legible and take
-/// 2c's).
-pub fn credit_keys(cents: u64) -> [u32; 5] {
-    match cents {
-        0..=1 => [1, 2, 3, 5, 10],
-        2..=10 => [1, 2, 3, 4, 5],
-        _ => [1, 2, 0, 0, 0],
+impl Market {
+    /// The market the environment asks for.
+    pub fn from_env() -> Market {
+        let id = std::env::var("DRAGONLINK_MARKET").ok();
+        let presentation = std::env::var("DRAGONLINK_PRESENTATION").ok();
+        if let Some(id) = id.as_deref().filter(|s| !s.is_empty())
+            && Market::by_id(id).is_none()
+        {
+            let known: Vec<&str> = MARKETS.iter().map(|m| m.id).collect();
+            eprintln!(
+                "unknown DRAGONLINK_MARKET {id:?} (known: {})",
+                known.join(", ")
+            );
+        }
+        Market::chosen(id.as_deref(), presentation.as_deref())
+    }
+
+    /// The market `id` names, else the casino market for the casino
+    /// presentation, else the Queensland clubs'.
+    pub fn chosen(id: Option<&str>, presentation: Option<&str>) -> Market {
+        id.and_then(Market::by_id)
+            .unwrap_or(if presentation == Some("casino") {
+                STAR_CASINO
+            } else {
+                QLD_CLUB
+            })
+    }
+
+    /// The market with this id.
+    pub fn by_id(id: &str) -> Option<Market> {
+        MARKETS.iter().find(|m| m.id == id).copied()
+    }
+
+    /// A denomination's row, if the market offers it.
+    pub fn row(&self, cents: u64) -> Option<&'static DenomRow> {
+        self.denoms.iter().find(|r| r.cents == cents)
+    }
+
+    /// The denomination a machine of this market starts on: the GAMES
+    /// MENU's first.
+    pub fn first_cents(&self) -> u64 {
+        self.denoms.first().map_or(1, |r| r.cents)
+    }
+
+    /// The `i`th denomination, counting round the menu's order.
+    pub fn cents_at(&self, i: usize) -> Option<u64> {
+        let n = self.denoms.len();
+        (n > 0).then(|| self.denoms[i % n].cents)
+    }
+
+    /// The denomination after `cents` in the menu's order, wrapping (the
+    /// first if `cents` is not offered).
+    pub fn next_cents(&self, cents: u64) -> Option<u64> {
+        let here = self.denoms.iter().position(|r| r.cents == cents);
+        self.cents_at(here.map_or(0, |i| i + 1))
+    }
+
+    /// What the engine is told of this market.
+    pub fn game_config(&self) -> GameConfig {
+        GameConfig {
+            gamble_limit: self.gamble.rounds,
+        }
     }
 }
+
+/// Club decks by denomination (footage, GOLDEN_CENTURY_CABINET_DECK.md "Deck
+/// A: legends"): 1c credits 1/2/3/5/10 and lines 1/5/10/30/50 (VERIFIED as
+/// read, PARTIAL for Golden Century Dragon Link); 2c credits 1 to 5 (PARTIAL,
+/// Autumn Moon) and 1c's lines; 10c lines 1/5/10/20/25 (STRONG), its credits
+/// not legible and taken from 2c (HYPOTHESIS); 5c not seen, 2c's credits and
+/// 10c's lines (HYPOTHESIS); $1 credits 1 and 2 with three blank and lines 1
+/// to 5 (STRONG); $2 credit 1 with four blank and lines 1 to 5 (STRONG for
+/// Dragon Cash's $2 deck, HYPOTHESIS for Dragon Link's). The configurations
+/// are the manufacturer's 50, 25 and 5 lines (official media).
+const CLUB_1C: DenomRow = club_row(1, [1, 2, 3, 5, 10], [1, 5, 10, 30, 50]);
+const CLUB_2C: DenomRow = club_row(2, [1, 2, 3, 4, 5], [1, 5, 10, 30, 50]);
+const CLUB_5C: DenomRow = club_row(5, [1, 2, 3, 4, 5], [1, 5, 10, 20, 25]);
+const CLUB_10C: DenomRow = club_row(10, [1, 2, 3, 4, 5], [1, 5, 10, 20, 25]);
+const CLUB_1D: DenomRow = club_row(100, [1, 2, 0, 0, 0], [1, 2, 3, 4, 5]);
+const CLUB_2D: DenomRow = club_row(200, [1, 0, 0, 0, 0], [1, 2, 3, 4, 5]);
+
+/// A club denomination: its line configuration is its last lines key.
+const fn club_row(cents: u64, credits: [u32; 5], lines: [u16; 5]) -> DenomRow {
+    DenomRow {
+        cents,
+        lines: lines[4],
+        keys: DeckKeys::Club { credits, lines },
+    }
+}
+
+/// The casino deck's bet multipliers: BET x 1, 2, 3, 5, 10. No Australian
+/// casino deck is legible; 1, 2, 5 and 10 are the multipliers a probably US
+/// casino session shows (wEmf3ep-euA), 3 fills the row (a composite,
+/// HYPOTHESIS).
+const CASINO_BETS: [u32; 5] = [1, 2, 3, 5, 10];
+
+/// A casino denomination: `lines` fixed.
+const fn casino_row(cents: u64, lines: u16) -> DenomRow {
+    DenomRow {
+        cents,
+        lines,
+        keys: DeckKeys::Casino { bets: CASINO_BETS },
+    }
+}
+
+/// The gamble's limits on the club machines: five in a row, the national
+/// standard's most (STRONG as the standard; Dragon Link's own count is not
+/// filmed, at most two in a row seen); a $10,000 win limit (VERIFIED on
+/// Queensland club screens, "Gamble win limit is $10000.00"; STRONG on an
+/// NSW machine, whose suits went blank at a stake past it, iHDxUc1dlKs
+/// 0:13.4).
+const CLUB_GAMBLE: GambleLimits = GambleLimits {
+    rounds: 5,
+    win_cents: 1_000_000,
+};
+
+/// Queensland clubs: 1c 2c 5c 10c $1 (VERIFIED on seven recordings; the
+/// manufacturer's Queensland listing agrees).
+pub const QLD_CLUB: Market = Market {
+    id: "qld-club",
+    profile: Profile::Club,
+    denoms: &[CLUB_1C, CLUB_2C, CLUB_5C, CLUB_10C, CLUB_1D],
+    gamble: CLUB_GAMBLE,
+};
+
+/// NSW and ACT clubs: the same with $2 (the manufacturer's listing gives $2
+/// to NSW and the ACT only, VERIFIED as official media; a $2 Dragon Link
+/// machine in an NSW club, iHDxUc1dlKs, and a club chooser with $2,
+/// _XHUzg4qDXI 0:04.27).
+pub const NSW_CLUB: Market = Market {
+    id: "nsw-club",
+    profile: Profile::Club,
+    denoms: &[CLUB_1C, CLUB_2C, CLUB_5C, CLUB_10C, CLUB_1D, CLUB_2D],
+    gamble: CLUB_GAMBLE,
+};
+
+/// The Star, Sydney: 5c 10c 25c 50c $1 $2 (VERIFIED, two recordings), "Bet
+/// Multiplier", 50 fixed lines (STRONG at 5c, 10c and 25c, where BET is 50
+/// lines times the denomination; HYPOTHESIS at 50c, $1 and $2). Whether it
+/// offers a gamble is not filmed: the club limits (HYPOTHESIS).
+pub const STAR_CASINO: Market = Market {
+    id: "star",
+    profile: Profile::Casino,
+    denoms: &[
+        casino_row(5, 50),
+        casino_row(10, 50),
+        casino_row(25, 50),
+        casino_row(50, 50),
+        casino_row(100, 50),
+        casino_row(200, 50),
+    ],
+    gamble: CLUB_GAMBLE,
+};
+
+/// Every market the app knows.
+pub const MARKETS: [Market; 3] = [QLD_CLUB, NSW_CLUB, STAR_CASINO];
 
 /// What a deck button does now.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -3650,7 +3865,7 @@ pub enum DeckMode {
 #[derive(Resource, Clone, Copy, Debug, Default)]
 pub struct DeckState {
     pub mode: DeckMode,
-    pub profile: Profile,
+    pub market: Market,
     pub cents: u64,
     /// A win waits to be gambled ("PLAY ON, GAMBLE or TAKE WIN").
     pub offer: bool,
@@ -3682,7 +3897,7 @@ impl DeckState {
     /// the first game, on the club machines only (club footage: 1.00 s
     /// phases, five cases on four recordings after a choice).
     pub fn in_credits(&self) -> bool {
-        self.profile == Profile::Club
+        self.market.profile == Profile::Club
             && (self.offer || self.mode == DeckMode::Gamble || self.selecting)
             && (self.since as u32) % 2 == 1
     }
@@ -3727,19 +3942,23 @@ pub fn role(button: CabButton, deck: &DeckState) -> Role {
         };
     };
     let key = (col as usize).saturating_sub(1).min(4);
+    // The keys of the denomination in play, from the market's table.
+    let keys = deck.market.row(deck.cents).map(|r| r.keys);
     match (deck.mode, row, col) {
         (DeckMode::Base | DeckMode::Gamble, 0, 0) => Role::Gamble,
         (DeckMode::Base | DeckMode::Gamble, 1, 0) => Role::TakeWin,
-        (DeckMode::Base, 0, _) => match deck.profile {
-            Profile::Club => match credit_keys(deck.cents)[key] {
+        (DeckMode::Base, 0, _) => match keys {
+            Some(DeckKeys::Club { credits, .. }) => match credits[key] {
                 0 => Role::Blank,
                 n => Role::Credits(n),
             },
-            Profile::Casino => Role::Bet(DECK_BETS[key]),
+            Some(DeckKeys::Casino { bets }) => Role::Bet(bets[key]),
+            None => Role::Blank,
         },
-        (DeckMode::Base, _, _) => match deck.profile {
-            Profile::Club => Role::Lines(line_keys(deck.cents)[key]),
-            Profile::Casino => Role::Play,
+        (DeckMode::Base, _, _) => match keys {
+            Some(DeckKeys::Club { lines, .. }) => Role::Lines(lines[key]),
+            Some(DeckKeys::Casino { .. }) => Role::Play,
+            None => Role::Blank,
         },
         (DeckMode::Spinning, _, 1..=4) => {
             Role::Letter(if row == 0 { GOOD } else { LUCK }[col as usize - 1])
@@ -4015,7 +4234,7 @@ impl DeckLook {
     /// (suits past the gamble limit stay dark and still).
     pub fn flashing(&self, cap: CabButton, shown: Role) -> bool {
         let d = self.deck;
-        if d.profile != Profile::Club || !d.plain() {
+        if d.market.profile != Profile::Club || !d.plain() {
             return false;
         }
         match (d.mode, cap, shown) {
@@ -4040,7 +4259,8 @@ impl DeckLook {
             // Hold & Spin; lit blue only while START FEATURE waits: steadily
             // on the club deck (deck A), blinking 0.5 s on, 0.5 s off on the
             // casino's (US deck B).
-            let blink_off = d.profile == Profile::Casino && ((d.wait_t * 2.0) as u32) % 2 == 1;
+            let blink_off =
+                d.market.profile == Profile::Casino && ((d.wait_t * 2.0) as u32) % 2 == 1;
             return match r {
                 // The gamble: a card-back lattice filling the face, with no
                 // legend (club footage, _XHUzg4qDXI 0:06.80-0:08.57 and
@@ -4122,7 +4342,7 @@ impl DeckLook {
             }
             (CabButton::Spin, _) if self.hold_and_spin => lines_of(&[("SPIN", 25.0)]),
             (CabButton::Spin, _)
-                if d.profile == Profile::Club
+                if d.market.profile == Profile::Club
                     && d.mode == DeckMode::Base
                     && self.idle
                     && (d.since as u32) % 2 == 1 =>
@@ -4140,7 +4360,7 @@ impl DeckLook {
     /// The teardrop legend's width as a share of its own: 1, but while the
     /// club's START FEATURE turns like a coin.
     pub fn legend_turn(&self) -> f32 {
-        if !self.start_wait || self.deck.profile != Profile::Club {
+        if !self.start_wait || self.deck.market.profile != Profile::Club {
             return 1.0;
         }
         let into = self.deck.wait_t % LEGEND_TURN_PERIOD - (LEGEND_TURN_PERIOD - LEGEND_TURN);
@@ -4191,7 +4411,7 @@ pub fn light_deck(
     menu: Res<GamesMenu>,
     reels: Res<Reels>,
     denom: Res<Denom>,
-    profile: Res<Profile>,
+    market: Res<Market>,
     mut deck: ResMut<DeckState>,
     mut caps: Query<(&DeckCap, &mut ImageNode)>,
     mut labels: Query<(
@@ -4211,7 +4431,10 @@ pub fn light_deck(
     let waiting = show.awaiting.is_some();
     let idle = sim.game.is_idle() && presentation.queue.is_empty();
     let cents = denom.cents();
-    let can_gamble = idle && gamble_open(&sim.game, cents, &show) && !rollup.active() && !waiting;
+    let can_gamble = idle
+        && gamble_open(&sim.game, cents, &market.gamble, &show)
+        && !rollup.active()
+        && !waiting;
     let mode = deck_mode(
         menu.showing(),
         gambling,
@@ -4238,7 +4461,7 @@ pub fn light_deck(
     deck.mode = mode;
     deck.offer = offer;
     deck.selecting = selecting;
-    deck.profile = *profile;
+    deck.market = *market;
     deck.cents = cents;
     let look = DeckLook {
         deck: *deck,
@@ -4246,7 +4469,7 @@ pub fn light_deck(
         start_wait,
         hold_and_spin: show.hold_and_spin(),
         // A suit's four times the stake may pass the gamble win limit.
-        suits_open: within_gamble_limit(gamble.stake, 4, cents),
+        suits_open: market.gamble.allows(gamble.stake, 4, cents),
         // Once a card is turned the flash stops; the chosen key stays light
         // blue.
         chosen: gamble.card.and(gamble.last.map(|(p, _)| p)),
@@ -4540,7 +4763,7 @@ pub fn update_meters(
     let hs_end = (at_rest && show.hold_and_spin_over() && gamble.ended.is_none())
         .then(|| {
             hold_and_spin_end_line(
-                gamble_open(&sim.game, cents, &show),
+                gamble_open(&sim.game, cents, &deck.market.gamble, &show),
                 sim.game.can_gamble(),
                 rest.bet_line_turn(t),
             )
@@ -4578,7 +4801,7 @@ pub fn update_meters(
                 (None, None) => amount(rollup.shown(), cents),
             },
             CabMeter::Denom => denom_text(cents),
-            CabMeter::MinBet if deck.profile == Profile::Club => {
+            CabMeter::MinBet if deck.market.profile == Profile::Club => {
                 let per_dollar = (100 / cents.max(1)).max(1);
                 format!(
                     "$1 = {per_dollar} Credit{}",
@@ -4590,7 +4813,7 @@ pub fn update_meters(
             CabMeter::LinesWord => lines_text(sim.game.lines()).1.to_string(),
             CabMeter::Multiplier => feature_caption.clone().unwrap_or_else(|| {
                 let per_line = sim.game.credits_per_line();
-                let bet_line = match deck.profile {
+                let bet_line = match deck.market.profile {
                     Profile::Club if per_line == 1 => "1 credit per line".to_string(),
                     Profile::Club => format!("{per_line} credits per line"),
                     Profile::Casino => format!("Bet Multiplier {per_line}"),
@@ -4602,15 +4825,15 @@ pub fn update_meters(
                     "Game Over - Play Now".to_string()
                 } else if !at_rest {
                     bet_line
-                } else if gamble_open(&sim.game, cents, &show) {
+                } else if gamble_open(&sim.game, cents, &deck.market.gamble, &show) {
                     // The offer while a win can be gambled.
                     PLAY_ON.to_string()
-                } else if let Some(lost) = gamble.ended {
+                } else if let Some(end) = gamble.ended {
                     // Footage: the gamble's end message in turn with the bet.
-                    match (turn, lost) {
-                        (true, true) => "Gamble Completed - Gamble Feature Lost".to_string(),
-                        (true, false) => "Gamble Completed".to_string(),
-                        (false, _) => bet_line,
+                    if turn {
+                        end.message().to_string()
+                    } else {
+                        bet_line
                     }
                 } else if sim.game.credits() < sim.game.total_bet() {
                     "Insert More Credits or Change Selection".to_string()
@@ -4645,8 +4868,8 @@ pub fn update_meters(
             .as_deref()
             .is_some_and(|c| !c.is_empty() && c != PLAY_ON);
         let bet_line =
-            deck.profile == Profile::Club && (text.0.ends_with("per line") || feature_line);
-        let (want, gap) = match (bet_line, deck.profile) {
+            deck.market.profile == Profile::Club && (text.0.ends_with("per line") || feature_line);
+        let (want, gap) = match (bet_line, deck.market.profile) {
             (true, _) => (Color::srgb_u8(225, 225, 80), 4.8),
             (false, Profile::Club) => (Color::srgb_u8(210, 220, 245), 0.0),
             (false, Profile::Casino) => (Color::srgb_u8(210, 220, 245), 1.5),
@@ -10294,9 +10517,10 @@ fn spawn_games_menu(
     c: &mut ChildSpawnerCommands,
     art: &ArtPack,
     fonts: &CabFonts,
-    profile: Profile,
+    market: Market,
     title: &str,
 ) {
+    let profile = market.profile;
     let top = JACKPOT_BAR_TOP + JACKPOT_BAR_W * 104.0 / 1225.0 + 4.0;
     c.spawn((
         ChooserRoot,
@@ -10357,7 +10581,7 @@ fn spawn_games_menu(
         ));
         // The panel: header over the row of denominations, each placed on
         // the canvas (a frame drawn under them, so no border shifts them).
-        let denoms = profile.denoms();
+        let denoms = market.denoms;
         let (kw, kh, kgap, ktop) = CHOOSER_KEY;
         let n = denoms.len() as f32;
         let row_w = n * kw + (n - 1.0).max(0.0) * kgap;
@@ -10422,7 +10646,7 @@ fn spawn_games_menu(
                 ..default()
             })
             .with_children(|row| {
-                for &cents in denoms {
+                for &DenomRow { cents, .. } in denoms {
                     let face = if cents >= 100 {
                         ChooserFace::Dollars
                     } else {
@@ -10707,6 +10931,32 @@ const GAMBLE_SHOW_LOSS: f32 = 1.0;
 /// Seconds each kind of gamble (Suit, then Red/Black) labels the boxes.
 const GAMBLE_KIND_TURN: f32 = 2.0;
 
+/// How a gamble ended.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum GambleEnd {
+    /// The card lost: "Gamble Completed - Gamble Feature Lost" (club
+    /// footage, STRONG).
+    Lost,
+    /// The win was taken: "Gamble Completed" (club footage, STRONG).
+    Taken,
+    /// A limit ended it with the win kept: "Gamble Completed - Gamble Limit
+    /// Reached" (the platform's own wording in the mobile build's common
+    /// table, VERIFIED as text; never filmed, so its use at either limit is
+    /// HYPOTHESIS).
+    LimitReached,
+}
+
+impl GambleEnd {
+    /// The status line's message for it.
+    pub fn message(self) -> &'static str {
+        match self {
+            GambleEnd::Lost => "Gamble Completed - Gamble Feature Lost",
+            GambleEnd::Taken => "Gamble Completed",
+            GambleEnd::LimitReached => "Gamble Completed - Gamble Limit Reached",
+        }
+    }
+}
+
 /// The gamble as shown.
 #[derive(Resource, Default)]
 pub struct GambleShow {
@@ -10728,8 +10978,8 @@ pub struct GambleShow {
     /// What was at stake before the card now showing: WIN shows it until the
     /// card turns.
     before: u64,
-    /// How the last gamble ended (lost or not), shown until the next game.
-    pub ended: Option<bool>,
+    /// How the last gamble ended, shown until the next game.
+    pub ended: Option<GambleEnd>,
     /// The win the gamble ended on, shown on the WIN meter until the next
     /// game.
     pub result: Option<u64>,
@@ -10788,25 +11038,22 @@ impl GambleShow {
     }
 }
 
-/// The most a gamble may win, in cents: machines show "Gamble not offered if
-/// gamble win will exceed $10000.00" and "Gamble win limit is $10000.00".
-pub const GAMBLE_WIN_LIMIT_CENTS: u64 = 1_000_000;
-
-/// Whether a gamble that multiplies `stake` credits by `times` stays within
-/// the gamble win limit at `cents` per credit.
-pub fn within_gamble_limit(stake: u64, times: u64, cents: u64) -> bool {
-    stake
-        .saturating_mul(times)
-        .saturating_mul(cents)
-        .le(&GAMBLE_WIN_LIMIT_CENTS)
+impl GambleLimits {
+    /// Whether a gamble that multiplies `stake` credits by `times` stays
+    /// within the gamble win limit at `cents` per credit.
+    pub fn allows(&self, stake: u64, times: u64, cents: u64) -> bool {
+        stake
+            .saturating_mul(times)
+            .saturating_mul(cents)
+            .le(&self.win_cents)
+    }
 }
 
 /// Whether the last win may be gambled now: the game allows it, no
-/// progressive jackpot was won, and doubling it stays within the limit.
-pub fn gamble_open(game: &Game, cents: u64, show: &FeatureShow) -> bool {
-    game.can_gamble()
-        && !show.no_gamble()
-        && within_gamble_limit(game.state().gamble_stake, 2, cents)
+/// progressive jackpot was won, and doubling it stays within the market's
+/// `limits`.
+pub fn gamble_open(game: &Game, cents: u64, limits: &GambleLimits, show: &FeatureShow) -> bool {
+    game.can_gamble() && !show.no_gamble() && limits.allows(game.state().gamble_stake, 2, cents)
 }
 
 /// Enter, play and leave the gamble.
@@ -10823,6 +11070,7 @@ pub fn gamble_control(
     show: Res<FeatureShow>,
     rollup: Res<Rollup>,
     denom: Res<Denom>,
+    market: Res<Market>,
     sounds: Res<Sounds>,
     mut commands: Commands,
 ) {
@@ -10830,6 +11078,7 @@ pub fn gamble_control(
         return;
     }
     let cents = denom.cents();
+    let limits = market.gamble;
     let dt = smoke.dt(&time).min(0.05);
     // Testing (`DRAGONLINK_AUTOGAMBLE`, an unattended run only): gamble each
     // win, picking the listed choices in turn ("rbs" = red, black, spades),
@@ -10892,7 +11141,7 @@ pub fn gamble_control(
             && show.awaiting.is_none()
             && !show.blocks()
             && !rollup.active();
-        if input.gamble && at_rest && gamble_open(&sim.game, cents, &show) {
+        if input.gamble && at_rest && gamble_open(&sim.game, cents, &limits, &show) {
             gamble.active = true;
             gamble.card = None;
             gamble.half = false;
@@ -10943,16 +11192,13 @@ pub fn gamble_control(
             gamble.active = false;
             gamble.result = Some(0);
             gamble.last_win = None;
-            gamble.ended = Some(true);
-        } else if won
-            && t >= done
-            && (!sim.game.can_gamble() || !within_gamble_limit(gamble.stake, 2, cents))
-        {
-            // A limit (gambles in a row, or the gamble win limit): the win is
-            // kept.
+            gamble.ended = Some(GambleEnd::Lost);
+        } else if won && t >= done && gamble_limit_ends(&sim.game, gamble.stake, cents, &limits) {
+            // A limit (the market's gambles in a row, or its gamble win
+            // limit): the win is kept and the gamble ends by itself.
             gamble.active = false;
             gamble.result = Some(gamble.stake);
-            gamble.ended = Some(false);
+            gamble.ended = Some(GambleEnd::LimitReached);
         }
         return;
     }
@@ -10960,7 +11206,7 @@ pub fn gamble_control(
     let pick = input
         .pick
         .take()
-        .filter(|p| is_colour(*p) || within_gamble_limit(gamble.stake, 4, cents));
+        .filter(|p| is_colour(*p) || limits.allows(gamble.stake, 4, cents));
     let Sim { game, rng } = &mut *sim;
     if let Some(pick) = pick {
         let command = if gamble.half {
@@ -10998,9 +11244,16 @@ pub fn gamble_control(
         let _ = game.apply(Command::TakeWin, rng);
         gamble.active = false;
         gamble.result = Some(gamble.stake);
-        gamble.ended = Some(false);
+        gamble.ended = Some(GambleEnd::Taken);
         sounds.cue(&mut commands, gamble_cue(GambleCue::TakeWin));
     }
+}
+
+/// Whether a won gamble with `stake` now at stake ends by itself at a limit:
+/// the gambles in a row the engine allows are used up, or doubling the stake
+/// would pass the market's gamble win limit.
+pub fn gamble_limit_ends(game: &Game, stake: u64, cents: u64, limits: &GambleLimits) -> bool {
+    game.gamble_limit_reached() || !limits.allows(stake, 2, cents)
 }
 
 /// The gamble screen and its parts.
@@ -11389,6 +11642,7 @@ pub fn gamble_screen(
     fidelity: Res<Fidelity>,
     gamble: Res<GambleShow>,
     denom: Res<Denom>,
+    market: Res<Market>,
     art: Res<ArtPack>,
     mut root: Query<&mut Visibility, With<GambleRoot>>,
     mut texts: Query<(&GambleText, &mut Text), Without<GambleHistory>>,
@@ -11453,7 +11707,7 @@ pub fn gamble_screen(
     // Both boxes name the same kind: Suit, then Red/Black, 2 s each from the
     // gamble's opening; only Red/Black when a suit would pass the limit.
     // While a card is up the screen shows the gamble just made.
-    let suits_open = within_gamble_limit(gamble.stake, 4, cents);
+    let suits_open = market.gamble.allows(gamble.stake, 4, cents);
     let suit_turn = suits_open && ((gamble.since / GAMBLE_KIND_TURN) as u32).is_multiple_of(2);
     let (kind, staked, mult) = match (shown, gamble.last) {
         (Some(_), Some((pick, stake))) => (gamble_kind(Some(pick)), stake, pick.multiplier()),
@@ -11583,12 +11837,14 @@ struct LineLook {
     own_digits: bool,
 }
 
-/// The line configuration a denomination plays, which the line pieces
-/// follow: 50 lines at 1c and 2c, 25 at 5c and 10c, 5 above. Club footage
-/// at 10c with 20 lines selected shows the 25-line badge (one case:
-/// HYPOTHESIS that the size follows the denomination, not the lines chosen).
-fn line_config(cents: u64) -> u16 {
-    lines_for(cents)
+/// The line configuration a denomination plays in `market`, which the line
+/// pieces follow (the club machines: 50 lines at 1c and 2c, 25 at 5c and
+/// 10c, 5 above; The Star: 50 throughout). Club footage at 10c with 20 lines
+/// selected shows the 25-line badge (one case: HYPOTHESIS that the size
+/// follows the denomination, not the lines chosen). A denomination the
+/// market does not offer reads as the lines played.
+fn line_config(market: &Market, cents: u64, played: u16) -> u16 {
+    market.row(cents).map_or(played, |r| r.lines)
 }
 
 /// The line pieces' look in line configuration `config`.
@@ -11796,6 +12052,7 @@ pub fn win_lines(
     smoke: Res<Smoke>,
     sim: Res<Sim>,
     denom: Res<Denom>,
+    market: Res<Market>,
     art: Res<ArtPack>,
     gamble: Res<GambleShow>,
     mut show: ResMut<FeatureShow>,
@@ -11873,7 +12130,7 @@ pub fn win_lines(
     };
     // The pieces follow the denomination's line configuration: their size,
     // and how many badges a line has, and at which end.
-    let config = line_config(denom.cents());
+    let config = line_config(&market, denom.cents(), sim.game.lines());
     let look = line_look(config);
     let ends = line_badge_ends(config, line + 1);
     // The game's five line colours, by line number.
@@ -13186,6 +13443,275 @@ mod tests {
         );
     }
 
+    /// While the chooser is up the jackpot bar's PLAY plaque steps through
+    /// the market's own denominations with each one's Minor and Mini (the
+    /// first step 1.1 s after it opens, then every 4.0 s, wrapping), and
+    /// once a choice is made the Minor and Mini empty and the plaque goes.
+    #[test]
+    fn the_play_plaque_steps_through_the_markets_denominations() {
+        use bevy::ecs::system::RunSystemOnce;
+        for market in [QLD_CLUB, STAR_CASINO] {
+            let mut world = spawned_cabinet(market);
+            let model = dragonlink_model::fixtures::golden_century_synthetic();
+            world.insert_resource(Fidelity(true));
+            world.insert_resource(Time::<()>::default());
+            world.insert_resource(ArtPack::default());
+            world.insert_resource(DeckState {
+                market,
+                ..Default::default()
+            });
+            world.insert_resource(Sim {
+                game: Game::new(model.clone(), 1000).unwrap(),
+                rng: DevRng::new(1),
+            });
+            let mut menu = GamesMenu::default();
+            menu.open_now();
+            world.insert_resource(menu);
+            let n = market.denoms.len();
+            // Mid-step: 0.6 s after the opening, then 2.5 s into each step.
+            for step in 0..n + 2 {
+                let t = if step == 0 {
+                    0.6
+                } else {
+                    ATTRACT_FIRST_STEP + (step - 1) as f32 * ATTRACT_STEP + 2.5
+                };
+                world.resource_mut::<GamesMenu>().since = t;
+                world.run_system_once(attract_bar).unwrap();
+                let cents = market.denoms[step % n].cents;
+                let mut label = world.query_filtered::<&Text, With<PlayPlaqueDenom>>();
+                let label: Vec<String> = label.iter(&world).map(|t| t.0.clone()).collect();
+                assert_eq!(label, vec![denom_text_short(cents)], "{} at {t}", market.id);
+                let mut values = world.query::<(&JackpotMeter, &Text)>();
+                for (m, text) in values.iter(&world) {
+                    if matches!(m.tier, JackpotTier::Minor | JackpotTier::Mini) {
+                        let prize = fixed_prize(&model, m.tier, cents).unwrap();
+                        assert_eq!(text.0, money(prize, cents), "{} {cents}c", market.id);
+                    }
+                }
+                let mut plaque = world.query_filtered::<&Visibility, With<PlayPlaque>>();
+                assert_eq!(plaque.single(&world).unwrap(), &Visibility::Inherited);
+                // The Minor and Mini stand clear of the plaque.
+                let mut places = world.query::<(&PlaqueClear, &Node, &JackpotFit)>();
+                assert_eq!(places.iter(&world).count(), 2);
+                for (place, node, fit) in places.iter(&world) {
+                    assert_eq!(
+                        (node.left, node.width),
+                        (Val::Px(place.clear.0), Val::Px(place.clear.1))
+                    );
+                    assert_eq!(fit.width, place.clear.1);
+                }
+            }
+            // A choice: the plaque goes, the Minor and Mini empty a moment
+            // and take their whole boxes again.
+            world.resource_mut::<GamesMenu>().close();
+            world.run_system_once(attract_bar).unwrap();
+            let mut places = world.query::<(&PlaqueClear, &Node, &JackpotFit)>();
+            for (place, node, fit) in places.iter(&world) {
+                assert_eq!(
+                    (node.left, node.width),
+                    (Val::Px(place.wide.0), Val::Px(place.wide.1))
+                );
+                assert_eq!(fit.width, place.wide.1);
+            }
+            let mut plaque = world.query_filtered::<&Visibility, With<PlayPlaque>>();
+            assert_eq!(plaque.single(&world).unwrap(), &Visibility::Hidden);
+            let mut values = world.query::<(&JackpotMeter, &Text)>();
+            for (m, text) in values.iter(&world) {
+                if matches!(m.tier, JackpotTier::Minor | JackpotTier::Mini) {
+                    assert!(text.0.is_empty(), "{}", market.id);
+                }
+            }
+        }
+    }
+
+    /// While the chooser shows, the Minor's value keeps left of the PLAY
+    /// plaque and the Mini's right of it, each inside its own box, wide
+    /// enough for the largest club and casino values at the full type size
+    /// or a little under it.
+    #[test]
+    fn the_minor_and_mini_make_room_for_the_plaque() {
+        let k = JACKPOT_BAR_W / 1225.0;
+        let left = 960.0 - JACKPOT_BAR_W / 2.0;
+        let (centre, (pw, _)) = PLAY_PLAQUE;
+        let (plaque_l, plaque_r) = (left + centre * k - pw / 2.0, left + centre * k + pw / 2.0);
+        for (tier, (l, r)) in JACKPOT_BOXES {
+            let Some((x, w)) = plaque_clear(tier, (l, r), left, k) else {
+                assert!(matches!(tier, JackpotTier::Grand | JackpotTier::Major));
+                continue;
+            };
+            assert!(
+                x >= left + l * k - 0.01 && x + w <= left + r * k + 0.01,
+                "{tier:?}"
+            );
+            match tier {
+                JackpotTier::Minor => assert!(x + w < plaque_l),
+                _ => assert!(x > plaque_r),
+            }
+            // The largest values offered (the Minor's $2,500.00, the Mini's
+            // $500.00) fit at no less than 0.8 of the full size.
+            let largest = match tier {
+                JackpotTier::Minor => "$2,500.00",
+                _ => "$500.00",
+            };
+            let size = jackpot_value_size(largest, w, JACKPOT_VALUE_SIZE);
+            assert!(size >= 0.8 * JACKPOT_VALUE_SIZE, "{tier:?} {size}");
+        }
+    }
+
+    /// The markets as data: the GAMES MENU's denominations, each one's line
+    /// configuration and deck keys, and the gamble's limits.
+    #[test]
+    fn each_market_holds_its_denominations_lines_and_limits() {
+        let cents = |m: &Market| m.denoms.iter().map(|r| r.cents).collect::<Vec<_>>();
+        assert_eq!(cents(&QLD_CLUB), vec![1, 2, 5, 10, 100]);
+        assert_eq!(cents(&NSW_CLUB), vec![1, 2, 5, 10, 100, 200]);
+        assert_eq!(cents(&STAR_CASINO), vec![5, 10, 25, 50, 100, 200]);
+        assert_eq!(
+            (QLD_CLUB.profile, NSW_CLUB.profile, STAR_CASINO.profile),
+            (Profile::Club, Profile::Club, Profile::Casino)
+        );
+        for market in MARKETS {
+            assert_eq!(Market::by_id(market.id), Some(market));
+            assert_eq!(market.game_config().gamble_limit, market.gamble.rounds);
+            assert!(!market.denoms.is_empty());
+            for row in market.denoms {
+                match row.keys {
+                    // A club denomination's configuration is its most lines;
+                    // a change starts on one line.
+                    DeckKeys::Club { lines, credits } => {
+                        assert_eq!(market.profile, Profile::Club);
+                        assert_eq!(Some(&row.lines), lines.iter().max());
+                        assert_eq!(row.lines_on_change(), 1);
+                        assert_ne!(credits[0], 0, "the first credits key is offered");
+                    }
+                    // A casino denomination plays its fixed lines.
+                    DeckKeys::Casino { bets } => {
+                        assert_eq!(market.profile, Profile::Casino);
+                        assert_eq!(row.lines_on_change(), row.lines);
+                        assert_eq!(bets[0], 1);
+                    }
+                }
+            }
+        }
+        // The Star: 50 lines at every denomination.
+        assert!(STAR_CASINO.denoms.iter().all(|r| r.lines == 50));
+        // $2 on the club deck: one credit a line, four keys blank.
+        let two = NSW_CLUB.row(200).unwrap();
+        assert_eq!(
+            two.keys,
+            DeckKeys::Club {
+                credits: [1, 0, 0, 0, 0],
+                lines: [1, 2, 3, 4, 5]
+            }
+        );
+        // The gamble: five in a row and a $10,000 win limit in every market.
+        for market in MARKETS {
+            assert_eq!(market.gamble.rounds, 5);
+            assert_eq!(plain_dollars(market.gamble.win_cents), "$10000.00");
+        }
+        // Stepping round the menu, and a denomination not offered.
+        assert_eq!(QLD_CLUB.next_cents(10), Some(100));
+        assert_eq!(QLD_CLUB.next_cents(100), Some(1));
+        assert_eq!(QLD_CLUB.next_cents(200), Some(1));
+        assert_eq!(STAR_CASINO.cents_at(8), Some(25));
+        assert_eq!(STAR_CASINO.first_cents(), 5);
+        assert!(QLD_CLUB.row(25).is_none());
+        // Chosen by id, else the presentation, else the Queensland clubs.
+        assert_eq!(Market::chosen(None, None), QLD_CLUB);
+        assert_eq!(Market::chosen(Some("nsw-club"), None), NSW_CLUB);
+        assert_eq!(Market::chosen(None, Some("casino")), STAR_CASINO);
+        assert_eq!(Market::chosen(Some("star"), Some("club")), STAR_CASINO);
+        assert_eq!(Market::chosen(Some("nowhere"), None), QLD_CLUB);
+        assert_eq!(Market::default(), QLD_CLUB);
+    }
+
+    /// The deck's keys come from the market's row for the denomination in
+    /// play: The Star's bet multipliers and PLAY keys, the NSW clubs' $2.
+    #[test]
+    fn the_deck_keys_follow_the_markets_table() {
+        let base = |market: Market, cents: u64| DeckState {
+            mode: DeckMode::Base,
+            market,
+            cents,
+            ..Default::default()
+        };
+        let top = |d: &DeckState| (1..6).map(|c| role(key(0, c), d)).collect::<Vec<_>>();
+        let bottom = |d: &DeckState| (1..6).map(|c| role(key(1, c), d)).collect::<Vec<_>>();
+        let star = base(STAR_CASINO, 25);
+        assert_eq!(
+            top(&star),
+            [1, 2, 3, 5, 10].map(Role::Bet).to_vec(),
+            "The Star's bet multipliers"
+        );
+        assert_eq!(bottom(&star), vec![Role::Play; 5]);
+        let two = base(NSW_CLUB, 200);
+        assert_eq!(
+            top(&two),
+            vec![
+                Role::Credits(1),
+                Role::Blank,
+                Role::Blank,
+                Role::Blank,
+                Role::Blank
+            ]
+        );
+        assert_eq!(bottom(&two), [1, 2, 3, 4, 5].map(Role::Lines).to_vec());
+        // A denomination the market does not offer has no keys.
+        assert!(top(&base(QLD_CLUB, 25)).iter().all(|r| *r == Role::Blank));
+    }
+
+    /// A won gamble ends by itself at a limit, keeping the win: the gambles
+    /// in a row the market allows, or a stake whose doubling passes its win
+    /// limit; the status line then reads "Gamble Completed - Gamble Limit
+    /// Reached".
+    #[test]
+    fn a_limit_ends_the_gamble_with_its_own_message() {
+        let limits = GambleLimits {
+            rounds: 2,
+            win_cents: 1_000_000,
+        };
+        let config = GameConfig {
+            gamble_limit: limits.rounds,
+        };
+        let game = Game::new(dragonlink_model::fixtures::synthetic_dev_fixture(), 1000).unwrap();
+        let mut state = game.state().clone();
+        state.gamble_stake = 10;
+        let mut game = Game::resume(game.model().clone(), state)
+            .unwrap()
+            .with_config(config);
+        let mut gambles = 0;
+        while !gamble_limit_ends(&game, game.state().gamble_stake, 1, &limits) {
+            // Card 0 is the ace of hearts: red wins.
+            let mut rng = dragonlink_core::ScriptedRng::new(vec![dragonlink_core::Draw {
+                bound: 52,
+                value: 0,
+            }]);
+            game.apply(
+                Command::Gamble {
+                    pick: GamblePick::Red,
+                },
+                &mut rng,
+            )
+            .unwrap();
+            gambles += 1;
+        }
+        assert_eq!((gambles, game.state().gamble_stake), (2, 40));
+        // The money limit: a stake whose doubling passes $10,000.
+        let fresh = Game::new(dragonlink_model::fixtures::synthetic_dev_fixture(), 1000).unwrap();
+        assert!(!gamble_limit_ends(&fresh, 500_000, 1, &QLD_CLUB.gamble));
+        assert!(gamble_limit_ends(&fresh, 500_001, 1, &QLD_CLUB.gamble));
+        assert!(gamble_limit_ends(&fresh, 5_001, 100, &QLD_CLUB.gamble));
+        assert_eq!(
+            GambleEnd::LimitReached.message(),
+            "Gamble Completed - Gamble Limit Reached"
+        );
+        assert_eq!(
+            GambleEnd::Lost.message(),
+            "Gamble Completed - Gamble Feature Lost"
+        );
+        assert_eq!(GambleEnd::Taken.message(), "Gamble Completed");
+    }
+
     /// Golden Century with a flag every fourth stop of every strip, base and
     /// free, so flags pass a moving reel all the time.
     fn flag_heavy_reels() -> Reels {
@@ -13347,7 +13873,7 @@ mod tests {
     #[test]
     fn club_meters_alternate_from_a_denomination_choice_until_the_first_game() {
         let mut deck = DeckState {
-            profile: Profile::Club,
+            market: QLD_CLUB,
             mode: DeckMode::Base,
             selecting: true,
             ..Default::default()
@@ -13373,7 +13899,7 @@ mod tests {
         assert!(deck.in_credits());
         // The casino style never switches.
         let casino = DeckState {
-            profile: Profile::Casino,
+            market: STAR_CASINO,
             selecting: true,
             ..deck
         };
@@ -13403,7 +13929,7 @@ mod tests {
         DeckLook {
             deck: DeckState {
                 mode,
-                profile: Profile::Club,
+                market: QLD_CLUB,
                 cents: 1,
                 ..Default::default()
             },
@@ -13520,7 +14046,7 @@ mod tests {
         assert!(look.legend_turn() < 0.05);
         look.deck.wait_t = 1.27;
         assert!(look.legend_turn() > 0.9);
-        look.deck.profile = Profile::Casino;
+        look.deck.market = STAR_CASINO;
         look.deck.wait_t = 0.2;
         assert_eq!(look.face(CabButton::Spin), "spin_lit");
         look.deck.wait_t = 0.7;
@@ -13662,20 +14188,33 @@ mod tests {
     }
 
     /// The system messages' texts, as club footage writes them: the limits
-    /// in plain dollars with no grouping, the greeting a substitute.
+    /// in plain dollars with no grouping, the greeting a substitute; the
+    /// gamble's limit is the market's.
     #[test]
     fn the_system_messages_read_as_on_the_club_machines() {
-        assert_eq!(plain_dollars(GAMBLE_WIN_LIMIT_CENTS), "$10000.00");
+        let limits = QLD_CLUB.gamble;
+        assert_eq!(plain_dollars(limits.win_cents), "$10000.00");
         assert_eq!(
-            SystemText::GambleNotice.text(),
+            SystemText::GambleNotice.text(&limits),
             "Gamble not offered if gamble win will exceed $10000.00"
         );
-        assert_eq!(SystemText::WinLimit.text(), "Gamble win limit is $10000.00");
         assert_eq!(
-            SystemText::CashIn.text(),
+            SystemText::WinLimit.text(&limits),
+            "Gamble win limit is $10000.00"
+        );
+        assert_eq!(
+            SystemText::CashIn.text(&limits),
             "Credit reached $100.00, cash-in disabled"
         );
-        assert_eq!(SystemText::Greeting.text(), "Welcome");
+        assert_eq!(SystemText::Greeting.text(&limits), "Welcome");
+        let other = GambleLimits {
+            rounds: 5,
+            win_cents: 250_050,
+        };
+        assert_eq!(
+            SystemText::WinLimit.text(&other),
+            "Gamble win limit is $2500.50"
+        );
     }
 
     /// Below the cash-in limit a start changes nothing; the message
@@ -13785,16 +14324,21 @@ mod tests {
         assert_eq!(line_win_note(0, 1000), "Line 1 wins 1000");
     }
 
-    /// The line pieces follow the denomination's line configuration (50 at
-    /// 1c and 2c, 25 at 5c and 10c, 5 at $1), in the sizes measured on club
-    /// footage: a small badge at 50 lines, a wide one at 25 and 5.
+    /// The line pieces follow the denomination's line configuration in the
+    /// market (club: 50 at 1c and 2c, 25 at 5c and 10c, 5 at $1 and $2; The
+    /// Star: 50 throughout), in the sizes measured on club footage: a small
+    /// badge at 50 lines, a wide one at 25 and 5.
     #[test]
     fn line_pieces_are_sized_to_the_denominations_line_configuration() {
-        assert_eq!(line_config(1), 50);
-        assert_eq!(line_config(2), 50);
-        assert_eq!(line_config(5), 25);
-        assert_eq!(line_config(10), 25);
-        assert_eq!(line_config(100), 5);
+        for (cents, want) in [(1, 50), (2, 50), (5, 25), (10, 25), (100, 5)] {
+            assert_eq!(line_config(&QLD_CLUB, cents, 1), want, "{cents}c");
+        }
+        assert_eq!(line_config(&NSW_CLUB, 200, 1), 5);
+        for cents in [5, 10, 25, 50, 100, 200] {
+            assert_eq!(line_config(&STAR_CASINO, cents, 1), 50, "{cents}c");
+        }
+        // A denomination the market does not offer: the lines played.
+        assert_eq!(line_config(&QLD_CLUB, 25, 30), 30);
         let fifty = line_look(50);
         assert_eq!(fifty.badge, (39.0, 27.0));
         assert_eq!(fifty.number, 20.0);
@@ -15339,7 +15883,7 @@ mod tests {
     }
 
     /// The cabinet spawned into a world with no pack, for layout tests.
-    fn spawned_cabinet(profile: Profile) -> World {
+    fn spawned_cabinet(market: Market) -> World {
         let mut world = World::new();
         let model = dragonlink_model::fixtures::golden_century_synthetic();
         let art = ArtPack::default();
@@ -15352,7 +15896,7 @@ mod tests {
         };
         {
             let mut commands = world.commands();
-            spawn(&mut commands, &model, &art, &fonts, profile);
+            spawn(&mut commands, &model, &art, &fonts, market);
         }
         world.flush();
         world
@@ -15371,7 +15915,7 @@ mod tests {
     #[test]
     fn the_club_tabs_stay_over_the_gamble_and_collect_moves_on_the_chooser() {
         use bevy::ecs::system::RunSystemOnce;
-        let mut world = spawned_cabinet(Profile::Club);
+        let mut world = spawned_cabinet(QLD_CLUB);
         let mut tabs = world.query::<(&BandTab, &GlobalZIndex)>();
         let found: Vec<(BandTab, i32)> = tabs.iter(&world).map(|(t, z)| (*t, z.0)).collect();
         assert_eq!(found.len(), 2);
@@ -15423,7 +15967,7 @@ mod tests {
         world.run_system_once(games_menu).unwrap();
         assert!(vis.iter(&world).all(|v| *v == Visibility::Inherited));
         // The casino keeps its tabs as they were.
-        let mut world = spawned_cabinet(Profile::Casino);
+        let mut world = spawned_cabinet(STAR_CASINO);
         let mut tabs = world.query::<&BandTab>();
         assert_eq!(tabs.iter(&world).count(), 0);
     }
@@ -15440,21 +15984,21 @@ mod tests {
         // about 728 against the cabinet's about 731.
         let wide = 518.0 + 35.0 * gap;
         assert!((700.0..=760.0).contains(&wide), "{wide}");
-        for (profile, want) in [
-            (Profile::Club, (yellow, LetterSpacing::Px(gap))),
+        for (market, want) in [
+            (QLD_CLUB, (yellow, LetterSpacing::Px(gap))),
             (
-                Profile::Casino,
+                STAR_CASINO,
                 (Color::srgb_u8(210, 220, 245), LetterSpacing::Px(1.5)),
             ),
         ] {
-            let mut world = spawned_cabinet(profile);
+            let mut world = spawned_cabinet(market);
             let mut q = world.query::<(&GambleText, &TextColor, &LetterSpacing)>();
             let prompt: Vec<(Color, LetterSpacing)> = q
                 .iter(&world)
                 .filter(|(t, ..)| **t == GambleText::Prompt)
                 .map(|(_, c, s)| (c.0, *s))
                 .collect();
-            assert_eq!(prompt, vec![want], "{profile:?}");
+            assert_eq!(prompt, vec![want], "{}", market.id);
         }
     }
 
@@ -15507,17 +16051,17 @@ mod tests {
         }
         // The spawned chooser: the confirmation wholly above the panel, a
         // small gap between; six keys widen the panel to hold them.
-        for profile in [Profile::Club, Profile::Casino] {
-            let mut world = spawned_cabinet(profile);
+        for market in MARKETS {
+            let mut world = spawned_cabinet(market);
             let mut q = world.query_filtered::<&Node, With<ChooserPanel>>();
             let panel = q.single(&world).unwrap().clone();
             let mut q = world.query_filtered::<&Node, With<ChooserConfirm>>();
             let confirm = q.single(&world).unwrap().clone();
             let gap = px(panel.top) - (px(confirm.top) + px(confirm.height));
             assert!((5.0..=15.0).contains(&gap), "{gap}");
-            let n = profile.denoms().len() as f32;
+            let n = market.denoms.len() as f32;
             assert!(px(panel.width) >= n * kw + (n - 1.0) * CHOOSER_KEY.2);
-            assert_eq!(px(panel.width) == pw, n == 5.0, "{profile:?}");
+            assert_eq!(px(panel.width) == pw, n == 5.0, "{}", market.id);
         }
         // The cent sign is drawn apart, smaller; dollars whole.
         assert_eq!(chooser_figure(5), ("5".to_string(), Some("¢")));
