@@ -67,7 +67,8 @@ and model; the shared presentation names no title.
   COMPLETED.
 - **Golden Gong.** The monk grows into its reel from the rest (win and no-win sequences at 20
   fps; full at + 0.7 s), the lines at + 1.5 s and the count after the expansion's sound
-  (VERIFIED, twelve events); the expansion's one sound, SND_Wild in a win (STRONG); live "N LINES"
+  (VERIFIED, twelve events); the standing monk scrolls out whole at the next spin (HYPOTHESIS;
+  ours flashed three heads); the expansion's one sound, SND_Wild in a win (STRONG); live "N LINES"
   tabs on its tab-free frame (VERIFIED); its symbols' sizes (STRONG, some PARTIAL); green keys.
 - **Peace & Long Life.** A retrigger adds six games (VERIFIED as displayed, one case); the sage
   fills its cell and the tall sage its own rect (VERIFIED); the x2 wild is silent (STRONG); green
@@ -78,7 +79,9 @@ and model; the shared presentation names no title.
   (VERIFIED); SND_WindUp as a BIG wild lands, reel 5 held about a second (VERIFIED / STRONG); the
   three-window panel; the BIG coin's size, burning rim, digits (3.3x) and dark backing, one ring,
   one burst and the free games' board (VERIFIED); passing BIG coins lettered (VERIFIED); the BIG pictures' own animations; gold frames tracing the shown
-  line over a BIG symbol (VERIFIED; colours PARTIAL); cyan-blue keys; no FEATURE COMPLETED sting.
+  line over a BIG symbol (VERIFIED; colours PARTIAL); cyan-blue keys; no FEATURE COMPLETED sting;
+  the first base spin after the feature scrolls the last BIG picture out whole (VERIFIED, one
+  feature end; ours scrolled out nine small copies).
 
 ## Golden Century, changed by this pass
 
@@ -97,9 +100,8 @@ on Golden Century's own club footage or applied as the same framework's rule:
 ## Not done, or not known
 
 - Chooser splashes and logos: no title's pack holds the art (asset gap, not drawn).
-- Spring Festival: the first base spin after the feature scrolls nine small copies out where the
-  cabinet scrolls the BIG picture out whole; coins in the first free game's leaving block lose
-  their prizes as they scroll out; the line frames are about 6 canvas px against the cabinet's 8.5.
+- Spring Festival: coins in the first free game's leaving block lose their prizes as they scroll
+  out; the line frames are about 6 canvas px against the cabinet's 8.5.
 - After a retrigger (Peace & Long Life, Spring Festival) the next free game starts about a second
   later than the one filmed case of each; Golden Gong's "1 LINE" flash after a denomination change
   is not drawn (no unattended run reaches it).

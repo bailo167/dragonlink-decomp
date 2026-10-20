@@ -3399,7 +3399,8 @@ fn main() -> AppExit {
             )
                 .chain(),
             (
-                (cabinet::spin_reels, cabinet::big_strip_draw),
+                // The BIG reel is drawn from the reels' motion this frame.
+                (cabinet::spin_reels, cabinet::big_strip_draw).chain(),
                 cabinet::strip_coins,
                 cabinet::strip_tiers,
                 cabinet::reel_audio,

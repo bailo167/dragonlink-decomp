@@ -122,3 +122,14 @@ citation = "Public recordings, YouTube ids and times: WKjdoixnVjg 0.5, 236, 238,
 accessed = "2026-10-20"
 scope = "cabinet-au, Queensland clubs"
 note = "Shade PARTIAL. Side-by-side audit of 2026-10-20: found by one reader, then re-measured by a second (refute-first, other moments and recordings); private notes in the source root, research/side-audit-2026-10-20/."
+
+[[claim]]
+id = "free-games.big-exit"
+statement = "The first base spin after the free games scrolls the last landed BIG picture down out whole at the base reels' speed, the three covered columns' base strips coming in above it; the base frame and backing are back within a frame of the first motion."
+value = "the BIG picture leaves whole"
+confidence = "verified"
+source = "gameplay_recording"
+citation = "Public recording, YouTube id and times: ersE_-A41V8 483.83-484.5 (one feature end, frame by frame)"
+accessed = "2026-10-20"
+scope = "cabinet-au, Queensland clubs"
+note = "One feature end. Side-by-side audit of 2026-10-20; the leaving picture's motion follows feat/later-free-games' implementation, re-expressed in this branch's BIG reel."

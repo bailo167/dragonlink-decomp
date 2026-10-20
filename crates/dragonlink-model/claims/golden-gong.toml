@@ -112,3 +112,13 @@ citation = "Public recordings with sound: DWBTkIVcHNM, I2HtFMVzZK4 (SND_Wild's p
 accessed = "2026-10-20"
 scope = "cabinet-au, Queensland clubs"
 note = "Side-by-side audit of 2026-10-20: found by one reader, then re-measured by a second (refute-first, other moments and recordings); private notes in the source root, research/side-audit-2026-10-20/."
+
+[[claim]]
+id = "free-games.expansion-leaves-whole"
+statement = "A monk that filled its reel leaves as it stands when the next game spins: the reel scrolls the standing figure out whole, not three separate heads."
+value = "the standing monk scrolls out whole"
+confidence = "hypothesis"
+source = "hypothesis"
+citation = "Our own conjecture: every reel scrolls out the window it shows; the monk's leaving was never filmed closely (side-by-side audit of 2026-10-20, check C)"
+accessed = "2026-10-20"
+scope = "cabinet-au"

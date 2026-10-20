@@ -5077,6 +5077,9 @@ struct ReelState {
     quiet: bool,
     /// This spin's speed in symbols a second (0 for the base game's).
     speed: f32,
+    /// The window leaving was a wild filling the reel: its figure as it
+    /// stood and its size (see [`expansion_size`]), scrolled away whole.
+    tall: Option<Figure>,
 }
 
 /// A free game's BIG reel: one reel over `width` reels from `first`,
@@ -5096,6 +5099,9 @@ pub struct BigReel {
     /// The last BIG picture landed (the next free game scrolls it out).
     last: Option<String>,
     stopped_now: bool,
+    /// The first base spin after the free games scrolls their last BIG
+    /// picture out whole (its key, and a BIG coin's prize face).
+    exit: Option<(String, Option<String>)>,
 }
 
 /// All reels' motion.
@@ -5147,6 +5153,37 @@ impl Reels {
         self.big
             .as_ref()
             .is_some_and(|b| b.active && (b.first..b.first + b.width).contains(&reel))
+    }
+
+    /// How far the last BIG picture has scrolled out at the first base spin
+    /// after the free games, in rows (under 3 while it shows).
+    fn big_exit_rows(&self) -> Option<f32> {
+        let b = self.big.as_ref().filter(|b| b.exit.is_some())?;
+        let s = self.states.get(usize::from(b.first))?;
+        let rows = s.landing_at as f32 - s.pos;
+        (matches!(s.motion, Motion::Spinning { .. }) && rows < 3.0).then_some(rows)
+    }
+
+    /// Whether strip entry `n` of `reel` is in a window the BIG picture
+    /// leaving covers (the reel's own strip does not draw it).
+    fn big_leaving(&self, reel: usize, n: i64) -> bool {
+        self.big.as_ref().is_some_and(|b| {
+            b.exit.is_some()
+                && (usize::from(b.first)..usize::from(b.first + b.width)).contains(&reel)
+        }) && self.states.get(reel).is_some_and(|s| {
+            matches!(s.motion, Motion::Spinning { .. })
+                && (s.landing_at..s.landing_at + 3).contains(&n)
+        })
+    }
+
+    /// The figure of a wild that filled `reel`, if strip entry `n` is in
+    /// the window it leaves as the reel spins.
+    fn tall_leaving(&self, reel: usize, n: i64) -> Option<&Figure> {
+        let s = self.states.get(reel)?;
+        s.tall.as_ref().filter(|_| {
+            matches!(s.motion, Motion::Spinning { .. })
+                && (s.landing_at..s.landing_at + 3).contains(&n)
+        })
     }
 
     /// Seconds every reel has been at rest on screen (0 while any moves).
@@ -5461,6 +5498,8 @@ pub fn spin_reels(
             Without<StripGhost>,
         ),
     >,
+    stacks: Res<WildStacks>,
+    look: Res<crate::looks::TitleLook>,
 ) {
     if !fidelity.0 || reels.states.is_empty() {
         return;
@@ -5483,8 +5522,31 @@ pub fn spin_reels(
             .collect::<Vec<_>>()
     });
     if big_game.is_none() && anim.spinning.iter().any(|s| *s) {
-        // A base spin: the next free games start from the base window.
-        if let Some(b) = reels.big.as_mut() {
+        // A base spin: the next free games start from the base window. The
+        // first after the free games scrolls their last BIG picture out
+        // whole at the base speed, the covered reels' strips coming in above
+        // it (club cabinet ersE_-A41V8 483.83-484.5, one feature end, frame
+        // by frame; VERIFIED). Ours used to scroll out nine small copies.
+        let Reels { big, states, .. } = &mut *reels;
+        if let Some(b) = big.as_mut() {
+            let first = usize::from(b.first);
+            let starting = states.get(first).is_some_and(|s| s.motion == Motion::Idle)
+                && anim.spinning.get(first).copied().unwrap_or(false);
+            if starting && b.active {
+                let window: Vec<String> = (b.first..b.first + b.width)
+                    .flat_map(|r| window_labels(&labels, usize::from(r)))
+                    .collect();
+                let whole = b.last.as_ref().filter(|key| {
+                    !window.is_empty() && window.iter().all(|l| label_symbol(l).0 == key.as_str())
+                });
+                b.exit = whole.map(|key| {
+                    let face = window_labels(&labels, usize::from(b.first + b.width / 2))
+                        .get(1)
+                        .and_then(|l| l.strip_prefix("ORB\n"))
+                        .map(str::to_string);
+                    (key.clone(), face)
+                });
+            }
             b.active = false;
             b.last = None;
         }
@@ -5590,7 +5652,11 @@ pub fn spin_reels(
                 .iter()
                 .chain(anim.coming.get(reel).into_iter().flatten())
                 .any(|l| label_symbol(l).0 == reels.scatter);
-            (leaving, quiet)
+            // A wild that filled the reel leaves as it stands, as every reel
+            // scrolls out the window it shows (HYPOTHESIS: the monk leaving
+            // was never filmed closely; ours drew three heads).
+            let tall = stacks.filling(reel as u8, &art, &look, &images, time.elapsed_secs());
+            (leaving, quiet, tall)
         });
         let state = &mut reels.states[reel];
         state.stopped_now = false;
@@ -5599,10 +5665,11 @@ pub fn spin_reels(
                 // Start from what is on screen: the window stays on the strip
                 // and scrolls away.
                 state.pos = state.pos.round();
-                if let Some((leaving, quiet)) = starting {
+                if let Some((leaving, quiet, tall)) = starting {
                     state.landing_at = state.pos as i64;
                     state.landing = leaving;
                     state.quiet = quiet;
+                    state.tall = tall;
                 }
                 state.free = anim.free;
                 state.speed = speed;
@@ -5703,6 +5770,14 @@ pub fn spin_reels(
         }
     }
 
+    // The leaving BIG picture is gone once it has scrolled out.
+    if let Some(b) = reels.big.as_ref()
+        && b.exit.is_some()
+        && reels.big_exit_rows().is_none()
+        && let Some(b) = reels.big.as_mut()
+    {
+        b.exit = None;
+    }
     // The BIG reel's snap clinks as its first reel.
     if let Some(first) = reels
         .big
@@ -5739,6 +5814,40 @@ pub fn spin_reels(
         }
         let pos = reels.states[reel].pos;
         let (n, raw) = reels.slot_entry(reel, slot.index);
+        // A wild that filled its reel scrolls away whole, drawn once from
+        // the leaving window's middle row.
+        if let Some((handle, (w, h, dy))) = reels.tall_leaving(reel, n) {
+            let middle = n == reels.states[reel].landing_at + 1;
+            let display = if middle { Display::Flex } else { Display::None };
+            if node.display != display {
+                node.display = display;
+            }
+            if middle {
+                if image.image != *handle {
+                    image.image = handle.clone();
+                }
+                if image.color != Color::WHITE {
+                    image.color = Color::WHITE;
+                }
+                if image.rect.is_some() {
+                    image.rect = None;
+                }
+                let cy = p / 2.0 + (n as f32 - pos) * p + dy;
+                node.top = Val::Px(cy - h / 2.0);
+                node.height = Val::Px(*h);
+                node.width = Val::Px(*w);
+                node.left = Val::Px((column_width() - w) / 2.0);
+            }
+            continue;
+        }
+        let display = if reels.big_leaving(reel, n) {
+            Display::None
+        } else {
+            Display::Flex
+        };
+        if node.display != display {
+            node.display = display;
+        }
         let (key, dim) = label_symbol(raw);
         let key = key.to_string();
         let tint = strip_tint(dim);
@@ -5793,7 +5902,10 @@ pub fn spin_reels(
     for (tile, mut node, mut vis) in &mut tiles {
         let reel = tile.reel as usize;
         let (n, raw) = reels.slot_entry(reel, tile.index);
-        let coin = reels.moving(tile.reel) && label_symbol(raw).0 == "orb";
+        let coin = reels.moving(tile.reel)
+            && label_symbol(raw).0 == "orb"
+            && reels.tall_leaving(reel, n).is_none()
+            && !reels.big_leaving(reel, n);
         let want = if coin {
             Visibility::Inherited
         } else {
@@ -5813,7 +5925,10 @@ pub fn spin_reels(
         let fast = matches!(
             reels.states[reel].motion,
             Motion::Spinning { .. } | Motion::Stopping { bounce: None, .. }
-        );
+        ) && {
+            let n = reels.slot_entry(reel, g.index).0;
+            reels.tall_leaving(reel, n).is_none() && !reels.big_leaving(reel, n)
+        };
         let want = if fast {
             Visibility::Inherited
         } else {
@@ -6007,7 +6122,8 @@ pub fn big_strip_draw(
     let Some(b) = reels.big.as_ref() else {
         return;
     };
-    let moving = b.active && b.state.motion != Motion::Idle;
+    let exit = reels.big_exit_rows();
+    let moving = (b.active && b.state.motion != Motion::Idle) || exit.is_some();
     for mut vis in &mut column {
         let want = if moving {
             Visibility::Visible
@@ -6022,9 +6138,18 @@ pub fn big_strip_draw(
         return;
     }
     let (w, h) = (f32::from(b.width) * PITCH.0, 3.0 * PITCH.1);
-    let pos = b.state.pos;
+    // The first base spin after the free games: their last BIG picture
+    // alone, scrolling out with the reels under it.
+    let leaving = exit.zip(b.exit.as_ref());
+    let pos = match leaving {
+        Some((rows, _)) => -rows / 3.0,
+        None => b.state.pos,
+    };
     // Entry n: the landing, the leaving block, or the strip.
     let entry = |n: i64| -> Option<&str> {
+        if let Some((_, (key, _))) = leaving {
+            return (n == 0).then_some(key.as_str());
+        }
         if n == b.state.landing_at
             && let Some(k) = b.state.landing.first()
         {
@@ -6043,14 +6168,23 @@ pub fn big_strip_draw(
     let mut coin_text_at: Vec<(u8, String)> = Vec::new();
     for (slot, mut node, mut image, mut vis) in &mut slots {
         let n = pos.floor() as i64 - 1 + i64::from(slot.0);
+        let face = match leaving {
+            Some((_, (_, face))) => face.as_deref().filter(|_| n == 0),
+            None => (n != b.state.landing_at).then(|| passing_face(b.first + 16, n)),
+        };
         if entry(n) == Some("orb")
-            && n != b.state.landing_at
-            && let Some(credits) = face_credits(passing_face(b.first + 16, n), sim.game.total_bet())
+            && let Some(credits) = face.and_then(|f| face_credits(f, sim.game.total_bet()))
         {
             coin_text_at.push((slot.0, coin_text(credits, denom.cents())));
         }
         let top = (n as f32 - pos) * h;
         match entry(n) {
+            None if leaving.is_some() => {
+                if *vis != Visibility::Hidden {
+                    *vis = Visibility::Hidden;
+                }
+                continue;
+            }
             Some(key) => {
                 let (dx, dy, bw, bh) = big_box(key, w, h);
                 let handle = art.symbols.get(&format!("big_{key}")).cloned();
@@ -13257,7 +13391,70 @@ pub const WILD_HOLD: f32 = 2.5;
 /// counts 0.20 s after its first line (Panda Magic club cabinets; STRONG).
 pub const WILD_COUNT_LAG: f32 = 0.2;
 
+impl Expansion {
+    /// The frame it shows at `now` (seconds of `Time`): its sequence for the
+    /// landed row, then the standing loop (in a win) or its last frame.
+    fn frame(&self, art: &ArtPack, now: f32) -> Option<Handle<Image>> {
+        let row = ["top", "middle", "bottom"].get(self.row as usize)?;
+        let name = if self.win {
+            format!("wild3_expand_{row}")
+        } else {
+            format!("wild3_expand_{row}_nowin")
+        };
+        let frames = art.anims.get(&name).filter(|f| !f.is_empty())?;
+        let n = ((now - self.t0).max(0.0) * EXPAND_FPS) as usize;
+        Some(if n < frames.len() {
+            frames[n].clone()
+        } else if self.win {
+            let lp = art.anims.get("wild3_loop").filter(|f| !f.is_empty())?;
+            lp[(n - frames.len()) % lp.len()].clone()
+        } else {
+            frames[frames.len() - 1].clone()
+        })
+    }
+}
+
+/// A filling reel's frame and its size on the canvas (see
+/// [`expansion_size`]).
+type Figure = (Handle<Image>, (f32, f32, f32));
+
+/// A filling reel's frame on the canvas: its width and height at the title's
+/// frame pixels a cell, and its centre's drop below the reel's middle.
+fn expansion_size(
+    look: &crate::looks::TitleLook,
+    images: &Assets<Image>,
+    frame: &Handle<Image>,
+) -> (f32, f32, f32) {
+    let (px_x, px_y) = look.expand_px;
+    let (w, h) = images
+        .get(frame)
+        .map(|i| i.size_f32())
+        .map_or((PITCH.0, 3.0 * PITCH.1), |s| {
+            (s.x / px_x * PITCH.0, s.y / px_y * PITCH.1)
+        });
+    (w, h, look.expand_dy * PITCH.1)
+}
+
 impl WildStacks {
+    /// The frame a filling reel shows at `now` and its size (see
+    /// [`expansion_size`]), if it is filling.
+    fn filling(
+        &self,
+        reel: u8,
+        art: &ArtPack,
+        look: &crate::looks::TitleLook,
+        images: &Assets<Image>,
+        now: f32,
+    ) -> Option<Figure> {
+        let frame = self
+            .expanded
+            .iter()
+            .find(|e| e.reel == reel)?
+            .frame(art, now)?;
+        let size = expansion_size(look, images, &frame);
+        Some((frame, size))
+    }
+
     /// Look for the stacks again (a wild has filled its reel); the reels
     /// filling stay.
     pub fn refind(&mut self) {
@@ -13964,28 +14161,8 @@ pub fn wild_talls(
         // A reel the wild fills: its sequence for the landed row, then the
         // standing loop (in a win) or its last frame (no win).
         let filling = stacks
-            .expanded
-            .iter()
-            .find(|e| e.reel == tall.reel)
-            .and_then(|e| {
-                let row = ["top", "middle", "bottom"].get(e.row as usize)?;
-                let name = if e.win {
-                    format!("wild3_expand_{row}")
-                } else {
-                    format!("wild3_expand_{row}_nowin")
-                };
-                let frames = art.anims.get(&name).filter(|f| !f.is_empty())?;
-                let n = ((now - e.t0).max(0.0) * EXPAND_FPS) as usize;
-                let frame = if n < frames.len() {
-                    frames[n].clone()
-                } else if e.win {
-                    let lp = art.anims.get("wild3_loop").filter(|f| !f.is_empty())?;
-                    lp[(n - frames.len()) % lp.len()].clone()
-                } else {
-                    frames[frames.len() - 1].clone()
-                };
-                Some((e.reel, 0u8, 3u8, frame, None))
-            });
+            .filling(tall.reel, &art, &look, &images, now)
+            .map(|(frame, size)| (tall.reel, 0u8, 3u8, frame, Err(size)));
         // A stack standing on a winning line: its intro, then its loop.
         let standing = || {
             let &(reel, top, len, t0) = stacks.list.iter().find(|s| s.0 == tall.reel)?;
@@ -14004,28 +14181,21 @@ pub fn wild_talls(
             } else {
                 (look.tall2.0, look.tall2.1, look.tall2.3)
             };
-            Some((reel, top, len, frame, Some((w, h, dy))))
+            Some((reel, top, len, frame, Ok((w, h, dy))))
         };
         let want = match filling.or_else(standing) {
             Some((reel, top, len, h, rect)) => {
                 // A stack's figure in its title's own rect; a filling reel's
                 // frames at its title's frame pixels a cell (crate::looks).
-                let size = images.get(&h).map(|i| i.size_f32());
                 if image.image != h {
                     image.image = h;
                 }
                 let (w, hh, dy) = match rect {
-                    Some((w, h, dy)) => (w * PITCH.0, h * PITCH.1, dy),
-                    None => {
-                        let (px_x, px_y) = look.expand_px;
-                        let (w, h) = size.map_or((PITCH.0, f32::from(len) * PITCH.1), |s| {
-                            (s.x / px_x * PITCH.0, s.y / px_y * PITCH.1)
-                        });
-                        (w, h, look.expand_dy)
-                    }
+                    Ok((w, h, dy)) => (w * PITCH.0, h * PITCH.1, dy * PITCH.1),
+                    Err(size) => size,
                 };
                 let (cx, cy) = cell_center(reel, top);
-                let cy = cy + (f32::from(len) - 1.0) / 2.0 * PITCH.1 + dy * PITCH.1;
+                let cy = cy + (f32::from(len) - 1.0) / 2.0 * PITCH.1 + dy;
                 node.left = Val::Px(cx - w / 2.0);
                 node.top = Val::Px(cy - hh / 2.0);
                 node.width = Val::Px(w);
@@ -17364,6 +17534,8 @@ mod tests {
         });
         world.insert_resource(ArtPack::default());
         world.insert_resource(Assets::<Image>::default());
+        world.insert_resource(WildStacks::default());
+        world.insert_resource(crate::looks::TitleLook::default());
         // On screen: a dimmed open position, a coin and a queen on reel 1;
         // a dimmed flag on reel 2.
         let dim_flag = format!("{DIM}{scatter}");
@@ -17397,6 +17569,165 @@ mod tests {
             reels.states[1].quiet,
             "a dimmed flag leaving quiets its reel"
         );
+    }
+
+    /// The world `spin_reels` runs in for the leaving tests: `model`'s
+    /// strips, every reel at rest at strip row 40, the window `labels` (by
+    /// reel, top row first), the reels `spinning`.
+    fn leaving_world(
+        model: &dragonlink_model::MathModel,
+        labels: &[[&str; 3]],
+        spinning: Vec<bool>,
+        art: ArtPack,
+        stacks: WildStacks,
+    ) -> World {
+        let mut reels = reel_strips(model);
+        for s in &mut reels.states {
+            s.pos = 40.0;
+            s.landing_at = 40;
+        }
+        let mut world = World::new();
+        world.insert_resource(reels);
+        world.insert_resource(Fidelity(true));
+        world.insert_resource(Time::<()>::default());
+        world.insert_resource(Smoke {
+            frames_left: Some(10),
+            screenshot: None,
+            frame: 0,
+            hold: 0,
+            real_time: false,
+            capture: None,
+        });
+        world.insert_resource(ReelAnim {
+            spinning,
+            ..ReelAnim::default()
+        });
+        world.insert_resource(art);
+        world.insert_resource(Assets::<Image>::default());
+        world.insert_resource(stacks);
+        world.insert_resource(crate::looks::TitleLook::default());
+        for (reel, texts) in labels.iter().enumerate() {
+            for (row, text) in texts.iter().enumerate() {
+                world.spawn((
+                    CellLabel {
+                        reel: reel as u8,
+                        row: row as u8,
+                    },
+                    Text::new(*text),
+                ));
+            }
+        }
+        world
+    }
+
+    /// A wild that filled its reel (Golden Gong's monk) scrolls away whole
+    /// as the next game spins: the reel's strip draws its standing figure
+    /// once, from the leaving window's middle row, not three heads.
+    #[test]
+    fn a_filled_reel_scrolls_away_whole() {
+        use bevy::ecs::system::RunSystemOnce;
+        let mut art = ArtPack::default();
+        art.anims.insert(
+            "wild3_expand_middle_nowin".into(),
+            vec![Handle::<Image>::default()],
+        );
+        let mut stacks = WildStacks::default();
+        stacks.expand(Expansion {
+            reel: 2,
+            row: 1,
+            win: false,
+            key: "monk".into(),
+            t0: 0.0,
+            relabelled: true,
+        });
+        let monk = ["monk"; 3];
+        let mut world = leaving_world(
+            &dragonlink_model::fixtures::golden_gong_synthetic(),
+            &[["A"; 3], ["K"; 3], monk, ["Q"; 3], ["J"; 3]],
+            vec![true; 5],
+            art,
+            stacks,
+        );
+        world.run_system_once(spin_reels).unwrap();
+        let reels = world.resource::<Reels>();
+        assert!(matches!(reels.states[2].motion, Motion::Spinning { .. }));
+        for n in 40..43 {
+            assert!(reels.tall_leaving(2, n).is_some(), "the leaving window");
+        }
+        assert!(reels.tall_leaving(2, 43).is_none() && reels.tall_leaving(2, 39).is_none());
+        assert!(reels.tall_leaving(1, 41).is_none(), "only the filled reel");
+    }
+
+    /// The first base spin after Spring Festival's free games scrolls their
+    /// last BIG picture out whole, a BIG coin with its prize; the reels under
+    /// it leave that window to it, and it ends once it has scrolled out.
+    #[test]
+    fn the_last_big_picture_leaves_whole() {
+        use bevy::ecs::system::RunSystemOnce;
+        let coin = ["ORB\nx20"; 3];
+        let mut world = leaving_world(
+            &dragonlink_model::fixtures::spring_festival_synthetic(),
+            &[["A"; 3], coin, coin, coin, ["J"; 3]],
+            vec![true; 5],
+            ArtPack::default(),
+            WildStacks::default(),
+        );
+        {
+            let mut reels = world.resource_mut::<Reels>();
+            let b = reels.big.as_mut().expect("the fixture's BIG reel");
+            assert_eq!((b.first, b.width), (1, 3));
+            b.active = true;
+            b.last = Some("orb".into());
+        }
+        world.run_system_once(spin_reels).unwrap();
+        let reels = world.resource::<Reels>();
+        let b = reels.big.as_ref().unwrap();
+        assert_eq!(b.exit, Some(("orb".into(), Some("x20".into()))));
+        assert!(!b.active && b.last.is_none(), "the free games are over");
+        assert!(reels.big_exit_rows().is_some_and(|r| r < 3.0));
+        assert!(reels.big_leaving(1, 40) && reels.big_leaving(3, 42));
+        assert!(!reels.big_leaving(0, 41) && !reels.big_leaving(4, 41));
+        assert!(!reels.big_leaving(2, 43), "the strip coming in");
+        assert!(
+            !reels.under_big(2),
+            "the reels under it show their own strips"
+        );
+        // Scrolled out: it is over.
+        world.resource_mut::<Reels>().states[1].pos = 37.0;
+        world.run_system_once(spin_reels).unwrap();
+        let reels = world.resource::<Reels>();
+        assert_eq!(reels.big.as_ref().unwrap().exit, None);
+        assert!(!reels.big_leaving(2, 41));
+    }
+
+    /// No BIG picture leaves whole where the window is not one: a base spin
+    /// after a Hold & Spin's board, or after free games without a BIG landing.
+    #[test]
+    fn only_a_whole_big_picture_leaves_whole() {
+        use bevy::ecs::system::RunSystemOnce;
+        let mut world = leaving_world(
+            &dragonlink_model::fixtures::spring_festival_synthetic(),
+            &[
+                ["A"; 3],
+                ["orb", "K", "orb"],
+                ["ORB\nx20"; 3],
+                ["orb"; 3],
+                ["J"; 3],
+            ],
+            vec![true; 5],
+            ArtPack::default(),
+            WildStacks::default(),
+        );
+        {
+            let mut reels = world.resource_mut::<Reels>();
+            let b = reels.big.as_mut().unwrap();
+            b.active = true;
+            b.last = Some("orb".into());
+        }
+        world.run_system_once(spin_reels).unwrap();
+        let reels = world.resource::<Reels>();
+        assert_eq!(reels.big.as_ref().unwrap().exit, None);
+        assert!(!reels.big_leaving(2, 41));
     }
 
     /// A Major is awarded first, on its own plaque: no comet, SND_Credit1,
