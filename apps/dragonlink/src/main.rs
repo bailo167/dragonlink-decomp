@@ -1096,6 +1096,11 @@ struct ArtPack {
     /// (`anim/<name>/fps.txt`: a video texture over its scene range, an
     /// image sequence at 30).
     anim_fps: std::collections::HashMap<String, f32>,
+    /// A symbol drawn off its cell's centre: canvas pixels down (its title's
+    /// fit, crate::looks; its size is fitted in `sizes`).
+    offsets: std::collections::HashMap<String, f32>,
+    /// The title's symbol fits have been applied (once).
+    fitted: bool,
     /// Whether the pack has been read (loading happens once, on first use).
     loaded: bool,
 }
@@ -1270,7 +1275,21 @@ fn setup(
     load_art(&asset_server, &mut art, pack.0.as_deref());
     let model = sim.game.model();
     art.roles = cabinet::Roles::from_model(model);
-    commands.insert_resource(looks::title_look(&model.id));
+    let look = looks::title_look(&model.id);
+    // The title's own symbol fits: each still (and its animation) drawn at
+    // its scene's or its footage's size and place.
+    if !art.fitted {
+        art.fitted = true;
+        for &(key, sx, sy, dy) in look.symbol_fit {
+            if let Some(size) = art.sizes.get_mut(key) {
+                size.0 *= sx;
+                size.1 *= sy;
+                art.offsets
+                    .insert(key.to_string(), dy * cabinet::cell_pitch().1);
+            }
+        }
+    }
+    commands.insert_resource(look);
     if fidelity.0 {
         // The club tall pill's icon: our own drawing, not the pack's.
         if !art.ui.contains_key(cabinet::PILL_ICON_KEY) {
@@ -2353,6 +2372,11 @@ fn present(
                 presentation.status = format!("Wild fills reel {}", reel + 1);
             }
             Event::MysteryRevealed { symbol, count } => {
+                // The stacks are found again once the doors have opened: a
+                // revealed run of wilds stands tall (club cabinets: Autumn
+                // Moon TsTj-sxJ6Yc 678.4 and cXHGn3T7eyg 1055.9, Golden
+                // Century y8c8lEdPW8Y; STRONG).
+                stacks.refind();
                 // The coins the doors open onto, each with its prize (the
                 // engine reports them straight after the reveal).
                 let faces: Vec<(u8, u8, String)> = presentation
@@ -2843,9 +2867,13 @@ fn render_symbols(
                         image.rect = rect;
                     }
                     let (w, h) = crop.map_or((w, h), |c| (c.0, c.1));
-                    if node.width != Val::Px(w) || node.height != Val::Px(h) {
+                    let top = (ch - h) / 2.0 + art.offsets.get(k).copied().unwrap_or(0.0);
+                    if node.width != Val::Px(w)
+                        || node.height != Val::Px(h)
+                        || node.top != Val::Px(top)
+                    {
                         node.left = Val::Px((cw - w) / 2.0);
-                        node.top = Val::Px((ch - h) / 2.0);
+                        node.top = Val::Px(top);
                         node.width = Val::Px(w);
                         node.height = Val::Px(h);
                     }

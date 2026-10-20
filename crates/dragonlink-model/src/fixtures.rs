@@ -1280,7 +1280,7 @@ pub fn genghis_khan_synthetic() -> MathModel {
 }
 
 /// Identifier of [`peace_long_life_synthetic`], written into trace headers.
-pub const PEACE_LONG_LIFE_SYNTHETIC_ID: &str = "peace-long-life-synthetic-1";
+pub const PEACE_LONG_LIFE_SYNTHETIC_ID: &str = "peace-long-life-synthetic-2";
 
 /// A **synthetic** Peace & Long Life configuration (see
 /// [`golden_century_fifty`]): the tortoise, deer, birdcage and bamboo as the
@@ -1289,20 +1289,27 @@ pub const PEACE_LONG_LIFE_SYNTHETIC_ID: &str = "peace-long-life-synthetic-1";
 /// page, VERIFIED). Whether its free reels keep the royals is unknown; they
 /// do here.
 pub fn peace_long_life_synthetic() -> MathModel {
-    with_x2_wild(
+    let mut model = with_x2_wild(
         golden_century_fifty(
             PEACE_LONG_LIFE_SYNTHETIC_ID,
             "SYNTHETIC Peace & Long Life: the family's evidenced structure (25 lines on mobile, \
-             up to 50 on club machines, pay table, scatter pays, six free games with an x2 wild, \
-             six-coin Hold & Spin, four jackpot tiers) on Golden Century's synthetic strips. \
-             Strips, weights, the retrigger count and jackpots INVENTED; never quote its numbers \
-             as Dragon Link's.",
+             up to 50 on club machines, pay table, scatter pays, six free games with an x2 wild \
+             and a six-game retrigger, six-coin Hold & Spin, four jackpot tiers) on Golden \
+             Century's synthetic strips. Strips, weights and jackpots INVENTED; never quote its \
+             numbers as Dragon Link's.",
             ["tortoise", "deer", "birdcage", "bamboo"],
             "sage",
             "peach",
         ),
         "sage_x2",
-    )
+    );
+    // A retrigger adds six games: a club machine's banner counts "1 OF 6" up
+    // to "1 OF 12" (jM1NDlBHZCs 1:01-1:03, the only retrigger in 18 filmed
+    // features; VERIFIED as displayed, one case).
+    if let Some(fg) = model.free_games.as_mut() {
+        fg.retrigger_games = 6;
+    }
+    model
 }
 
 /// Identifier of [`golden_gong_synthetic`], written into trace headers.

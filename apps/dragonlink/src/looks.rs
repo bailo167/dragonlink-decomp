@@ -53,6 +53,23 @@ pub struct TitleLook {
     /// frames, 0.033 row above the window's centre).
     pub expand_px: (f32, f32),
     pub expand_dy: f32,
+    /// The free games' mystery symbol's opening rate: Golden Century's doors
+    /// 42 frames a second (their 42 frames in 1.0 s on club cabinets),
+    /// Autumn Moon's moon gate 30 (its 20 frames open in 0.60-0.67 s on three
+    /// club recordings; the mobile video's own rate 30; STRONG).
+    pub reveal_fps: f32,
+    /// The gamble screen's backdrop brightness (1 full): Peace & Long Life's
+    /// orchard dims to about 0.45 while the gamble shows (wRZ5CyogZ0Q
+    /// 15:52-16:00, the meters as bright as before; PARTIAL as a factor);
+    /// Golden Century's, Golden Gong's and Happy & Prosperous's do not dim.
+    pub gamble_backdrop: f32,
+    /// Symbols drawn off Golden Century's sizing rule: (key, width and
+    /// height factors on the still, its centre's offset in rows, down
+    /// positive); its animation and a free game's x2 badge follow it.
+    pub symbol_fit: &'static [(&'static str, f32, f32, f32)],
+    /// Animations drawn larger than their still: (animation key, width and
+    /// height factors).
+    pub anim_fit: &'static [(&'static str, f32, f32)],
 }
 
 /// Golden Century's look: the shared presentation's own values.
@@ -67,6 +84,10 @@ pub const GOLDEN_CENTURY: TitleLook = TitleLook {
     tall2: (1.6117, 2.6442, -0.0085, -0.0085),
     expand_px: (151.4, 122.0),
     expand_dy: 0.0,
+    reveal_fps: crate::cabinet::REVEAL_FPS,
+    gamble_backdrop: 1.0,
+    symbol_fit: &[],
+    anim_fit: &[],
 };
 
 impl Default for TitleLook {
@@ -100,6 +121,7 @@ const LOOKS: [(&str, TitleLook); 6] = [
             cents_key: Some([112, 40, 207]),
             tall3: (1.5975, 3.6903, -0.0136),
             tall2: (1.5975, 2.6801, -0.0182, -0.0089),
+            reveal_fps: 30.0,
             ..GOLDEN_CENTURY
         },
     ),
@@ -134,6 +156,20 @@ const LOOKS: [(&str, TitleLook); 6] = [
             tall3: (1.1105, 3.1537, 0.0038),
             tall2: (1.1082, 2.2410, -0.0012, -0.0012),
             expand_dy: -0.033,
+            // Cells against the cabinet's on three recordings (DWBTkIVcHNM,
+            // 0ApUzEKj3X8, I2HtFMVzZK4): the bamboo small, the disciples big
+            // and low (STRONG); the rooster tall, the monk and gong panels
+            // small (PARTIAL); the royals and the scroll as the cabinet's.
+            symbol_fit: &[
+                ("bamboo", 1.45, 1.45, 0.0),
+                ("disciples", 0.88, 0.88, -0.22),
+                ("rooster", 1.0, 0.82, 0.0),
+                ("monk", 1.10, 1.06, 0.0),
+                ("gong", 1.10, 1.06, 0.0),
+            ],
+            // A winning monk grows past its still (its scene's box, 1.18;
+            // STRONG on the cabinet: ours shrank).
+            anim_fit: &[("monk", 1.18, 1.18)],
             ..GOLDEN_CENTURY
         },
     ),
@@ -148,6 +184,15 @@ const LOOKS: [(&str, TitleLook); 6] = [
             x2_badge: Some((0.156, 0.256, 0.620, 0.654)),
             tall3: (1.7230, 4.0652, 0.0),
             tall2: (1.4018, 2.6522, -0.1954, -0.1860),
+            gamble_backdrop: 0.45,
+            // The sage drawn as its scene's reel cells draw it (the Wild
+            // group's rect: 1.12 x 1.10, 0.2015 row above the cell's centre),
+            // filling the cell as on club cabinets (DWBTkIVcHNM 24:07.5,
+            // 3ggOSOerdhc 27:48; VERIFIED look).
+            symbol_fit: &[
+                ("sage", 1.12, 1.10, -0.2015),
+                ("sage_x2", 1.12, 1.10, -0.2015),
+            ],
             ..GOLDEN_CENTURY
         },
     ),

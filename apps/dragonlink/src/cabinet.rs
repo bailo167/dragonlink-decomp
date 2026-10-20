@@ -35,6 +35,11 @@ pub const CANVAS_H: f32 = 1300.0;
 /// screen (wider reels than the phone layout the scene files describe).
 const GRID_CENTER: (f32, f32) = (960.0, 506.0);
 const PITCH: (f32, f32) = (324.0, 233.0);
+
+/// The reels' cell pitch on the canvas (reel, row).
+pub fn cell_pitch() -> (f32, f32) {
+    PITCH
+}
 /// Symbols are drawn at their own pixel size times this; the cabinet draws
 /// them a little wider than tall.
 const SYMBOL_SCALE: (f32, f32) = (1.186, 1.059);
@@ -1793,7 +1798,7 @@ pub fn spawn(
             spawn_meter_band(c, fonts, art, gold, pale, profile);
 
             spawn_deck(c, art, &fonts.sans, &fonts.symbols);
-            spawn_gamble_screen(c, art, fonts, profile);
+            spawn_gamble_screen(c, art, fonts, profile, &crate::looks::title_look(&model.id));
             spawn_games_menu(
                 c,
                 art,
@@ -5267,7 +5272,7 @@ pub fn spin_reels(
         // While a reel settles, the symbols just outside the window are cut at
         // their own cell's edge: at rest the landed cells draw only the three
         // in the window, so an overhang drawn now would vanish as it stops.
-        let mut top = cy - h / 2.0;
+        let mut top = cy - h / 2.0 + art.offsets.get(key.as_str()).copied().unwrap_or(0.0);
         let mut height = h;
         let mut rect = None;
         if let Motion::Stopping {
@@ -5351,7 +5356,7 @@ pub fn spin_reels(
         {
             image.image = handle;
         }
-        node.top = Val::Px(cy - h / 2.0);
+        node.top = Val::Px(cy - h / 2.0 + art.offsets.get(key.as_str()).copied().unwrap_or(0.0));
         node.height = Val::Px(h);
         node.width = Val::Px(w);
         node.left = Val::Px((column_width() - w) / 2.0);
@@ -6529,6 +6534,7 @@ impl FeatureShow {
                 self.scatter_paid = true;
             }
             Event::FreeGameStarted { number, remaining } => {
+                self.flares_at = None;
                 // A retrigger's sequence ends with the next free game (the
                 // base trigger's clock runs on through the free games).
                 if self.retrigger.take().is_some() {
@@ -7454,7 +7460,7 @@ impl FeatureShow {
 #[allow(clippy::too_many_arguments, clippy::type_complexity)]
 pub fn feature_screen(
     fidelity: Res<Fidelity>,
-    show: Res<FeatureShow>,
+    mut show: ResMut<FeatureShow>,
     art: Res<ArtPack>,
     labels: Query<(&CellLabel, &Text), Without<FeatureMessage>>,
     mut banner: Query<&mut Visibility, (With<FeatureBanner>, Without<HsFrame>, Without<HsCell>)>,
@@ -7525,6 +7531,16 @@ pub fn feature_screen(
         return;
     }
     let game_win = banner_win(&show, &rollup, sim.game.total_bet());
+    // A free game's plaque counting under the coin shower: its letters burn.
+    let bet = sim.game.total_bet().max(1);
+    if matches!(show.stage, Stage::FreeGames { .. })
+        && game_win.is_some()
+        && rollup.active()
+        && rollup.to.saturating_sub(rollup.from) >= SHOWER_RATIO * bet
+        && show.flares_at.is_none()
+    {
+        show.flares_at = Some(show.clock);
+    }
     for (mut text, mut vis) in &mut amount {
         // The empty banner shows no amount until the first coin is added.
         let s = game_win
@@ -9960,7 +9976,8 @@ const MAJOR_AMOUNT_GREEN: Color = Color::srgb(0.30, 0.95, 0.35);
 /// rest + 0.99 s as on the cabinet; frames 30-41 a faint fading remnant), and
 /// the seconds from their opening to the game's wins (the rest + 1.5 s).
 const REVEAL_OPEN: f32 = 0.0;
-const REVEAL_FPS: f32 = 42.0;
+/// Golden Century's doors' rate (each title's own: crate::looks).
+pub const REVEAL_FPS: f32 = 42.0;
 const REVEAL_WINS: f32 = 1.2;
 /// The doors' reveal is presented this long after the last reel is still
 /// (club cabinets: 0.22-0.37 s, three of four reveals about 0.30 s).
@@ -10048,9 +10065,7 @@ pub fn door_reveal(
     time: Res<Time>,
     smoke: Res<Smoke>,
     mut show: ResMut<FeatureShow>,
-    sounds: Res<Sounds>,
     art: Res<ArtPack>,
-    mut commands: Commands,
     mut labels: Query<(&CellLabel, &mut Text)>,
 ) {
     if !fidelity.0 {
@@ -10072,7 +10087,10 @@ pub fn door_reveal(
         cells
     };
     if t0 <= REVEAL_OPEN && t > REVEAL_OPEN {
-        sounds.play(&mut commands, "SND_EndMask");
+        // No SND_EndMask: club cabinets open the doors and the moon gates
+        // without it (Autumn Moon, 19 openings on two recordings; Golden
+        // Century tg4nMylHxhI, 5 of 5; STRONG). What faint sound they do
+        // play is not settled (PARTIAL), so ours stays silent.
         for (l, mut text) in &mut labels {
             if cells.contains(&(l.reel, l.row)) {
                 // A coin opens with its own prize; anything else is the
@@ -10096,13 +10114,14 @@ pub fn door_draw(
     fidelity: Res<Fidelity>,
     show: Res<FeatureShow>,
     art: Res<ArtPack>,
+    look: Res<crate::looks::TitleLook>,
     mut doors: Query<(&DoorFx, &mut ImageNode, &mut Visibility)>,
 ) {
     if !fidelity.0 {
         return;
     }
     let frame = show.reveal.as_ref().and_then(|(t, _, cells)| {
-        let n = ((t - REVEAL_OPEN) * REVEAL_FPS).floor();
+        let n = ((t - REVEAL_OPEN) * look.reveal_fps).floor();
         (n >= 0.0)
             .then(|| art.anims.get("reveal").and_then(|f| f.get(n as usize)))
             .flatten()
@@ -11248,6 +11267,7 @@ pub fn spawn_gamble_screen(
     art: &ArtPack,
     fonts: &CabFonts,
     profile: Profile,
+    look: &crate::looks::TitleLook,
 ) {
     let ui = |k: &str| art.ui.get(k).cloned().unwrap_or_default();
     // The whole screen between the jackpots and the meter band; every y
@@ -11281,7 +11301,10 @@ pub fn spawn_gamble_screen(
         Visibility::Hidden,
     ))
     .with_children(|g| {
-        // The game's own backdrop, undimmed and placed as in the base game.
+        // The game's own backdrop, placed as in the base game: undimmed on
+        // Golden Century's machines, dimmed on a title that dims it (Peace &
+        // Long Life; crate::looks).
+        let lit = look.gamble_backdrop.clamp(0.0, 1.0);
         g.spawn((
             Node {
                 position_type: PositionType::Absolute,
@@ -11294,6 +11317,7 @@ pub fn spawn_gamble_screen(
             ImageNode {
                 image: ui("background"),
                 image_mode: NodeImageMode::Stretch,
+                color: Color::srgb(lit, lit, lit),
                 ..default()
             },
         ));
@@ -12921,24 +12945,33 @@ pub fn symbol_fx(
                     .sizes
                     .get(key.as_str())
                     .map_or((cw, ch), |s| symbol_size(&key, *s));
+                // An animation drawn larger than its still (its scene's box:
+                // Golden Gong's monk 1.18; crate::looks).
+                let (ax, ay) = look
+                    .anim_fit
+                    .iter()
+                    .find(|(k, ..)| *k == anim_key)
+                    .map_or((1.0, 1.0), |&(_, ax, ay)| (ax, ay));
+                let (w, hh) = (w * ax, hh * ay);
+                let dy = art.offsets.get(key.as_str()).copied().unwrap_or(0.0);
                 node.left = Val::Px((cw - w) / 2.0);
-                node.top = Val::Px((ch - hh) / 2.0);
+                node.top = Val::Px((ch - hh) / 2.0 + dy);
                 node.width = Val::Px(w);
                 node.height = Val::Px(hh);
                 if wild && let Some(bg) = fx_frame(&art, "wild_bg", (t * under_fps) as usize) {
                     under_at.push((
                         (f.reel, f.row),
                         bg,
-                        ((cw - w) / 2.0, (ch - hh) / 2.0, w, hh),
+                        ((cw - w) / 2.0, (ch - hh) / 2.0 + dy, w, hh),
                     ));
                 }
                 if anim_key != key
-                    && let Some(((dx, dy, bw, bh), frames)) = badge_frames
+                    && let Some(((dx, by, bw, bh), frames)) = badge_frames
                     && !frames.is_empty()
                 {
                     let n = (t * WILD_FX_FPS) as usize % frames.len();
                     let (bw, bh) = (bw * w, bh * hh);
-                    let (cx, cy) = (cw / 2.0 + dx * w, ch / 2.0 + dy * hh);
+                    let (cx, cy) = (cw / 2.0 + dx * w, ch / 2.0 + dy + by * hh);
                     badge_at.push((
                         (f.reel, f.row),
                         frames[n].clone(),
@@ -13073,8 +13106,16 @@ pub fn feature_cues(
 
 /// Coins in the shower at once.
 const SHOWER_COINS: usize = 56;
-/// A win at least this many times the bet counts up under a coin shower.
-const SHOWER_RATIO: u64 = 20;
+/// A win at least this many times the bet counts up under a coin shower:
+/// club cabinets showered at 31.6x (Autumn Moon), 40x and 44x (Golden
+/// Century), none at 11x-22x (STRONG; the threshold PARTIAL between 22x and
+/// 31.6x), as Hold & Spin's payment (`PAY_SHOWER_RATIO`).
+const SHOWER_RATIO: u64 = PAY_SHOWER_RATIO;
+/// The free games' big-win plaque: its WIN letters burn every 2.0 s while it
+/// counts under the shower (club cabinets: Autumn Moon 72x and 31.6x, Golden
+/// Century 40x, from the plaque's first count step; never without the
+/// shower; STRONG).
+const FG_FLARE_EVERY: f32 = 2.0;
 
 /// One coin of the shower.
 #[derive(Component)]
@@ -13295,9 +13336,8 @@ impl FeatureShow {
     }
 
     /// Wilds fill their reels: Golden Gong's expansion sound, once a game,
-    /// with the sequence (the win version when a filled reel is in a win;
-    /// the pairing HYPOTHESIS, the two clips nearly alike), which is the
-    /// game's wild sound: no SND_Wild follows (club cabinets; STRONG).
+    /// with the sequence, which is the game's wild sound: no other wild
+    /// sound follows at the win (club cabinets; STRONG).
     pub fn begin_expansion(&mut self, win: bool) {
         if self.expand.is_some() {
             if win {
@@ -13308,11 +13348,11 @@ impl FeatureShow {
         self.expand = Some(0.0);
         self.expand_won = win;
         self.wild_sounded = true;
-        self.cues.push(if win {
-            "SND_ExpandWin"
-        } else {
-            "SND_ExpandNoWin"
-        });
+        // A filled reel in a win sounds the title's wild clip (Golden Gong
+        // club cabinets: SND_Wild's pattern on 6 of 7 winning expansions where
+        // it and SND_ExpandWin differ; STRONG), one in no win SND_ExpandNoWin.
+        self.cues
+            .push(if win { "SND_Wild" } else { "SND_ExpandNoWin" });
     }
 
     /// Whether this game's expansion holds `front`: the lines until rest +
@@ -13728,7 +13768,12 @@ pub fn payout_effects(
     }
     let f = show.flares_at.filter(|_| !gamble.active).and_then(|s| {
         let frames = art.anims.get("burst")?;
-        let t = (show.clock - s).max(0.0) % FLARE_EVERY;
+        let every = if matches!(show.stage, Stage::FreeGames { .. }) {
+            FG_FLARE_EVERY
+        } else {
+            FLARE_EVERY
+        };
+        let t = (show.clock - s).max(0.0) % every;
         frames.get((t * ANIM_FPS) as usize).cloned()
     });
     for (mut image, mut vis) in &mut flares {
