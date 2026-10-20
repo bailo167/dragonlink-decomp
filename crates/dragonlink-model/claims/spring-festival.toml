@@ -133,3 +133,47 @@ citation = "Public recording, YouTube id and times: ersE_-A41V8 483.83-484.5 (on
 accessed = "2026-10-20"
 scope = "cabinet-au, Queensland clubs"
 note = "One feature end. Side-by-side audit of 2026-10-20; the leaving picture's motion follows feat/later-free-games' implementation, re-expressed in this branch's BIG reel."
+
+[[claim]]
+id = "free-games.big-reel-club"
+statement = "On a club machine the BIG reel spins as one reel of BIG symbols, BIG coins passing with prizes on them; at the first free game the base game's window scrolls out in its own symbols under the BIG symbols coming in. A winning BIG royal stays on screen through its win, the lines' boxes drawn over it."
+value = "one BIG reel, BIG symbols passing; BIG royal does not blink"
+confidence = "verified"
+source = "gameplay_recording"
+citation = "Public recording WKjdoixnVjg 67.9-75 s and 84.5-87.4 s, read frame by frame"
+accessed = "2026-10-20"
+scope = "cabinet-au, Queensland club, one session on one machine"
+note = "Conflict recorded (2026-10-21) on the passing BIG coins prizes: feat/later-free-games lettered them with its own cosmetic x5 to x100 (labelled as ours); the implementation kept at the merge (feat/title-audit) letters them with prizes in the values seen passing on club cabinets (ersE_-A41V8 428 1250 and 452.0 6250; EO7Q6xvcJMA 1740 $15 and 1751 $90), the order of values on a moving strip still ours."
+
+
+[[claim]]
+id = "free-games.big-reel-timing"
+statement = "In the free games reel 1 comes to rest 1.27 s after the reels start (0.30 s later than in that machine's base games, 0.97 s), the BIG reel 1.87 s after reel 1, and reel 5 0.70 s after the BIG reel, the same to the frame in four free games; the first free game spins longer (3.84, 5.74, 7.31 s)."
+value = "reel 1 +1.27 s; BIG +1.87 s; reel 5 +0.70 s"
+confidence = "verified"
+source = "gameplay_recording"
+citation = "Public recording WKjdoixnVjg 80.9-105.5 s (free games 2-5) and 17-58 s (base games), motion per reel measured frame by frame at 29.97 fps"
+accessed = "2026-10-20"
+scope = "cabinet-au, Queensland club, one session on one machine"
+note = "Agrees with free-games.big-pace (twelve timed spins on three recordings); the longer first free game is followed there as its reels 2.60 s later (a BIG wild holds reel 5 a further second)."
+
+
+[[claim]]
+id = "free-games.board"
+statement = "The free games are played on the title's free-games reel panel, the outer reels' columns and one wide panel under the BIG reel, from the first free game's spin through FEATURE COMPLETED until the next base game spins."
+value = "Feature_Reel_Background in the free games"
+confidence = "verified"
+source = "gameplay_recording"
+citation = "Public recording WKjdoixnVjg 67.9-172.5 s; the scene's Feature_Reel_Background (official mobile build, main scene)"
+accessed = "2026-10-20"
+scope = "cabinet-au, Queensland club, one session on one machine"
+
+[[claim]]
+id = "free-games.big-win-animations"
+statement = "The BIG pictures, the BIG wild and the BIG ingot have their own win sequences, drawn at the BIG still's size (541 x 440 at scale 1.5); their scene lengths are 81, 120, 90 and 100 frames for the pictures, 90 for the ingot and 135 for the wild's intro and loop each, at 30 a second; the BIG royals and the BIG coin have none."
+value = "Mega sequences at the still's size"
+confidence = "verified"
+source = "official_mobile"
+citation = "Official mobile build, main scene (MegaPic1-4, MegaScatter1, MegaWild groups)"
+accessed = "2026-10-20"
+scope = "mobile"

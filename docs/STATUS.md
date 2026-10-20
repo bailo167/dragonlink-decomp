@@ -3,7 +3,27 @@
 The current state of the project, what was last done, and what is next. Updated with every
 meaningful increment. Item-level state is in `progress/progress.toml`; this page is the narrative.
 
-**Last updated: 2026-10-20.**
+**Last updated: 2026-10-21.**
+
+## Later titles' free games: two implementations, one kept (2026-10-21)
+
+Two sessions implemented Spring Festival's BIG reel and Golden Gong's monk at the same time:
+feat/later-free-games (merged to main as 891c3e3) and the later titles' audit (feat/title-audit).
+The two could not both stand, so the merge kept the audit's and dropped the other's systems
+(`BigRun`, `big_column`, its `Expansion` and `wild_expand`, and their tests). Why: the kept one has
+the same footage-verified behaviour and more, each re-measured by three checks and a recheck:
+- the BIG free games' measured slower pace and the first free game's 2.60 s;
+- SND_WindUp and the BIG wild's hold;
+- the passing coins' club prizes;
+- the BIG coin's backing, box, digits, ring, burst and board, and the gold line frames;
+- the monk's SND_Wild and its line, count and next-game holds.
+
+Before the merge, the two things only the other had were ported onto the kept one: the last BIG
+picture leaving whole on the first base spin (VERIFIED) and the standing monk scrolling out whole
+(HYPOTHESIS). Both have unit tests and muted captures. The other's claims stay in the claim files.
+Its two disagreements with the kept one are recorded there: the expansion's sound pairing, and the
+passing BIG coins' prizes. A side-by-side comparison is in the private source root at
+`research/overnight-2026-10-18/big-reel-compare.md`.
 
 ## The seven later titles against their own footage (2026-10-20)
 
@@ -81,8 +101,7 @@ owner; docs/DECISIONS.md). Every run muted. Progress, newest last:
 - Correction: recording y8c8lEdPW8Y is a public Queensland club recording, not the owner's own
   session; an earlier note called it the owner's, and the docs say so now.
 - Open, not blockers (ordinary work): the later titles' sound placements are not checked against
-  recordings with sound; Spring Festival's BIG reel spins as three columns and lands as one;
-  Golden Gong's expansion animation is not played; retrigger counts for three later titles are
+  recordings with sound; retrigger counts for three later titles are
   unknown (three used, labelled); the club help pages of every title were never filmed, so GAME
   RULES shows the mobile pages. No new external blocker (docs/BLOCKERS.md unchanged).
 
