@@ -13320,6 +13320,7 @@ pub struct BigBacking;
 
 /// The BIG symbol (hidden until one lands).
 pub fn spawn_big_art(c: &mut ChildSpawnerCommands) {
+    // Under the BIG coin (which is at 3).
     c.spawn((
         BigBacking,
         Node {
@@ -13330,7 +13331,7 @@ pub fn spawn_big_art(c: &mut ChildSpawnerCommands) {
             image_mode: NodeImageMode::Stretch,
             ..default()
         },
-        GlobalZIndex(3),
+        GlobalZIndex(2),
         Visibility::Hidden,
     ));
     for reel in 0..5u8 {
@@ -14522,7 +14523,7 @@ impl FeatureShow {
     /// the lines 1.4 s into it (club cabinets: Panda Magic 8V086h-IJ6I 160.733
     /// and 162.0, 6b5UuR0po4g 344.25; Happy & Prosperous WKjdoixnVjg 610.77 and
     /// 612.2; STRONG).
-    fn trigger_holds_lines(&self) -> bool {
+    pub fn trigger_holds_lines(&self) -> bool {
         (matches!(self.stage, Stage::Base) || self.retrigger.is_some())
             && self.fg_trigger.is_some_and(|t| t < FG_FLAGS)
     }

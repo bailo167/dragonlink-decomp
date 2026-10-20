@@ -2094,11 +2094,30 @@ fn present(
         // flags waving) before their win is shown (real game); the status
         // and message rows show the games won and the scatter's pay from the
         // result (club cabinet).
+        // A game with line wins too begins it with its first line win, so
+        // the lines wait for the wave from the result (club cabinets).
+        let scatter_award = matches!(
+            presentation.queue.front(),
+            Some((_, Event::LineWin { .. } | Event::ScatterWin { .. }))
+        )
+        .then(|| {
+            presentation
+                .queue
+                .iter()
+                .map_while(|(_, e)| match e {
+                    Event::FreeGameStarted { .. } | Event::SpinStarted { .. } => None,
+                    e => Some(e),
+                })
+                .find_map(|e| match e {
+                    Event::ScatterWin { award, .. } => Some(*award),
+                    _ => None,
+                })
+        })
+        .flatten();
         if fidelity.0
             && reels_motion.rested_for() >= cabinet::RESULT_AFTER_REST
-            && let Some((_, Event::ScatterWin { award, .. })) = presentation.queue.front()
+            && let Some(award) = scatter_award
         {
-            let award = *award;
             if let Some(games) = presentation.queue.iter().find_map(|(_, e)| match e {
                 Event::FreeGamesStarted { games } => Some(*games),
                 _ => None,
@@ -2234,8 +2253,13 @@ fn present(
             presentation.wait = 0.0;
             break;
         }
-        // A respin spinning or the coins being counted hold what follows.
-        if fidelity.0 && feature.blocks() {
+        // A respin spinning or the coins being counted hold what follows; a
+        // trigger's line wins are taken, hidden until its wave.
+        if fidelity.0
+            && feature.blocks()
+            && !(feature.trigger_holds_lines()
+                && matches!(presentation.queue.front(), Some((_, Event::LineWin { .. }))))
+        {
             presentation.wait = 0.0;
             break;
         }
