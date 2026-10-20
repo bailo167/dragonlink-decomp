@@ -3,7 +3,40 @@
 The current state of the project, what was last done, and what is next. Updated with every
 meaningful increment. Item-level state is in `progress/progress.toml`; this page is the narrative.
 
-**Last updated: 2026-10-19.**
+**Last updated: 2026-10-20.**
+
+## The seven later titles against their own footage (2026-10-20)
+
+The owner asked that each title be similar to Golden Century but its own game, and that its sounds
+be confirmed. Each of the seven later titles was compared, screen by screen, with its own club
+footage (about 40 recordings at 1080p with sound, fetched into the private source root), every
+difference re-measured by a second reader refute-first, and the confirmed ones implemented as
+title data (the new one-table `apps/dragonlink/src/looks.rs`, the packs, the models), never as
+title branches. Full account: [reverse-engineering/LATER_TITLES_AUDIT.md](reverse-engineering/LATER_TITLES_AUDIT.md);
+claims dated 2026-10-20 in every title's claims file. Every run muted.
+
+- **Shared, measured on several titles:** the trigger's wave lasts the title's own scatter clip
+  + 0.12 s; a retrigger replays the trigger (WON status, bell, wave, the banner counting up from
+  the old total, no press); a wild win shows its lines at once and holds only WIN's count for the
+  title's wild clip; only winning stacks stand, and only where the pack has tall art; tall wilds
+  take each title's own rect; animations play at their pack's rate (videos 20 fps); the coin
+  shower from 25x with the free games' plaque burning; the counter bursts on every reset;
+  per-title end stings (a clip a pack lacks comes from a sibling pack); no SND_EndMask at reveals.
+- **Each title:** Autumn Moon's 30 fps moon gate and purple keys; Happy & Prosperous's layered
+  Buddha and free-reel picture runs; Panda Magic's per-cell pandas and its own banner numbers;
+  Genghis Khan's and Peace & Long Life's x2 wording, x2 wild animation and gold prompt; Golden
+  Gong's growing monk, live line tabs and symbol sizes; Peace & Long Life's six-game retrigger,
+  fitted sage and dimmed gamble; Spring Festival's BIG reel spinning as one reel at its own pace,
+  its BIG coin's digits, ring, burst and board, its BIG animations and line frames, SND_WindUp.
+- **Golden Century moved too** (its own club footage): pictures at 20 fps, the first free game's
+  reels 1.79 s later, its FEATURE COMPLETED sting Genghis Khan's 2.2 s (one recording; a conflict
+  with the official app recorded), no SND_EndMask, the wave 4.87 s.
+- Checked on muted captures of every title: three independent fix-checks and a recheck
+  re-measured each fix against the footage (the regressions they found are fixed and re-checked);
+  unit tests for each new rule. Open, not blockers: the chooser splashes (no art in any pack),
+  Spring Festival's leaving-block coins without prizes, the next free game about a second late
+  after a retrigger (Peace & Long Life, Spring Festival), full-reel stacks in the later titles'
+  synthetic base strips, and the unknowns listed in the audit document. No new external blocker.
 
 ## Overnight report (2026-10-18 to 19, autonomous, owner-approved plan)
 
