@@ -9869,10 +9869,15 @@ impl FeatureShow {
     /// the counter, a respin or the count is playing.
     pub fn blocks(&self) -> bool {
         self.intro.is_some()
-            || self.fg_trigger.is_some_and(|t| t < self.fg_count_at())
+            // The events held for the count are let go an event interval
+            // early: the count itself is presented that long after them.
             || self
-                .retrigger_ends_at()
-                .is_some_and(|end| self.fg_trigger.is_some_and(|t| t < end))
+                .fg_trigger
+                .is_some_and(|t| t < self.fg_count_at() - TIMING.event_interval)
+            || self.retrigger_ends_at().is_some_and(|end| {
+                self.fg_trigger
+                    .is_some_and(|t| t < end - TIMING.event_interval)
+            })
             || self.fg_cut.is_some_and(|t| t < FG_CUT)
             || self.completed_wait.is_some()
             || self.pay.is_some()
