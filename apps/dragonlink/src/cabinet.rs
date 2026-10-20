@@ -1713,8 +1713,16 @@ pub fn spawn(
 
             // The moving reels, drawn over the landed cells while they spin.
             spawn_strips(c, model.grid.reels);
+            spawn_big_strip(
+                c,
+                model
+                    .free_games
+                    .as_ref()
+                    .and_then(|fg| fg.big_reel.as_ref())
+                    .map(|b| (b.first, b.width)),
+            );
             spawn_wild_talls(c, model.grid.reels);
-            spawn_big_art(c, &fonts.meter);
+            spawn_big_art(c);
             spawn_feature_layer(
                 c,
                 art,
@@ -4732,7 +4740,36 @@ pub const TIMING: Timing = Timing {
     lead_in: 0.66 - RUN_ON,
     reel_interval: 0.45,
     event_interval: 0.14,
+    first_free_extra: 0.0,
+    wild: "",
 };
+
+/// A free game with a BIG reel (Spring Festival club cabinets, 12 spins on
+/// three machines, frame by frame; VERIFIED): the BIG reel scrolls whole
+/// BIG pictures, one a window, 4.6 a second (13.8 rows a second); the other
+/// reels spin at that pace too (0.69 of the base game's); reel 1 is deepest
+/// at +0.93 s, the BIG reel at +2.82 s, reel 5 at +3.55 s after the reels
+/// start; overshoot and slide are the base reels', in rows.
+pub const BIG_SPEED: f32 = 4.6;
+pub const BIG_FREE_SPEED: f32 = 13.8;
+const BIG_DEEPEST: [f32; 3] = [0.93, 2.82, 3.55];
+/// The BIG reel runs on 3 to 4 BIG pictures and a little more.
+const RUN_ON_BIG: f32 = (3.5 + DEEP / 3.0) / BIG_SPEED;
+/// The other reels of a BIG free game run on as the base reels do, at the
+/// BIG free games' pace.
+const RUN_ON_FREE: f32 = (3.5 + DEEP) / BIG_FREE_SPEED;
+/// A BIG wild holds the last reel this much longer (three cases; STRONG).
+pub const BIG_WILD_HOLD: f32 = 1.0;
+
+/// A BIG free game's stops as delays: reel 1's after the reels start, the
+/// BIG reel's after reel 1's, the last reel's after the BIG reel's, each
+/// its run-on before its deepest point.
+pub fn big_free_delays() -> (f32, f32, f32) {
+    let first = BIG_DEEPEST[0] - RUN_ON_FREE;
+    let big = BIG_DEEPEST[1] - RUN_ON_BIG;
+    let last = BIG_DEEPEST[2] - RUN_ON_FREE;
+    (first, big - first, last - big)
+}
 
 /// Reel speed in symbols per second while spinning: the cabinet's 20
 /// (two-thirds of a symbol a 30 fps frame, on two cabinets), reached at once,
@@ -4789,6 +4826,27 @@ struct ReelState {
     /// The window leaving or the one coming holds a scatter, so no other
     /// passes on this reel this spin: the machine never shows two on a reel.
     quiet: bool,
+    /// This spin's speed in symbols a second (0 for the base game's).
+    speed: f32,
+}
+
+/// A free game's BIG reel: one reel over `width` reels from `first`,
+/// scrolling the model's BIG strip, one BIG picture to the window
+/// (`pos` in BIG pictures).
+#[derive(Clone, Debug, Default)]
+pub struct BigReel {
+    pub first: u8,
+    pub width: u8,
+    strip: Vec<String>,
+    state: ReelState,
+    /// A BIG spin is under way or has landed this free game.
+    active: bool,
+    /// The first free game scrolls the base window's covered columns out
+    /// (by reel, top row first) at this entry.
+    leaving: Option<(i64, Vec<Vec<String>>)>,
+    /// The last BIG picture landed (the next free game scrolls it out).
+    last: Option<String>,
+    stopped_now: bool,
 }
 
 /// All reels' motion.
@@ -4804,6 +4862,8 @@ pub struct Reels {
     scatter: String,
     /// Seconds since every reel came to rest.
     rested: f32,
+    /// The free games' BIG reel, if the model has one.
+    pub big: Option<BigReel>,
 }
 
 /// The real game shows a spin's result 5 frames (0.17 s) after the last reel
@@ -4826,6 +4886,18 @@ impl Reels {
     /// settles, some 0.4 s), so this is later than the game's stop.
     pub fn any_moving(&self) -> bool {
         self.states.iter().any(|s| s.motion != Motion::Idle)
+            || self
+                .big
+                .as_ref()
+                .is_some_and(|b| b.state.motion != Motion::Idle)
+    }
+
+    /// Whether `reel` is under the BIG reel this free game (its own strip is
+    /// not drawn).
+    pub fn under_big(&self, reel: u8) -> bool {
+        self.big
+            .as_ref()
+            .is_some_and(|b| b.active && (b.first..b.first + b.width).contains(&reel))
     }
 
     /// Seconds every reel has been at rest on screen (0 while any moves).
@@ -4955,12 +5027,33 @@ pub fn reel_strips(model: &MathModel) -> Reels {
             ..default()
         })
         .collect();
+    let big = model
+        .free_games
+        .as_ref()
+        .and_then(|fg| fg.big_reel.as_ref())
+        .map(|b| BigReel {
+            first: b.first,
+            width: b.width,
+            strip: b
+                .strip
+                .iter()
+                .map(|id| {
+                    model
+                        .symbols
+                        .get(id.0 as usize)
+                        .map(|s| s.key.clone())
+                        .unwrap_or_default()
+                })
+                .collect(),
+            ..BigReel::default()
+        });
     Reels {
         states,
         base,
         free,
         scatter: Roles::from_model(model).scatter,
         rested: SPIN_AFTER_REST,
+        big,
     }
 }
 
@@ -5124,8 +5217,122 @@ pub fn spin_reels(
         return;
     }
     let dt = smoke.dt(&time).min(0.05);
+    // A BIG free game: the BIG reel turns over its reels, the others at the
+    // BIG free games' pace; the reels under it wait for it.
+    let big_game = anim
+        .big
+        .as_ref()
+        .map(|(key, first, width)| (key.clone(), *first, *width));
+    let (speed, run_on) = if big_game.is_some() {
+        (BIG_FREE_SPEED, RUN_ON_FREE)
+    } else {
+        (SPIN_SPEED, RUN_ON)
+    };
+    let leaving_block = big_game.as_ref().map(|(_, first, width)| {
+        (*first..first + width)
+            .map(|r| window_labels(&labels, r as usize))
+            .collect::<Vec<_>>()
+    });
+    if big_game.is_none() && anim.spinning.iter().any(|s| *s) {
+        // A base spin: the next free games start from the base window.
+        if let Some(b) = reels.big.as_mut() {
+            b.active = false;
+            b.last = None;
+        }
+    }
+    let first_starting = big_game.as_ref().is_some_and(|(_, first, _)| {
+        reels
+            .states
+            .get(*first as usize)
+            .is_some_and(|s| s.motion == Motion::Idle)
+            && anim.spinning.get(*first as usize).copied().unwrap_or(false)
+    });
+    if let (Some((key, first, _)), Some(b)) = (&big_game, reels.big.as_mut()) {
+        let spinning = anim.spinning.get(*first as usize).copied().unwrap_or(false);
+        b.stopped_now = false;
+        let st = &mut b.state;
+        match st.motion {
+            Motion::Idle if spinning && first_starting => {
+                st.pos = st.pos.round();
+                st.landing_at = st.pos as i64;
+                st.landing = b.last.iter().cloned().collect();
+                b.leaving = b
+                    .last
+                    .is_none()
+                    .then(|| (st.landing_at, leaving_block.clone().unwrap_or_default()));
+                b.active = true;
+                st.motion = Motion::Spinning { t: 0.0 };
+            }
+            Motion::Spinning { .. } if !spinning => {
+                let target = st.pos.floor() - 3.0;
+                st.landing = vec![key.clone()];
+                st.landing_at = target as i64;
+                let speed = (st.pos - (target - DEEP / 3.0)) / RUN_ON_BIG;
+                st.motion = Motion::Stopping {
+                    target,
+                    speed,
+                    bounce: None,
+                };
+            }
+            Motion::Spinning { t } => {
+                st.pos -= BIG_SPEED * dt;
+                st.motion = Motion::Spinning { t: t + dt };
+            }
+            Motion::Stopping {
+                target,
+                speed,
+                bounce: None,
+            } => {
+                st.pos -= speed * dt;
+                if st.pos <= target - DEEP / 3.0 {
+                    st.pos = target - DEEP / 3.0;
+                    st.motion = Motion::Stopping {
+                        target,
+                        speed,
+                        bounce: Some(-DEEP_HOLD),
+                    };
+                }
+            }
+            Motion::Stopping {
+                target,
+                speed,
+                bounce: Some(t0),
+            } => {
+                let t = t0 + dt;
+                if t0 < 0.0 && t >= 0.0 {
+                    b.stopped_now = true;
+                }
+                let k = (t / SETTLE_SECONDS).clamp(0.0, 1.0);
+                st.pos = if t < 0.0 {
+                    target - DEEP / 3.0
+                } else {
+                    target - OVERSHOOT / 3.0 * (1.0 - k)
+                };
+                st.motion = if k >= 1.0 {
+                    st.pos = target;
+                    b.last = Some(key.clone());
+                    b.leaving = None;
+                    Motion::Idle
+                } else {
+                    Motion::Stopping {
+                        target,
+                        speed,
+                        bounce: Some(t),
+                    }
+                };
+            }
+            Motion::Idle => {}
+        }
+    }
+    let big_landed = reels
+        .big
+        .as_ref()
+        .is_some_and(|b| b.active && b.state.motion == Motion::Idle);
     for reel in 0..reels.states.len() {
         let spinning = anim.spinning.get(reel).copied().unwrap_or(false);
+        let under = big_game.as_ref().is_some_and(|(_, first, width)| {
+            (*first as usize..(first + width) as usize).contains(&reel)
+        });
         // A spin starting: the window on screen scrolls away; when it or the
         // window coming holds a scatter, no other passes on this reel.
         let starting = (reels.states[reel].motion == Motion::Idle && spinning).then(|| {
@@ -5149,9 +5356,20 @@ pub fn spin_reels(
                     state.quiet = quiet;
                 }
                 state.free = anim.free;
+                state.speed = speed;
                 state.motion = Motion::Spinning { t: 0.0 };
             }
             Motion::Idle => {}
+            // A reel under the BIG reel turns until the BIG reel is still.
+            Motion::Spinning { .. } if !spinning && under && !big_landed => {
+                state.pos -= state.speed.max(1.0) * dt;
+            }
+            Motion::Spinning { .. } if !spinning && under => {
+                state.landing = window_labels(&labels, reel);
+                state.pos = state.pos.round();
+                state.landing_at = state.pos as i64;
+                state.motion = Motion::Idle;
+            }
             Motion::Spinning { .. } if !spinning => {
                 // The stop has been presented: the cells hold the landing
                 // symbols. They scroll in from above.
@@ -5164,7 +5382,12 @@ pub fn spin_reels(
                 let target = state.pos.floor() - 3.0;
                 state.landing = landing;
                 state.landing_at = target as i64;
-                let speed = (state.pos - (target - DEEP)) / RUN_ON;
+                let run_on = if state.speed > 0.0 && state.speed != SPIN_SPEED {
+                    run_on
+                } else {
+                    RUN_ON
+                };
+                let speed = (state.pos - (target - DEEP)) / run_on;
                 state.motion = Motion::Stopping {
                     target,
                     speed,
@@ -5174,7 +5397,12 @@ pub fn spin_reels(
             Motion::Spinning { t } => {
                 let t = t + dt;
                 // Full speed from the first frame, as on the machine.
-                state.pos -= SPIN_SPEED * dt;
+                let v = if state.speed > 0.0 {
+                    state.speed
+                } else {
+                    SPIN_SPEED
+                };
+                state.pos -= v * dt;
                 state.motion = Motion::Spinning { t };
             }
             Motion::Stopping {
@@ -5226,6 +5454,16 @@ pub fn spin_reels(
         }
     }
 
+    // The BIG reel's snap clinks as its first reel.
+    if let Some(first) = reels
+        .big
+        .as_ref()
+        .filter(|b| b.stopped_now)
+        .map(|b| b.first as usize)
+        && let Some(s) = reels.states.get_mut(first)
+    {
+        s.stopped_now = true;
+    }
     if reels.any_moving() {
         reels.rested = 0.0;
     } else {
@@ -5236,7 +5474,7 @@ pub fn spin_reels(
     let (cw, ch) = cell_size();
     let p = pitch();
     for (column, mut vis) in &mut columns {
-        let want = if reels.moving(column.reel) {
+        let want = if reels.moving(column.reel) && !reels.under_big(column.reel) {
             Visibility::Visible
         } else {
             Visibility::Hidden
@@ -5360,6 +5598,247 @@ pub fn spin_reels(
         node.height = Val::Px(h);
         node.width = Val::Px(w);
         node.left = Val::Px((column_width() - w) / 2.0);
+    }
+}
+
+/// The BIG reel's clip window over the reels it covers.
+#[derive(Component)]
+pub struct BigStripColumn;
+
+/// One BIG picture of the moving BIG reel (0 above the window, 1 in it, 2
+/// below).
+#[derive(Component)]
+pub struct BigSlot(u8);
+
+/// One small symbol of the base window's covered columns as the first BIG
+/// free game scrolls them out (in slot `.0`, reel offset `.1`, row `.2`).
+#[derive(Component)]
+pub struct BigBlockCell(u8, u8, u8);
+
+/// The BIG reel's window and its slots (hidden until a BIG free game spins).
+pub fn spawn_big_strip(c: &mut ChildSpawnerCommands, big: Option<(u8, u8)>) {
+    let Some((first, width)) = big else {
+        return;
+    };
+    let (w, h) = (f32::from(width) * PITCH.0, 3.0 * PITCH.1);
+    c.spawn((
+        BigStripColumn,
+        Node {
+            position_type: PositionType::Absolute,
+            left: Val::Px(reel_center_x(first) - PITCH.0 / 2.0),
+            top: Val::Px(row_center_y(0.0) - pitch() / 2.0),
+            width: Val::Px(w),
+            height: Val::Px(h),
+            overflow: Overflow::clip(),
+            ..default()
+        },
+        Visibility::Hidden,
+    ))
+    .with_children(|col| {
+        for slot in 0..3u8 {
+            col.spawn((
+                BigSlot(slot),
+                Node {
+                    position_type: PositionType::Absolute,
+                    left: Val::Px(0.0),
+                    width: Val::Px(w),
+                    height: Val::Px(h),
+                    ..default()
+                },
+                ImageNode {
+                    image_mode: NodeImageMode::Stretch,
+                    ..default()
+                },
+            ))
+            .with_children(|s| {
+                for r in 0..width {
+                    for row in 0..3u8 {
+                        s.spawn((
+                            BigBlockCell(slot, r, row),
+                            Node {
+                                position_type: PositionType::Absolute,
+                                ..default()
+                            },
+                            ImageNode {
+                                image_mode: NodeImageMode::Stretch,
+                                ..default()
+                            },
+                            Visibility::Hidden,
+                        ));
+                    }
+                }
+            });
+        }
+    });
+}
+
+/// A BIG picture's box in its window (`w` x `h`): the pictures fill it; the
+/// BIG coin stands 0.87 x 0.97 of it, its foot on the window's foot (club
+/// cabinet WKjdoixnVjg 277.5: 590-1340 of 540-1405, 200-840 of 180-840;
+/// STRONG).
+fn big_box(key: &str, w: f32, h: f32) -> (f32, f32, f32, f32) {
+    if key == "orb" {
+        let (bw, bh) = (0.87 * w, 0.97 * h);
+        ((w - bw) / 2.0, h - bh, bw, bh)
+    } else {
+        (0.0, 0.0, w, h)
+    }
+}
+
+/// Draw the BIG reel while it moves: whole BIG pictures one window apart,
+/// and on the first free game the base window's covered columns scrolling
+/// out below the first BIG picture (club cabinet WKjdoixnVjg 261.15-261.32).
+#[allow(clippy::type_complexity)]
+pub fn big_strip_draw(
+    fidelity: Res<Fidelity>,
+    reels: Res<Reels>,
+    art: Res<ArtPack>,
+    mut column: Query<&mut Visibility, With<BigStripColumn>>,
+    mut slots: Query<
+        (&BigSlot, &mut Node, &mut ImageNode, &mut Visibility),
+        (Without<BigStripColumn>, Without<BigBlockCell>),
+    >,
+    mut cells: Query<
+        (&BigBlockCell, &mut Node, &mut ImageNode, &mut Visibility),
+        (Without<BigStripColumn>, Without<BigSlot>),
+    >,
+) {
+    if !fidelity.0 {
+        return;
+    }
+    let Some(b) = reels.big.as_ref() else {
+        return;
+    };
+    let moving = b.active && b.state.motion != Motion::Idle;
+    for mut vis in &mut column {
+        let want = if moving {
+            Visibility::Visible
+        } else {
+            Visibility::Hidden
+        };
+        if *vis != want {
+            *vis = want;
+        }
+    }
+    if !moving {
+        return;
+    }
+    let (w, h) = (f32::from(b.width) * PITCH.0, 3.0 * PITCH.1);
+    let pos = b.state.pos;
+    // Entry n: the landing, the leaving block, or the strip.
+    let entry = |n: i64| -> Option<&str> {
+        if n == b.state.landing_at
+            && let Some(k) = b.state.landing.first()
+        {
+            return Some(k.as_str());
+        }
+        if b.leaving.as_ref().is_some_and(|(at, _)| *at == n) {
+            return None;
+        }
+        let len = b.strip.len().max(1) as i64;
+        b.strip.get(n.rem_euclid(len) as usize).map(String::as_str)
+    };
+    let mut block_slot = None;
+    for (slot, mut node, mut image, mut vis) in &mut slots {
+        let n = pos.floor() as i64 - 1 + i64::from(slot.0);
+        let top = (n as f32 - pos) * h;
+        match entry(n) {
+            Some(key) => {
+                let (dx, dy, bw, bh) = big_box(key, w, h);
+                let handle = art.symbols.get(&format!("big_{key}")).cloned();
+                if let Some(handle) = handle
+                    && image.image != handle
+                {
+                    image.image = handle;
+                }
+                image.color = Color::WHITE;
+                node.left = Val::Px(dx);
+                node.top = Val::Px(top + dy);
+                node.width = Val::Px(bw);
+                node.height = Val::Px(bh);
+            }
+            None => {
+                // The leaving block: the image itself clear, its cells drawn.
+                image.color = Color::NONE;
+                node.left = Val::Px(0.0);
+                node.top = Val::Px(top);
+                node.width = Val::Px(w);
+                node.height = Val::Px(h);
+                block_slot = Some(slot.0);
+            }
+        }
+        if *vis != Visibility::Inherited {
+            *vis = Visibility::Inherited;
+        }
+    }
+    let (cw, ch) = cell_size();
+    for (cell, mut node, mut image, mut vis) in &mut cells {
+        let label = (block_slot == Some(cell.0))
+            .then(|| {
+                b.leaving
+                    .as_ref()
+                    .and_then(|(_, cols)| cols.get(cell.1 as usize))
+                    .and_then(|col| col.get(cell.2 as usize))
+            })
+            .flatten();
+        let Some(label) = label else {
+            if *vis != Visibility::Hidden {
+                *vis = Visibility::Hidden;
+            }
+            continue;
+        };
+        let key = label_symbol(label).0;
+        if let Some(handle) = art.symbols.get(key)
+            && image.image != *handle
+        {
+            image.image = handle.clone();
+        }
+        let (sw, sh) = art
+            .sizes
+            .get(key)
+            .map_or((cw, ch), |s| symbol_size(key, *s));
+        let (cx, cy) = (
+            (f32::from(cell.1) + 0.5) * PITCH.0,
+            (f32::from(cell.2) + 0.5) * PITCH.1,
+        );
+        node.left = Val::Px(cx - sw / 2.0);
+        node.top = Val::Px(cy - sh / 2.0);
+        node.width = Val::Px(sw);
+        node.height = Val::Px(sh);
+        if *vis != Visibility::Inherited {
+            *vis = Visibility::Inherited;
+        }
+    }
+}
+
+/// The free games' own reel panel where the model has a BIG reel: three
+/// windows, none inside the BIG one (Spring Festival club cabinets, from the
+/// first free game's reels moving to the free games' end; VERIFIED), its
+/// pack's `feature_reel_background`.
+pub fn feature_panel(
+    fidelity: Res<Fidelity>,
+    reels: Res<Reels>,
+    show: Res<FeatureShow>,
+    art: Res<ArtPack>,
+    mut panels: Query<&mut ImageNode, With<ReelPanel>>,
+) {
+    if !fidelity.0 || reels.big.is_none() {
+        return;
+    }
+    let free = matches!(show.stage, Stage::FreeGames { .. } | Stage::FreeGamesDone)
+        || show.fg_return.is_some();
+    let key = if free && art.ui.contains_key("feature_reel_background") {
+        "feature_reel_background"
+    } else {
+        "reel_background"
+    };
+    let Some(handle) = art.ui.get(key) else {
+        return;
+    };
+    for mut image in &mut panels {
+        if image.image != *handle {
+            image.image = handle.clone();
+        }
     }
 }
 
@@ -5518,6 +5997,7 @@ pub fn reel_audio(
     mut commands: Commands,
     mut sounds: ResMut<Sounds>,
     reels: Res<Reels>,
+    art: Res<ArtPack>,
 ) {
     if !fidelity.0 || sounds.clips.is_empty() {
         return;
@@ -5530,6 +6010,15 @@ pub fn reel_audio(
     sounds.reels_were_moving = moving;
     let stopped: Vec<usize> = reels.just_stopped().collect();
     let last = reels.states.len().saturating_sub(1);
+    // A BIG wild landing winds up the last reel (Spring Festival club
+    // cabinets: SND_WindUp as the BIG God of Wealth lands, reel 5 landing
+    // 1.45-1.6 s after it starts, six hits on three recordings; VERIFIED).
+    if let Some(b) = reels.big.as_ref()
+        && b.stopped_now
+        && b.state.landing.first() == Some(&art.roles.wild)
+    {
+        sounds.play(&mut commands, "SND_WindUp");
+    }
     for reel in stopped {
         // Measured on cabinet footage (audio audit, 283 plain landings and
         // 80+ coin landings): every landing clinks, except a reel that lands
@@ -6368,6 +6857,8 @@ pub struct FeatureShow {
     /// This free game's BIG symbol and the reels it covers (key, first,
     /// width), from the game's start: Spring Festival's BIG reel.
     pub big: Option<(String, u8, u8)>,
+    /// When the BIG coin's one burst began (`clock`).
+    big_burst: Option<f32>,
     /// The bolt in flight (its coin, its start on `clock`), and the last
     /// splash on the WINNER box.
     bolt: Option<(u8, u8, f32)>,
@@ -6535,6 +7026,7 @@ impl FeatureShow {
             }
             Event::FreeGameStarted { number, remaining } => {
                 self.flares_at = None;
+                self.big_burst = None;
                 // A retrigger's sequence ends with the next free game (the
                 // base trigger's clock runs on through the free games).
                 if self.retrigger.take().is_some() {
@@ -7112,6 +7604,12 @@ pub struct HsCell {
 /// pack's frame.
 #[derive(Component)]
 pub struct HsFrame;
+/// The Hold & Spin grid's art.
+#[derive(Component)]
+pub struct HsFrameArt;
+/// A row line's piece across one reel beside a BIG coin.
+#[derive(Component)]
+pub struct HsRowLineSide;
 /// One of the Hold & Spin grid's two row lines.
 #[derive(Component)]
 pub struct HsRowLine;
@@ -7223,15 +7721,34 @@ pub fn spawn_feature_layer(
                 },
                 BackgroundColor(HS_ROW_LINE),
             ));
+            // Under a BIG coin the lines cross only the reels beside it.
+            for reel in [0u8, 4] {
+                f.spawn((
+                    HsRowLineSide,
+                    Node {
+                        position_type: PositionType::Absolute,
+                        left: Val::Px(reel_center_x(reel) - PITCH.0 / 2.0),
+                        top: Val::Px(gy + k * PITCH.1 - HS_ROW_LINE_H / 2.0),
+                        width: Val::Px(PITCH.0),
+                        height: Val::Px(HS_ROW_LINE_H),
+                        ..default()
+                    },
+                    BackgroundColor(HS_ROW_LINE),
+                    Visibility::Hidden,
+                ));
+            }
         }
         // The grid art is the reel panel's own size (749 x 380): laid exactly
         // over the panel, so its border is the panel's border.
-        f.spawn(sprite(
-            ui("hs_frame"),
-            gx,
-            gy + 4.5 * PANEL_SCALE.1,
-            1240.0 * PANEL_SCALE.0,
-            629.0 * PANEL_SCALE.1,
+        f.spawn((
+            HsFrameArt,
+            sprite(
+                ui("hs_frame"),
+                gx,
+                gy + 4.5 * PANEL_SCALE.1,
+                1240.0 * PANEL_SCALE.0,
+                629.0 * PANEL_SCALE.1,
+            ),
         ));
     });
     let (bw, bh) = BANNER_SIZE;
@@ -9241,9 +9758,12 @@ pub fn hold_and_spin_motion(
                     if !text.0.starts_with(DIM) {
                         text.0 = format!("{DIM}{}", text.0);
                     }
-                } else {
+                } else if !show.big_covers(l.reel) {
                     show.bursts.push((l.reel, l.row, clock));
                 }
+            }
+            if show.big.as_ref().is_some_and(|(key, ..)| key == "orb") {
+                show.big_burst = Some(clock);
             }
         }
         if crossed(t0, t, INTRO_TRANSITION) {
@@ -12401,12 +12921,252 @@ pub fn spawn_wild_talls(c: &mut ChildSpawnerCommands, reels: u8) {
 /// A free game's BIG symbol, drawn once over the reels it covers.
 #[derive(Component)]
 pub struct BigArt;
-/// A BIG coin's prize.
+/// One character of a BIG coin's prize (or its jackpot plaque, in the first).
 #[derive(Component)]
-pub struct BigValue;
+pub struct BigValue(u8);
+
+/// The BIG coin's one flame ring through Hold & Spin, and its one burst.
+#[derive(Component)]
+pub struct BigRing;
+#[derive(Component)]
+pub struct BigBurst;
+
+/// The BIG coin's Hold & Spin: the free games' own board (`hs_frame_free`:
+/// no dividers or row lines behind the BIG coin, the row lines only across
+/// reels 1 and 5), one flame ring about 1.10 x the coin (overhanging the
+/// window) on the single rings' clock, and one burst about 1.6 x the coin
+/// where nine single bursts would be (Spring Festival club cabinets,
+/// WKjdoixnVjg 277.5-282 and 312.0, three intros; VERIFIED).
+#[allow(clippy::type_complexity, clippy::too_many_arguments)]
+pub fn big_hold_and_spin(
+    fidelity: Res<Fidelity>,
+    show: Res<FeatureShow>,
+    art: Res<ArtPack>,
+    mut frame: Query<&mut ImageNode, (With<HsFrameArt>, Without<BigRing>, Without<BigBurst>)>,
+    mut lines: Query<&mut Visibility, (With<HsRowLine>, Without<HsRowLineSide>)>,
+    mut sides: Query<&mut Visibility, (With<HsRowLineSide>, Without<HsRowLine>)>,
+    mut ring: Query<
+        (&mut Node, &mut ImageNode, &mut Visibility),
+        (
+            With<BigRing>,
+            Without<BigBurst>,
+            Without<HsFrameArt>,
+            Without<HsRowLine>,
+            Without<HsRowLineSide>,
+        ),
+    >,
+    mut burst: Query<
+        (&mut Node, &mut ImageNode, &mut Visibility),
+        (
+            With<BigBurst>,
+            Without<BigRing>,
+            Without<HsFrameArt>,
+            Without<HsRowLine>,
+            Without<HsRowLineSide>,
+        ),
+    >,
+) {
+    if !fidelity.0 {
+        return;
+    }
+    let big = show
+        .big
+        .as_ref()
+        .filter(|(key, ..)| key == "orb" && show.hold_and_spin());
+    let set = |vis: &mut Visibility, on: bool| {
+        let want = if on {
+            Visibility::Inherited
+        } else {
+            Visibility::Hidden
+        };
+        if *vis != want {
+            *vis = want;
+        }
+    };
+    let key = if big.is_some() && art.ui.contains_key("hs_frame_free") {
+        "hs_frame_free"
+    } else {
+        "hs_frame"
+    };
+    if let Some(handle) = art.ui.get(key) {
+        for mut image in &mut frame {
+            if image.image != *handle {
+                image.image = handle.clone();
+            }
+        }
+    }
+    for mut vis in &mut lines {
+        set(&mut vis, big.is_none());
+    }
+    for mut vis in &mut sides {
+        set(&mut vis, big.is_some());
+    }
+    // The BIG coin's box (as `big_art` draws it).
+    let rect = big.map(|(key, first, width)| {
+        let (left, top) = cell_center(*first, 0);
+        let (w, h) = (f32::from(*width) * PITCH.0, 3.0 * PITCH.1);
+        let (dx, dy, bw, bh) = big_box(key, w, h);
+        (
+            left - PITCH.0 / 2.0 + dx + bw / 2.0,
+            top - PITCH.1 / 2.0 + dy + bh / 2.0,
+            bw,
+            bh,
+        )
+    });
+    let place = |node: &mut Node, (cx, cy, bw, bh): (f32, f32, f32, f32), k: f32| {
+        node.left = Val::Px(cx - bw * k / 2.0);
+        node.top = Val::Px(cy - bh * k / 2.0);
+        node.width = Val::Px(bw * k);
+        node.height = Val::Px(bh * k);
+    };
+    let centre = big.map(|(_, first, width)| first + width / 2);
+    let ring_on = rect.is_some()
+        && (show.grid || show.since_burst(0.2))
+        && centre.is_some_and(|reel| !show.fire_taken(reel, 1));
+    let ring_frame = ring_on
+        .then(|| {
+            let frames = art.anims.get("ring")?;
+            frames
+                .get((show.clock * ANIM_FPS) as usize % frames.len().max(1))
+                .cloned()
+        })
+        .flatten();
+    for (mut node, mut image, mut vis) in &mut ring {
+        match (ring_frame.as_ref(), rect) {
+            (Some(h), Some(r)) => {
+                if image.image != *h {
+                    image.image = h.clone();
+                }
+                place(&mut node, r, 1.10);
+                set(&mut vis, true);
+            }
+            _ => set(&mut vis, false),
+        }
+    }
+    let burst_frame = show.big_burst.filter(|_| rect.is_some()).and_then(|t0| {
+        let frames = art.anims.get("burst")?;
+        frames
+            .get(((show.clock - t0).max(0.0) * ANIM_FPS) as usize)
+            .cloned()
+    });
+    for (mut node, mut image, mut vis) in &mut burst {
+        match (burst_frame.as_ref(), rect) {
+            (Some(h), Some(r)) => {
+                if image.image != *h {
+                    image.image = h.clone();
+                }
+                place(&mut node, r, 1.6);
+                set(&mut vis, true);
+            }
+            _ => set(&mut vis, false),
+        }
+    }
+}
+
+/// A gold frame on one position of the line being shown over a BIG symbol.
+#[derive(Component)]
+pub struct BigLineBox {
+    reel: u8,
+    row: u8,
+}
+
+/// The gold frames: each position's box, a bright gold core in an orange
+/// rim, about 8.5 canvas px in all (club cabinets: WKjdoixnVjg 268.0, 1080p;
+/// the colours camera colours, PARTIAL).
+const BIG_LINE_RIM: Color = Color::srgb(0.71, 0.39, 0.16);
+const BIG_LINE_CORE: Color = Color::srgb(0.98, 0.75, 0.43);
+
+/// While a free game's BIG symbol shows a win, the line being shown traces
+/// its winning run with thin gold frames, one a position, BIG-covered or not
+/// (Spring Festival club cabinets, two machines, many lines; VERIFIED; the
+/// base game shows none). They light with the line's badges (HYPOTHESIS).
+pub fn big_line_boxes(
+    fidelity: Res<Fidelity>,
+    show: Res<FeatureShow>,
+    sim: Res<Sim>,
+    gamble: Res<GambleShow>,
+    mut boxes: Query<(&BigLineBox, &mut Visibility)>,
+) {
+    if !fidelity.0 {
+        return;
+    }
+    let run: Vec<(u8, u8)> = show
+        .win_current
+        .filter(|_| show.big.is_some() && !gamble.active)
+        .filter(|_| in_spans(show.win_t % WIN_LINE_SECONDS, &WIN_LINE_LIT))
+        .and_then(|(line, count)| {
+            let rows = sim.game.model().paylines.get(line as usize)?;
+            Some(
+                (0..count)
+                    .filter_map(|reel| rows.0.get(reel as usize).map(|&row| (reel, row)))
+                    .collect(),
+            )
+        })
+        .unwrap_or_default();
+    for (b, mut vis) in &mut boxes {
+        let want = if run.contains(&(b.reel, b.row)) {
+            Visibility::Inherited
+        } else {
+            Visibility::Hidden
+        };
+        if *vis != want {
+            *vis = want;
+        }
+    }
+}
 
 /// The BIG symbol (hidden until one lands).
-pub fn spawn_big_art(c: &mut ChildSpawnerCommands, font: &Handle<Font>) {
+pub fn spawn_big_art(c: &mut ChildSpawnerCommands) {
+    for reel in 0..5u8 {
+        for row in 0..3u8 {
+            let (cx, cy) = cell_center(reel, row);
+            c.spawn((
+                BigLineBox { reel, row },
+                Node {
+                    position_type: PositionType::Absolute,
+                    left: Val::Px(cx - PITCH.0 / 2.0),
+                    top: Val::Px(cy - PITCH.1 / 2.0),
+                    width: Val::Px(PITCH.0),
+                    height: Val::Px(PITCH.1),
+                    border: UiRect::all(Val::Px(3.0)),
+                    ..default()
+                },
+                BorderColor::all(BIG_LINE_RIM),
+                GlobalZIndex(6),
+                Visibility::Hidden,
+            ))
+            .with_children(|b| {
+                b.spawn((
+                    Node {
+                        width: Val::Percent(100.0),
+                        height: Val::Percent(100.0),
+                        border: UiRect::all(Val::Px(3.0)),
+                        ..default()
+                    },
+                    BorderColor::all(BIG_LINE_CORE),
+                ));
+            });
+        }
+    }
+    for (z, burst) in [(4, false), (5, true)] {
+        let mut e = c.spawn((
+            Node {
+                position_type: PositionType::Absolute,
+                ..default()
+            },
+            ImageNode {
+                image_mode: NodeImageMode::Stretch,
+                ..default()
+            },
+            GlobalZIndex(z),
+            Visibility::Hidden,
+        ));
+        if burst {
+            e.insert(BigBurst);
+        } else {
+            e.insert(BigRing);
+        }
+    }
     c.spawn((
         BigArt,
         Node {
@@ -12423,19 +13183,40 @@ pub fn spawn_big_art(c: &mut ChildSpawnerCommands, font: &Handle<Font>) {
         Visibility::Hidden,
     ))
     .with_children(|b| {
-        b.spawn((
-            BigValue,
-            Text::new(""),
-            TextFont {
-                font: bevy::text::FontSource::Handle(font.clone()),
-                font_size: FontSize::Px(110.0),
-                ..default()
-            },
-            TextColor(Color::srgb(0.55, 0.05, 0.02)),
-            TextLayout::justify(Justify::Center),
-        ));
+        // The BIG coin's prize in the coins' own digit images, or its
+        // jackpot plaque.
+        for index in 0..COIN_SLOTS {
+            b.spawn((
+                BigValue(index),
+                Node {
+                    display: Display::None,
+                    ..default()
+                },
+                ImageNode {
+                    image_mode: NodeImageMode::Stretch,
+                    ..default()
+                },
+                Visibility::Hidden,
+            ));
+        }
     });
 }
+
+/// A BIG coin's digit is this many times a single coin's tall (club
+/// cabinets: zeros 200 x 125 against 57-59 x 46 on WKjdoixnVjg 312.0 and
+/// 128.0, five coins: 3.2-3.5 x the height, 2.7 x the width; VERIFIED), so
+/// relatively narrower.
+const BIG_DIGIT_TALL: f32 = 3.3;
+const BIG_DIGIT_NARROW: f32 = 0.85;
+/// A BIG jackpot coin's plaque (the pack's `mega_orb_<tier>`): its width
+/// and height as shares of the BIG window, from the title's mobile scene
+/// (MegaMini 340 x 166 at 1.5, MegaMinor 449 x 167 and MegaMajor 456 x 164
+/// at 1.3, in the 812 x 660 node; the cabinet's UNKNOWN: none filmed).
+const BIG_PLAQUES: [(&str, f32, f32); 3] = [
+    ("mini", 0.63, 0.377),
+    ("minor", 0.72, 0.329),
+    ("major", 0.73, 0.323),
+];
 
 /// Show the free game's BIG symbol once the reels it covers are still: one
 /// 3x3 picture (the title's own Mega art, `big_<key>`), a BIG coin with its
@@ -12443,14 +13224,15 @@ pub fn spawn_big_art(c: &mut ChildSpawnerCommands, font: &Handle<Font>) {
 #[allow(clippy::type_complexity, clippy::too_many_arguments)]
 pub fn big_art(
     fidelity: Res<Fidelity>,
+    time: Res<Time>,
     show: Res<FeatureShow>,
     reels: Res<Reels>,
     art: Res<ArtPack>,
     sim: Res<Sim>,
     denom: Res<Denom>,
-    labels: Query<(&CellLabel, &Text), Without<BigValue>>,
-    mut big: Query<(&mut Node, &mut ImageNode, &mut Visibility), With<BigArt>>,
-    mut value: Query<&mut Text, With<BigValue>>,
+    labels: Query<(&CellLabel, &Text)>,
+    mut big: Query<(&mut Node, &mut ImageNode, &mut Visibility), (With<BigArt>, Without<BigValue>)>,
+    mut value: Query<(&BigValue, &mut Node, &mut ImageNode, &mut Visibility), Without<BigArt>>,
     gamble: Res<GambleShow>,
 ) {
     if !fidelity.0 {
@@ -12462,9 +13244,33 @@ pub fn big_art(
         .as_ref()
         .filter(|_| !gamble.active)
         .filter(|(_, first, width)| !(*first..first + width).any(|reel| reels.moving(reel)));
-    let image = shown.and_then(|(key, _, _)| art.symbols.get(&format!("big_{key}")));
+    // The landed BIG picture: its own animation while a win through it
+    // shows (club cabinets: the BIG God of Wealth and the BIG firecrackers,
+    // whose 67-frame loop recurs every 3.37 s, 20 fps; VERIFIED), a BIG
+    // scatter from its landing (the BIG ingot rocks through its retrigger;
+    // STRONG), the BIG coin burning as every coin does (VERIFIED); the
+    // royals still.
+    let image = shown.and_then(|(key, first, _)| {
+        let through = show.win_current.is_some_and(|(_, count)| count > *first);
+        let anim = format!("mega_{key}");
+        let fps = art
+            .anim_fps
+            .get(&format!("{anim}_loop"))
+            .copied()
+            .unwrap_or(SYMBOL_FX_FPS);
+        let frame = if *key == art.roles.scatter {
+            fx_frame(&art, &anim, (time.elapsed_secs() * fps) as usize)
+        } else if through {
+            fx_frame(&art, &anim, (show.win_t * fps) as usize)
+        } else if key == "orb" {
+            symbol_image(&art, "orb", time.elapsed_secs())
+        } else {
+            None
+        };
+        frame.or_else(|| art.symbols.get(&format!("big_{key}")).cloned())
+    });
     for (mut node, mut img, mut vis) in &mut big {
-        let (Some((key, first, width)), Some(handle)) = (shown, image) else {
+        let (Some((key, first, width)), Some(handle)) = (shown, image.as_ref()) else {
             if *vis != Visibility::Hidden {
                 *vis = Visibility::Hidden;
             }
@@ -12474,16 +13280,13 @@ pub fn big_art(
             img.image = handle.clone();
         }
         let (left, _) = cell_center(*first, 0);
-        let (right, _) = cell_center(first + width - 1, 0);
         let (_, top) = cell_center(*first, 0);
-        let w = right - left + PITCH.0;
-        // The BIG coin stands a little over the block, as in the scene
-        // (718 against 660).
-        let h = 3.0 * PITCH.1 * if key == "orb" { 718.0 / 660.0 } else { 1.0 };
-        node.left = Val::Px(left - PITCH.0 / 2.0);
-        node.top = Val::Px(top - PITCH.1 / 2.0 - (h - 3.0 * PITCH.1) / 2.0);
-        node.width = Val::Px(w);
-        node.height = Val::Px(h);
+        let (w, h) = (f32::from(*width) * PITCH.0, 3.0 * PITCH.1);
+        let (dx, dy, bw, bh) = big_box(key, w, h);
+        node.left = Val::Px(left - PITCH.0 / 2.0 + dx);
+        node.top = Val::Px(top - PITCH.1 / 2.0 + dy);
+        node.width = Val::Px(bw);
+        node.height = Val::Px(bh);
         if *vis != Visibility::Inherited {
             *vis = Visibility::Inherited;
         }
@@ -12500,12 +13303,54 @@ pub fn big_art(
         })
         .map(|face| match face_credits(&face, sim.game.total_bet()) {
             Some(credits) => coin_text(credits, denom.cents()),
-            None => face.to_uppercase(),
+            None => face.to_lowercase(),
         })
         .unwrap_or_default();
-    for mut text in &mut value {
-        if text.0 != prize {
-            text.0.clone_from(&prize);
+    let window = shown.map(|(_, _, width)| (f32::from(*width) * PITCH.0, 3.0 * PITCH.1));
+    let plaque = BIG_PLAQUES.iter().find(|(tier, ..)| prize == *tier);
+    let scale = BIG_DIGIT_TALL * PITCH.1 * COIN_DIGIT_SHARE / 73.0;
+    for (v, mut node, mut image, mut vis) in &mut value {
+        let glyph = match plaque {
+            Some((tier, sw, sh)) => (v.0 == 0)
+                .then(|| art.ui.get(&format!("mega_orb_{tier}")))
+                .flatten()
+                .zip(window)
+                .map(|(h, (w, wh))| (h.clone(), sw * w, sh * wh, 0.0)),
+            None => prize.chars().nth(v.0 as usize).and_then(|c| {
+                let key = coin_key(c);
+                art.ui
+                    .get(&key)
+                    .zip(art.sizes.get(&key))
+                    .map(|(h, (w, gh))| {
+                        let (gw, gh, drop) = coin_glyph(c, *w, *gh, scale);
+                        (
+                            h.clone(),
+                            gw * BIG_DIGIT_NARROW / COIN_DIGIT_XSTRETCH,
+                            gh,
+                            drop,
+                        )
+                    })
+            }),
+        };
+        match glyph {
+            Some((handle, w, h, drop)) => {
+                if image.image != handle {
+                    image.image = handle;
+                }
+                node.width = Val::Px(w);
+                node.height = Val::Px(h);
+                node.margin.top = Val::Px(drop);
+                node.display = Display::Flex;
+                if *vis != Visibility::Inherited {
+                    *vis = Visibility::Inherited;
+                }
+            }
+            None => {
+                node.display = Display::None;
+                if *vis != Visibility::Hidden {
+                    *vis = Visibility::Hidden;
+                }
+            }
         }
     }
 }
@@ -13563,6 +14408,7 @@ pub fn prepare_feature_art(
     mut images: ResMut<Assets<Image>>,
     mut flash: ResMut<BannerBurstFrames>,
     mut frame_done: Local<bool>,
+    mut free_frame_done: Local<bool>,
 ) {
     if !fidelity.0 {
         return;
@@ -13589,6 +14435,20 @@ pub fn prepare_feature_art(
             })
             .collect();
         flash.0 = copies.into_iter().map(|i| images.add(i)).collect();
+    }
+    if !*free_frame_done && let Some(handle) = art.ui.get("hs_frame_free") {
+        if let Some(image) = images.get(handle)
+            && image.texture_descriptor.format
+                != bevy::render::render_resource::TextureFormat::Rgba8UnormSrgb
+        {
+            *free_frame_done = true;
+        } else if let Some(mut image) = images.get_mut(handle) {
+            let (w, h) = (image.width() as usize, image.height() as usize);
+            if let Some(data) = image.data.as_mut() {
+                clear_row_lines(data, w, h);
+            }
+            *free_frame_done = true;
+        }
     }
     if !*frame_done && let Some(handle) = art.ui.get("hs_frame") {
         if let Some(image) = images.get(handle)

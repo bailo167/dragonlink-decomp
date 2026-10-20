@@ -1003,6 +1003,9 @@ struct ReelAnim {
     free: bool,
     /// Each reel's window this spin will land on, known when it starts.
     coming: Vec<Vec<String>>,
+    /// This free game's BIG symbol (key, first reel, width): its reels spin
+    /// as one BIG reel.
+    big: Option<(String, u8, u8)>,
 }
 
 /// The windows a spin starting now lands on, by reel: its `ReelStopped`
@@ -1134,6 +1137,10 @@ struct Timing {
     lead_in: f32,
     reel_interval: f32,
     event_interval: f32,
+    /// The first free game's reels stop this much later (the title's look).
+    first_free_extra: f32,
+    /// The title's wild (a BIG wild holds the last reel).
+    wild: &'static str,
 }
 
 impl Default for Timing {
@@ -1142,12 +1149,37 @@ impl Default for Timing {
             lead_in: SPIN_LEAD_IN,
             reel_interval: REEL_STOP_INTERVAL,
             event_interval: EVENT_INTERVAL,
+            first_free_extra: 0.0,
+            wild: "",
         }
     }
 }
 
 fn schedule_with(events: Vec<Event>, timing: &Timing) -> Vec<(f32, Event)> {
     let mut first_reel = true;
+    // A free game with a BIG reel stops on its own beat (club cabinets:
+    // cabinet::big_free_delays); the first free game spins longer.
+    let mut big_game: Option<(u8, u8, bool)> = None;
+    let mut first_free = false;
+    for e in &events {
+        match e {
+            Event::FreeGameStarted { number, .. } => first_free = *number == 1,
+            Event::BigSymbol {
+                symbol,
+                first,
+                width,
+            } => big_game = Some((*first, *width, timing.wild == *symbol)),
+            _ => {}
+        }
+    }
+    let last_reel = events
+        .iter()
+        .filter_map(|e| match e {
+            Event::ReelStopped { reel, .. } => Some(*reel),
+            _ => None,
+        })
+        .max();
+    let (big0, big_first, big_last) = cabinet::big_free_delays();
     // The free games a Hold & Spin's spin also won start an event interval
     // after its award, as before: in the same frame the award would be
     // presented with the Hold & Spin's total already cleared, and the win
@@ -1177,6 +1209,30 @@ fn schedule_with(events: Vec<Event>, timing: &Timing) -> Vec<(f32, Event)> {
             }
             let delay = match &event {
                 Event::ReelStopped { .. } if together[i] => 0.0,
+                Event::ReelStopped { reel, .. } if big_game.is_some() => {
+                    let (first, _, wild) = big_game.unwrap_or_default();
+                    let extra = if first_free {
+                        timing.first_free_extra
+                    } else {
+                        0.0
+                    };
+                    if first_reel {
+                        first_reel = false;
+                        big0 + extra
+                    } else if *reel == first {
+                        big_first
+                    } else if Some(*reel) == last_reel {
+                        // The BIG wild holds the last reel a second longer
+                        // (club cabinets, three cases; STRONG).
+                        big_last + if wild { cabinet::BIG_WILD_HOLD } else { 0.0 }
+                    } else {
+                        timing.reel_interval
+                    }
+                }
+                Event::ReelStopped { .. } if first_reel && first_free => {
+                    first_reel = false;
+                    timing.lead_in + timing.first_free_extra
+                }
                 Event::FreeGamesStarted { .. } if after_hold_and_spin => timing.event_interval,
                 Event::BetPlaced { .. } | Event::SpinStarted { .. } | Event::BetChanged { .. } => {
                     0.0
@@ -1265,6 +1321,7 @@ fn setup(
     mut fonts: ResMut<Assets<Font>>,
     mut sounds: ResMut<cabinet::Sounds>,
     mut show: ResMut<cabinet::FeatureShow>,
+    mut timing: ResMut<Timing>,
     profile: Res<cabinet::Profile>,
     pack: Res<PackDir>,
     machines: Res<cabinet::MachineMenu>,
@@ -1276,6 +1333,11 @@ fn setup(
     let model = sim.game.model();
     art.roles = cabinet::Roles::from_model(model);
     let look = looks::title_look(&model.id);
+    if fidelity.0 {
+        timing.first_free_extra = look.first_free_extra;
+        // Once, at start-up: the presentation's timing names the wild.
+        timing.wild = Box::leak(art.roles.wild.clone().into_boxed_str());
+    }
     // The title's own symbol fits: each still (and its animation) drawn at
     // its scene's or its footage's size and place.
     if !art.fitted {
@@ -2082,7 +2144,10 @@ fn present(
             };
             let emperor = wild_on_wins(true);
             let x2 = wild_on_wins(false);
-            if stack || emperor || x2 {
+            // A BIG wild's sound is its wind-up as it lands: none at its win
+            // (club cabinets).
+            let big_wild = feature.big.as_ref().is_some_and(|(key, ..)| key == wild);
+            if (stack || emperor || x2) && !big_wild {
                 feature.begin_wild(x2 && !emperor);
                 if stack {
                     stacks.stand(paylines, wins.iter().copied(), time.elapsed_secs());
@@ -2174,6 +2239,7 @@ fn present(
                     *s = true;
                 }
                 reels_spin.free = false;
+                reels_spin.big = None;
                 reels_spin.coming = coming_windows(&presentation.queue, reels);
                 // A new base spin clears any lingering feature banner.
                 presentation.banner.clear();
@@ -2291,7 +2357,7 @@ fn present(
                 }
                 reels_spin.free = true;
                 reels_spin.coming = coming_windows(&presentation.queue, reels);
-                // A BIG symbol is drawn as its reels land.
+                // A BIG symbol is drawn as its reels land; they spin as one.
                 feature.big = presentation
                     .queue
                     .iter()
@@ -2307,6 +2373,7 @@ fn present(
                         } => Some((symbol.clone(), *first, *width)),
                         _ => None,
                     });
+                reels_spin.big = feature.big.clone();
                 presentation.status = format!("FREE GAME {number}  ({remaining} to come)");
             }
             Event::WildExpanded { reel } => {
@@ -3218,7 +3285,7 @@ fn main() -> AppExit {
             )
                 .chain(),
             (
-                cabinet::spin_reels,
+                (cabinet::spin_reels, cabinet::big_strip_draw),
                 cabinet::strip_coins,
                 cabinet::strip_tiers,
                 cabinet::reel_audio,
@@ -3233,7 +3300,11 @@ fn main() -> AppExit {
                 cabinet::win_lines,
                 cabinet::wild_stacks,
                 cabinet::wild_talls,
-                cabinet::big_art,
+                (
+                    cabinet::big_art,
+                    cabinet::big_hold_and_spin,
+                    cabinet::big_line_boxes,
+                ),
                 cabinet::feature_music,
                 cabinet::feature_cues,
                 cabinet::coin_shower,
@@ -3254,7 +3325,7 @@ fn main() -> AppExit {
                 cabinet::system_message,
                 cabinet::fit_jackpots,
                 cabinet::roll_jackpots,
-                cabinet::fit_reel_panel,
+                (cabinet::fit_reel_panel, cabinet::feature_panel),
                 cabinet::lines_digits,
                 cabinet::attract_bar,
                 (cabinet::additive_fire, cabinet::prepare_feature_art),

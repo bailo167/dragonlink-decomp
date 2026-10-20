@@ -70,6 +70,12 @@ pub struct TitleLook {
     /// Animations drawn larger than their still: (animation key, width and
     /// height factors).
     pub anim_fit: &'static [(&'static str, f32, f32)],
+    /// The first free game's reels stop this much later than a free game's:
+    /// Golden Century +1.79 s (1bAevGz0K2k 329.10 and y8c8lEdPW8Y 950.33, its
+    /// reels resting +2.73 / +3.63 / +4.53 s against +0.94; VERIFIED), Spring
+    /// Festival +2.60 s (three cases, two machines; VERIFIED). The other
+    /// titles take Golden Century's (HYPOTHESIS: not measured).
+    pub first_free_extra: f32,
 }
 
 /// Golden Century's look: the shared presentation's own values.
@@ -88,6 +94,7 @@ pub const GOLDEN_CENTURY: TitleLook = TitleLook {
     gamble_backdrop: 1.0,
     symbol_fit: &[],
     anim_fit: &[],
+    first_free_extra: 1.79,
 };
 
 impl Default for TitleLook {
@@ -196,13 +203,14 @@ const LOOKS: [(&str, TitleLook); 6] = [
             ..GOLDEN_CENTURY
         },
     ),
-    // Cyan-blue cent and YES / NO keys (WKjdoixnVjg, EO7Q6xvcJMA; camera
+    // Cyan-blue cent and YES / NO keys (WKjdoixnVjg, ersE_-A41V8; camera
     // about (26,226,249)), gold serif header.
     (
         "spring-festival",
         TitleLook {
             cents_key: Some([26, 205, 240]),
             chooser_header: Some(GOLD_HEADER),
+            first_free_extra: 2.60,
             tall3: (1.5975, 3.6883, -0.0136),
             tall2: (1.5975, 2.6791, -0.0182, -0.0089),
             ..GOLDEN_CENTURY
